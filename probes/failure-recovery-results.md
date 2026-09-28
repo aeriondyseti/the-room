@@ -1,6 +1,6 @@
 # Failure and recovery qualification — 2026-09-28
 
-Status: automated suite and Codex native transport checks passed; Claude live checklist pending. No release claim.
+Status: automated suite and bounded native checklist passed. Codex recipient-side read remains policy-blocked; no full MVP/release claim.
 
 ## Automated evidence (VERIFIED)
 
@@ -29,4 +29,12 @@ Cleanup used `probes/codex-background-check.mjs <fixture-root> cleanup` with onl
 
 ## Claude native checklist
 
-Pending handoff of a disposable Claude fixture from 4.1. Feature 4.2 remains in progress until the bounded live checks are recorded.
+VERIFIED using Claude-owned disposable fixture fxh, session fa7b3d6e-0bdf-4946-9d2b-95f968e836b3, PID78396, handed off exclusively for this test. `scripts/qualify-claude-failure.mjs <handed-off-root> <session-id>` verifies the one-participant registry before acting. The isolated room service was restarted with a 1,200-character Claude envelope budget; the harness session/configuration was unchanged.
+
+- Exempt stop request submitted in316ms and received an attributed MCP reply (`claude-mcp-registry`) at07:06:25.496Z, about3seconds after submission began.
+- Ordinary message held with zero native attempts; pause persisted through service restart.
+- Resume submitted the reference envelope in308ms; MCP reply received at07:06:39.649Z. The API retained the complete body.
+- Transcript confirms `mcp__room__room_read` at07:06:36.082Z for message m-mukwm5xw-4e5d4a66-12b7-4e51-9c77-6ae855257ec2, with successful tool result containing the final full-body marker.
+- Fixture service closed; FIXTURE-RELEASED sent to Claude for his stop/remove cleanup. Evidence retained in its handed-off root at astra42-results.json. No working session was stopped.
+
+These checks qualify hold/stop-request behavior and data preservation, not hard-stop enforcement. Codex's policy-blocked recipient read and the separate4.1 wake/reply/soak gates remain explicit limitations.
