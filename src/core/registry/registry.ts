@@ -3,12 +3,12 @@ import { open, readFile, rename, unlink, mkdir, copyFile } from 'node:fs/promise
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'smol-toml';
+import { isValidParticipantName, type Harness } from '../../contracts/domain.js';
+import { loadConfig } from '../config.js';
 
-export interface Binding { harness: 'codex' | 'claude'; session_id: string }
+export interface Binding { harness: Harness; session_id: string }
 export type Registry = Record<string, Binding>;
 export interface RegistryOptions { lockTimeoutMs?: number; lockPollMs?: number; expectedPrevious?: Binding }
-export const registryDefaults = { lockTimeoutMs: 5000, lockPollMs: 25 } as const;
-const namePattern = /^[a-z][a-z0-9_-]{0,63}$/;
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const code = (e: unknown) => (e as NodeJS.ErrnoException).code;
@@ -27,7 +27,7 @@ export function parseRegistry(text: string): Registry {
   if (!object(doc.participants)) throw new Error('participants must be a TOML table.');
   const result: Registry = Object.create(null) as Registry;
   for (const [name, value] of Object.entries(doc.participants)) {
-    if (!namePattern.test(name) || ['all', 'kevin', 'human', '__proto__', 'constructor', 'prototype'].includes(name)) throw new Error(`Invalid or reserved participant name: ${name}`);
+    if (!isValidParticipantName(name)) throw new Error(`Invalid or reserved participant name: ${name}`);
     const b = binding(value);
     if (Object.values(result).some(p => equal(p, b))) throw new Error('Duplicate native binding; use one participant name per session.');
     result[name] = b;
@@ -39,8 +39,9 @@ export async function readRegistry(root: string): Promise<Registry> {
   catch (e) { if (code(e) === 'ENOENT') return Object.create(null) as Registry; throw e; }
 }
 async function locked<T>(root: string, options: RegistryOptions, operation: () => Promise<T>): Promise<T> {
-  const timeout = options.lockTimeoutMs ?? registryDefaults.lockTimeoutMs;
-  const poll = options.lockPollMs ?? registryDefaults.lockPollMs;
+  const config = loadConfig();
+  const timeout = options.lockTimeoutMs ?? config.registryLockTimeoutMs;
+  const poll = options.lockPollMs ?? config.registryLockPollMs;
   if (!Number.isFinite(timeout) || timeout < 0 || !Number.isFinite(poll) || poll <= 0) throw new Error('Invalid registry lock timing configuration.');
   const dir = path.join(root, '.room'); await mkdir(dir, { recursive: true });
   const lock = path.join(dir, 'registry.lock'); const start = Date.now();

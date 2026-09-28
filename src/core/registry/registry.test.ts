@@ -32,7 +32,7 @@ test('duplicate bindings, name collisions and stale compare-and-swap do not muta
 test('strict minimal schema rejects extra fields, duplicate TOML tables and reserved names', () => {
   assert.throws(() => parseRegistry('[participants.astra]\nharness="codex"\nsession_id="bad"'), /Invalid/);
   assert.throws(() => parseRegistry('[participants.astra]\n[participants.astra]'));
-  for (const name of ['all', 'kevin', 'constructor']) {
+  for (const name of ['all', 'human', 'system']) {
     assert.throws(() => parseRegistry(`[participants.${name}]\nharness="codex"\nsession_id="${one.session_id}"`), /reserved/);
   }
   assert.throws(() => parseRegistry(`[participants.astra]\nharness="codex"\nsession_id="${one.session_id}"\npid=5`), /Invalid/);
@@ -64,4 +64,25 @@ test('main checkout and linked worktree resolve to the same root', async t => {
   assert.equal(await resolveRoomRoot(repo), await resolveRoomRoot(linked));
   assert.equal(await resolveRoomRoot(base, repo), await resolveRoomRoot(repo));
   await assert.rejects(resolveRoomRoot(base, ''), /empty/);
+});
+
+test('unsupported tables are refused without changing the original registry', async t => {
+  const root = await fixture(t);
+  const content = '[custom]\nvalue="preserve me"\n';
+  await writeFile(path.join(root, 'session.toml'), content);
+  await assert.rejects(joinParticipant(root, 'astra', one), /unknown registry tables/);
+  assert.equal(await readFile(path.join(root, 'session.toml'), 'utf8'), content);
+});
+test('two independent processes serialize registry writes', async t => {
+  const root = await fixture(t);
+  const { spawn } = await import('node:child_process');
+  const moduleUrl = new URL('./registry.js', import.meta.url).href;
+  const run = (name: string, binding: typeof one | typeof two) => new Promise<void>((resolve, reject) => {
+    const script = `import {joinParticipant} from ${JSON.stringify(moduleUrl)}; await joinParticipant(process.argv[1], process.argv[2], JSON.parse(process.argv[3]));`;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script, root, name, JSON.stringify(binding)], { windowsHide: true });
+    let stderr = ''; child.stderr.on('data', chunk => { stderr += String(chunk); });
+    child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(stderr)));
+  });
+  await Promise.all([run('astra', one), run('claude', two)]);
+  assert.equal(Object.keys(await readRegistry(root)).length, 2);
 });
