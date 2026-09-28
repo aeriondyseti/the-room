@@ -9,6 +9,8 @@ session.toml
 # Build output and dependencies
 node_modules/
 dist/
+# Frozen dist copy for long acceptance runs (scripts/acceptance/run.mjs, VP_DIST)
+.acceptance-dist/
 # Node
 *.tsbuildinfo
 

@@ -9,8 +9,12 @@ import {ProbeClient} from './codex-client.mjs';
 
 export async function start({name,root,dist}) {
   root=await fs.realpath(root);
-  const temp=await fs.realpath(tmpdir());
-  if(!path.basename(root).startsWith('vpfix-')||path.relative(temp,root).startsWith('..'))throw Error('Codex fixtures require a vpfix-* directory under the OS temp directory.');
+  // Owned-root guard: a vpfix-* directory under the OS temp dir or under the explicitly configured fixture base
+  // (VP_FIXTURE_BASE; shared rooms live there because `claude --bg` needs a pre-trusted, non-git location).
+  const bases=[await fs.realpath(tmpdir())];
+  if(process.env.VP_FIXTURE_BASE)bases.push(await fs.realpath(process.env.VP_FIXTURE_BASE));
+  const under=b=>{const rel=path.relative(b,root);return rel&&!rel.startsWith('..')&&!path.isAbsolute(rel);};
+  if(!path.basename(root).startsWith('vpfix-')||!bases.some(under))throw Error('Codex fixtures require a vpfix-* directory under the OS temp directory or VP_FIXTURE_BASE.');
   if(!/^[a-z][a-z0-9_-]{0,31}$/.test(name))throw Error('Invalid fixture name.');
   const home=process.env.CODEX_HOME||path.join(homedir(),'.codex');
   const {resolveCodexExecutable}=await import(pathToFileURL(path.resolve(path.dirname(dist),'../adapters/codex/adapter.js')).href);
@@ -42,7 +46,7 @@ export async function start({name,root,dist}) {
     config['mcp_servers.room']={command:process.execPath,args:[dist,'mcp'],env:{ROOM_ROOT:root},enabled:true};
     const created=await client.rpc('thread/start',{
       cwd:root,model:process.env.ROOM_ACCEPTANCE_CODEX_MODEL??'gpt-6-luna',sandbox:'read-only',approvalPolicy:'never',config,
-      developerInstructions:`You are disposable room qualification participant ${name}. Use only the room MCP tools. Never use shell/file/network tools, access other repositories, modify global configuration or spawn agents. First call room_join with name ${name}. For each incoming room trial message, call room_send with to equal its sender, reply_to equal its message id and text ACK. If it is already an ACK, do not reply (avoid loops). For oversized referenced content, room_read the referenced id first. Do not poll or wait for messages. Native queue starts later turns. Finish each turn after the required MCP call.`,
+      developerInstructions:`You are disposable room qualification participant ${name}. Use only the room MCP tools. Never use shell/file/network tools, access other repositories, modify global configuration or spawn agents. First call room_join with name ${name}. If an incoming room message body starts with "RELAY <name>", call room_send once with to equal that name and text "relay ping" (no reply_to) instead of replying to the sender. For each other incoming room trial message, call room_send with to equal its sender, reply_to equal its message id and text ACK. If it is already an ACK, do not reply (avoid loops). For oversized referenced content, room_read the referenced id first. Do not poll or wait for messages. Native queue starts later turns. Finish each turn after the required MCP call.`,
     });
     sessionId=created.thread.id;rollout=created.thread.path;client.owned.add(sessionId);
     await fs.writeFile(path.join(root,`${name}-codex-manifest.json`),JSON.stringify({sessionId,rollout,model:created.model,configuration:'daemon-hosted/read-only/MCP-only'},null,2));
@@ -59,6 +63,8 @@ export async function start({name,root,dist}) {
     }
     return {
       name,harness:'codex',sessionId,stop,
+      /** 'idle' unless this thread's latest turn event is a start without a completion. */
+      status(){const last=client.events.filter(e=>(e.msg.params?.threadId??e.msg.params?.turn?.threadId)===sessionId).at(-1);return !last||last.msg.method==='turn/completed'?'idle':'busy';},
       async turnStartedAt(messageId,sinceMs){
         if(!rollout){const read=await client.rpc('thread/read',{threadId:sessionId});rollout=read.thread?.path;}
         if(!rollout)return null;
