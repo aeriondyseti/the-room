@@ -225,7 +225,7 @@ test('TD-0034: at every height and in both layouts the frame holds — header, t
         assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where}`);
         assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where}`);
         const statusAt = rows.findIndex((r) => r.startsWith('● live'));
-        assert.equal(statusAt, layout === 'left' ? height - 2 : height - 1, `status bar in place (above the divider in the left layout) — ${where}`);
+        assert.equal(statusAt, height - 1, `status bar on the last row (no outer divider since its removal) — ${where}`);
         cleanup();
       }
     }
