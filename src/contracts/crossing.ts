@@ -27,6 +27,10 @@ export interface ParticipantInboxInfo {
 
 export interface InboxRequest {
   caller: Caller;
+  /** Deliberately exempt existing history without reading it. Mutually exclusive
+   * with snapshot/cursor. Never inferred from missing-token requests.
+   */
+  baseline?: { reason: string };
   snapshot?: InboxSnapshot;
   /** Server-issued continuation; bind to the supplied snapshot and native identity. */
   cursor?: string;
@@ -49,6 +53,8 @@ export type InboxReviewItem =
     };
 
 export interface InboxReviewPage {
+  /** Explicit exemption, not evidence the omitted content was returned or read. */
+  baseline?: { attemptId: string; exemptedCount: number; reason: string };
   /** Oldest first, only uncovered content. Cold start includes all retained
    * addressed messages whose delivery target matches this native binding,
    * regardless of transport state. No inferred read frontier from delivery/reply.

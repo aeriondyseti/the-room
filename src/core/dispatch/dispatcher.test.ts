@@ -81,7 +81,8 @@ test('registration rotation holds old snapshots but allows messages addressed to
 });
 test('room replies mark only the matching native recipient and do not mean task success',async t=>{
  const {room}=await setup(t);const first=await send(room);await room.dispatcher.idle();
- const reply=await call(room,'send',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'ack',replyTo:first.message.id});
+ const outcome=await call(room,'guarded_send',{snapshot:room.inbox.review('codex:'+a).snapshot,caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'ack',replyTo:first.message.id});
+ assert.equal(outcome.status,'sent');if(outcome.status!=='sent')throw Error('Expected sent reply');const reply=outcome.result;
  const delivery=room.ledger.delivery(first.message.id,'astra');assert.equal(delivery.state,'replied');assert.equal(delivery.repliedBy,reply.message.id);
 });
 test('oversize envelope is explicitly referenced; original content remains intact',async t=>{
@@ -96,7 +97,8 @@ test('a room reply received before adapter completion remains replied after sett
  const {room,adapter}=await setup(t);let release!:()=>void;const gate=new Promise<void>(r=>{release=r;});
  adapter.action=async()=>{await gate;return{status:'submitted',evidence:{kind:'codex-queue',nativeId:'n'}};};
  const first=await send(room);await until(()=>adapter.sent.length===1);
- const reply=await call(room,'send',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'already received',replyTo:first.message.id});
+ const outcome=await call(room,'guarded_send',{snapshot:room.inbox.review('codex:'+a).snapshot,caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'already received',replyTo:first.message.id});
+ assert.equal(outcome.status,'sent');if(outcome.status!=='sent')throw Error('Expected sent reply');const reply=outcome.result;
  release();await room.dispatcher.idle();const d=room.ledger.delivery(first.message.id,'astra');
  assert.equal(d.state,'replied');assert.equal(d.repliedBy,reply.message.id);assert.equal(d.attempts[0]!.outcome,'submitted');
 });
@@ -148,4 +150,14 @@ test('native context is persisted before submission and survives uncertain outco
  };
  const first=await send(room);await room.dispatcher.idle();
  assert.deepEqual(room.ledger.delivery(first.message.id,'astra').attempts[0]!.runtimeContext,original);
+});
+
+test('dispatcher envelope snapshot covers its own body only, never all prior addressed history',async t=>{
+ const {room,adapter}=await setup(t);
+ await send(room,'older');await room.dispatcher.idle();
+ await send(room,'newer');await room.dispatcher.idle();
+ const token=adapter.sent.at(-1)!.envelope.match(/snapshot: ([A-Za-z0-9_-]+)/)?.[1];
+ assert.ok(token,'full native envelope carries a service-issued token');
+ assert.equal(room.inbox.uncovered('codex:'+a,token),1,'older body is not implicitly credited');
+ assert.equal(room.inbox.uncovered('codex:'+b,token),null,'another native binding cannot use it');
 });
