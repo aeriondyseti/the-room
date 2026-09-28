@@ -110,9 +110,9 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 7.1 | Inbox snapshots + guarded send (core) | Astra | ⬜ | contracts first |
-| 7.2 | Withdraw + urgent (core) | Astra | ⬜ | broker-pending only; native acceptance = too late (Kevin) |
-| 7.3 | Tools and CLI | Claude | 🟡 | sprint/7.3: MCP room_send (guarded) / room_inbox / room_withdraw and CLI send/reply/inbox/withdraw built on src/presentation/crossing.ts, tested against fakes. **Merges after 7.1**: 4 real-service tests stay red until the service handles guarded_send (and then get a token first); no silent fallback to legacy send. Pending: baseline flag, envelope snapshot line (service-issued) |
-| 7.4 | TUI | Claude | 🟡 | sprint/7.4: URGENT badge + reason line, ⤫ for sends over uncovered messages (unknown count shown as unknown), revised/unguarded labels, "N not covered" column/chip and side-panel "as of" row. Pending: withdrawn delivery state (lands with 7.2 core) |
+| 7.1 | Inbox snapshots + guarded send (core) | Astra | ✅ | **v0.8.0** · review: reviews/7.1.md (lean gate + Claude cross-review; all findings fixed) · binding-scoped opaque tokens, coverage sets with holes, paged parts, audited baseline, atomic check+enqueue, dedup before freshness |
+| 7.2 | Withdraw + urgent (core) | Astra | ✅ | **v0.8.0** · review: reviews/7.2.md (lean gate + Claude cross-review; withdrawn-in-inbox fixed) · per-recipient withdraw CAS (native acceptance = too late), urgent Room lane (ADR-0013), schema v2 |
+| 7.3 | Tools and CLI | Claude | ✅ | **v0.8.0** · review: reviews/7.3.md (lean gate + Astra cross-review HOLD fixed) · room_send guarded / room_inbox (+baseline) / room_withdraw; CLI send/reply/inbox/withdraw (exit 4); envelope snapshot + URGENT lines; agent docs |
+| 7.4 | TUI | Claude | ✅ | **v0.8.0** · review: reviews/7.4.md (lean gate + Astra cross-review HOLD fixed) · URGENT + reason, ⤫, revised/unguarded, withdrawn struck (never wholly when partial or human-addressed), "N not covered" column/chip/side-panel row |
 
-> Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core, Claude surfaces + spec. Native recall probes dropped per Kevin's scope decision.
+> Released together as **v0.8.0** in one combined merge (main green at every commit; Kevin restarts the live service). Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core, Claude surfaces + spec. Native recall probes dropped per Kevin's scope decision.

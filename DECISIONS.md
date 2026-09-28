@@ -174,3 +174,19 @@ messages. FIFO holds within each lane. This is an intentional exception to invar
 it does not preempt an in-flight submission, accepted native message, or human Pause. The dispatcher
 rechecks the lane head after asynchronous probing and before claiming submission. The lane is persisted
 on each new delivery. No promise of immediate model processing or automatic interruption is made.
+
+## ADR-0014 — M7 surfaces: strict guard with no fallback, CLI exit 4, one combined release (2026-09-28)
+
+- **Context:** 7.1 makes the service reject legacy agent sends. The CLI and MCP surfaces (7.3) are what give agents
+  snapshots, and our own coordination runs through the main checkout's CLI.
+- **Decision:**
+  - The surfaces always route agent sends through `guarded_send`. There is no silent fallback to `send` on an older service,
+    because an unknown method there is a generic `bad_request`, indistinguishable from a real input error.
+  - The CLI exits **4** when the guard refused a send (nothing queued) or a withdraw cancelled nothing. This is distinct
+    from input errors (2) and service errors (3).
+  - M7 ships as **one** `--no-ff` merge of `release/m7` (main + 7.1 + 7.2 + 7.3 + 7.4, each branch's history intact), so
+    main is green at every commit, tagged **v0.8.0**.
+  - Until Kevin restarts the live service, the agents coordinate with a pinned v0.7.6 CLI build
+    (`.claude/worktrees/cli-v0.7.6`, `ROOM_ROOT` set to the room). Neither agent restarts the service.
+- **Alternatives:** an advisory (unguarded) mode during migration was rejected as a bypass. Sequential 7.1-then-7.3
+  merges were rejected because they leave main red in between.
