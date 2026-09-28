@@ -27,8 +27,8 @@ import {
   type Draft,
   type History,
 } from './composer.js';
-import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, sanitize, usageLabel, type Line } from './format.js';
-import { DeliveryDetail } from './detail.js';
+import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
+import { detailLines } from './detail.js';
 import type { RoomSource } from './source.js';
 import { INITIAL_VIEW, reduceView, type RoomView, type ViewAction } from './state.js';
 
@@ -92,6 +92,24 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
     [view.items, convWidth, humanName, seqById],
   );
   const scroll = useScroll(lines.length, view.items.length, viewportHeight);
+
+  // Delivery detail overlay: its own line model and scroll offset (lines from the top).
+  const [detailOffset, setDetailOffset] = useState(0);
+  const detailItem = overlay !== null && typeof overlay === 'object' ? view.items.find((i) => i.message.seq === overlay.detail) ?? null : null;
+  const detailAll = useMemo(
+    () =>
+      detailItem
+        ? detailLines(detailItem, { width: convWidth - 1, humanName, seqById, stale: view.connection.state !== 'connected' })
+        : null,
+    [detailItem, convWidth, humanName, seqById, view.connection.state],
+  );
+  const detail = useMemo(() => {
+    if (!detailAll) return null;
+    const room = Math.max(1, viewportHeight - 1); // keep a row for the "more" marker
+    const max = Math.max(0, detailAll.length - room);
+    const off = Math.min(detailOffset, max);
+    return { visible: detailAll.slice(off, off + room), below: Math.max(0, detailAll.length - off - room), max };
+  }, [detailAll, detailOffset, viewportHeight]);
   const endLine = lines.length - scroll.offset;
   const visible = lines.slice(Math.max(0, endLine - viewportHeight), endLine);
 
@@ -227,7 +245,19 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
 
   useInput((input, key) => {
     if (overlay) {
-      if (key.escape || key.return || input === 'q' || input === '?') setOverlay(null);
+      if (key.escape || key.return || input === 'q' || input === '?') {
+        setOverlay(null);
+        setDetailOffset(0);
+        return;
+      }
+      if (detail) {
+        const page = Math.max(1, viewportHeight - 2);
+        const clamp = (n: number) => Math.min(detail.max, Math.max(0, n));
+        if (key.pageDown) setDetailOffset((o) => clamp(o + page));
+        else if (key.pageUp) setDetailOffset((o) => clamp(o - page));
+        else if (key.downArrow) setDetailOffset((o) => clamp(o + 1));
+        else if (key.upArrow) setDetailOffset((o) => clamp(o - 1));
+      }
       return;
     }
     if (loadFailed && input === 'r' && draft.text === '') {
@@ -309,14 +339,18 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
           ) : overlay === 'who' ? (
             <WhoOverlay participants={view.participants} />
           ) : overlay !== null ? (
-            (() => {
-              const item = view.items.find((i) => i.message.seq === overlay.detail);
-              return item ? (
-                <DeliveryDetail item={item} humanName={humanName} seqById={seqById} width={convWidth - 1} />
-              ) : (
-                <Text dimColor>Message #{overlay.detail} is no longer loaded. Esc to close.</Text>
-              );
-            })()
+            detail === null ? (
+              <Text dimColor>Message #{overlay.detail} is no longer loaded. Esc to close.</Text>
+            ) : (
+              <Box flexDirection="column" flexShrink={0}>
+                {detail.visible.map((line, i) => (
+                  <LineView key={i} line={line} />
+                ))}
+                {detail.below > 0 && (
+                  <Text color="cyan">↓ {detail.below} more line{detail.below === 1 ? '' : 's'} · PgDn</Text>
+                )}
+              </Box>
+            )
           ) : loadFailed ? (
             <Box flexDirection="column">
               <Text color="red" bold>Couldn't load the room.</Text>
@@ -754,11 +788,11 @@ function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
       {participants.map((p) => {
         const dot = livenessDot(p.liveness);
         const status = activityLabel(p);
-        const usage = p.usage?.status === 'ok' || p.usage?.status === 'stale'
-          ? p.usage.context?.percent != null
-            ? `context ${p.usage.context.percent}%${p.usage.status === 'stale' ? ' (stale)' : ''}`
-            : 'context: limit unknown'
-          : 'usage unavailable';
+        const label = usageLabel(p.usage);
+        const usage =
+          label.text === 'usage n/a'
+            ? `usage n/a${p.usage?.reason ? ` (${p.usage.reason})` : ''}`
+            : `${label.text.replace(/\?$/, '')} · ${p.usage?.status === 'stale' ? 'stale, ' : ''}updated ${relativeTime(p.usage?.observedAt ?? null)}`;
         return (
           <Text key={p.name} wrap="truncate">
             <Text color={dot.color}>{dot.glyph} </Text>

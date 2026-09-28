@@ -1,99 +1,105 @@
-// Delivery detail overlay (ROADMAP 3.3): everything the room knows about one message's per-recipient delivery —
-// state, target session, reply link, and every attempt with its evidence or error. Honest by construction:
-// it only renders fields the service reported.
-import React from 'react';
-import { Box, Text } from 'ink';
+// Delivery detail (ROADMAP 3.3): everything the room knows about one message's per-recipient delivery — state,
+// target session, reply link, and every attempt with its evidence or error. Built as wrapped lines (never cut;
+// invariant 9) so the App can scroll it like the conversation. Only renders fields the service reported.
 import type { Delivery, DeliveryAttempt, MessageWithDeliveries, SubmitEvidence } from '../contracts/domain.js';
-import { colorFor, deliveryMark, displayName, formatTime, sanitize, wrapText } from './format.js';
+import { colorFor, deliveryMark, displayName, formatTime, sanitize, wrapText, type Line } from './format.js';
 
-export interface DetailProps {
-  item: MessageWithDeliveries;
+export interface DetailContext {
+  width: number;
   humanName: string;
   seqById: ReadonlyMap<string, number>;
-  width: number;
+  /** True while disconnected: states are last-known, not live (invariant 3). */
+  stale: boolean;
 }
 
-export function DeliveryDetail({ item, humanName, seqById, width }: DetailProps) {
+const ACTIONABLE = new Set(['failed', 'uncertain']);
+
+export function detailLines(item: MessageWithDeliveries, ctx: DetailContext): Line[] {
   const { message } = item;
-  const preview = wrapText(message.body, Math.max(10, width - 4)).slice(0, 3);
-  const more = wrapText(message.body, Math.max(10, width - 4)).length > 3;
-  const retryable = item.deliveries.filter((d) => d.state === 'failed' || d.state === 'uncertain');
-  return (
-    <Box flexDirection="column" flexShrink={0}>
-      <Text wrap="truncate">
-        <Text bold>Message #{message.seq}</Text>
-        <Text dimColor> · {formatTime(message.createdAt)} · from </Text>
-        <Text color={colorFor(message.from.name)} bold>{sanitize(displayName(message.from.name, humanName))}</Text>
-        <Text dimColor> ({message.from.identity.mode})</Text>
-      </Text>
-      {preview.map((l, i) => (
-        <Text key={i} dimColor wrap="truncate">  {l}{i === preview.length - 1 && more ? ' …' : ''}</Text>
-      ))}
-      <Text> </Text>
-      {item.deliveries.length === 0 ? (
-        <Text dimColor>No agent deliveries (a log-only message).</Text>
-      ) : (
-        item.deliveries.map((d) => <DeliveryBlock key={d.recipient} d={d} humanName={humanName} seqById={seqById} />)
-      )}
-      <Text> </Text>
-      {retryable.length > 0 && (
-        <Text color="cyan" wrap="truncate">
-          {retryable.map((d) => `/retry #${message.seq} @${d.recipient}`).join('  ·  ')} to re-send
-          {retryable.some((d) => d.state === 'uncertain') ? ' (uncertain ones may already have arrived)' : ''}
-        </Text>
-      )}
-      <Text dimColor>Esc to close</Text>
-    </Box>
-  );
+  const out: Line[] = [];
+  const w = Math.max(20, ctx.width);
+  const wrapped = (text: string, indent: string, style: Omit<Line[number], 'text'> = {}): Line[] =>
+    wrapText(text, w - indent.length).map((t) => [{ text: indent }, { ...style, text: t }]);
+
+  out.push([
+    { text: `Message #${message.seq}`, bold: true },
+    { text: ` · ${formatTime(message.createdAt)} · from `, dim: true },
+    { text: sanitize(displayName(message.from.name, ctx.humanName)), color: colorFor(message.from.name), bold: true },
+    { text: ` (${message.from.identity.mode})`, dim: true },
+  ]);
+  if (ctx.stale) out.push([{ text: 'Disconnected — showing the last known state, not live.', color: 'yellow' }]);
+
+  const retryable = item.deliveries.filter((d) => ACTIONABLE.has(d.state));
+  if (retryable.length > 0) {
+    const hint = `${retryable.map((d) => `/retry #${message.seq} @${d.recipient}`).join('  ·  ')} to re-send${
+      retryable.some((d) => d.state === 'uncertain') ? ' (uncertain ones may already have arrived)' : ''
+    }`;
+    out.push(...wrapped(hint, '', { color: 'cyan' }));
+  }
+  out.push([{ text: 'PgUp/PgDn or ↑/↓ scroll · Esc to close', dim: true }]);
+  out.push([{ text: ' ' }]);
+
+  const body = wrapText(message.body, w - 2);
+  body.slice(0, 3).forEach((t, i) => out.push([{ text: '  ' }, { text: t + (i === 2 && body.length > 3 ? ' …' : ''), dim: true }]));
+  out.push([{ text: ' ' }]);
+
+  if (item.deliveries.length === 0) {
+    out.push([{ text: 'No agent deliveries (a log-only message).', dim: true }]);
+    return out;
+  }
+  // Failed/uncertain first: the actionable ones are the least likely to be scrolled past.
+  const ordered = [...item.deliveries].sort((a, b) => Number(ACTIONABLE.has(b.state)) - Number(ACTIONABLE.has(a.state)));
+  ordered.forEach((d, i) => {
+    if (i > 0) out.push([{ text: ' ' }]);
+    out.push(...deliveryBlock(d, ctx, wrapped));
+  });
+  return out;
 }
 
-function DeliveryBlock({ d, humanName, seqById }: { d: Delivery; humanName: string; seqById: ReadonlyMap<string, number> }) {
+function deliveryBlock(
+  d: Delivery,
+  ctx: DetailContext,
+  wrapped: (text: string, indent: string, style?: Omit<Line[number], 'text'>) => Line[],
+): Line[] {
+  const out: Line[] = [];
   const mark = deliveryMark(d);
-  const replied = d.repliedBy ? seqById.get(d.repliedBy) : undefined;
-  return (
-    <Box flexDirection="column" marginBottom={0}>
-      <Text wrap="truncate">
-        <Text color={mark.color}>{mark.glyph} </Text>
-        <Text color={colorFor(d.recipient)} bold>{sanitize(displayName(d.recipient, humanName))}</Text>
-        <Text color={mark.color}> {mark.label}</Text>
-        <Text dimColor>  → {d.target.harness} {shortId(d.target.sessionId)}</Text>
-        {d.repliedBy && <Text dimColor>  ↩ replied in {replied !== undefined ? `#${replied}` : 'a later message'}</Text>}
-      </Text>
-      {d.held && <Text color="yellow">    held while the room is paused</Text>}
-      {d.waiting === 'offline' && <Text color="yellow">    waiting — the agent's session isn't running</Text>}
-      {d.waiting === 'rebind_needed' && <Text color="yellow">    waiting — the agent needs to re-join (its session changed)</Text>}
-      {d.referenced && <Text dimColor>    sent as a preview + `room read` reference (too long for this harness)</Text>}
-      {d.attempts.length === 0 ? (
-        <Text dimColor>    no attempts yet</Text>
-      ) : (
-        d.attempts.map((a) => <AttemptLine key={a.n} a={a} />)
-      )}
-    </Box>
-  );
+  out.push([
+    { text: `${mark.glyph} `, color: mark.color },
+    { text: sanitize(displayName(d.recipient, ctx.humanName)), color: colorFor(d.recipient), bold: true },
+    { text: ` ${mark.label}`, color: mark.color },
+  ]);
+  const replied = d.repliedBy ? ctx.seqById.get(d.repliedBy) : undefined;
+  const target = `→ ${sanitize(d.target.harness)} ${sanitize(shortId(d.target.sessionId))}${
+    d.repliedBy ? `  ↩ replied in ${replied !== undefined ? `#${replied}` : 'a later message'}` : ''
+  }`;
+  out.push(...wrapped(target, '    ', { dim: true }));
+  if (d.held) out.push(...wrapped('held while the room is paused', '    ', { color: 'yellow' }));
+  if (d.waiting === 'offline') out.push(...wrapped("waiting — the agent's session isn't running", '    ', { color: 'yellow' }));
+  if (d.waiting === 'rebind_needed') out.push(...wrapped('waiting — the agent needs to re-join (its session changed)', '    ', { color: 'yellow' }));
+  if (d.referenced) out.push(...wrapped('sent as a preview + `room read` reference (too long for this harness)', '    ', { dim: true }));
+  if (d.attempts.length === 0) out.push([{ text: '    no attempts yet', dim: true }]);
+  for (const a of d.attempts) out.push(...attemptLines(a, wrapped));
+  return out;
 }
 
-function AttemptLine({ a }: { a: DeliveryAttempt }) {
+function attemptLines(a: DeliveryAttempt, wrapped: (text: string, indent: string, style?: Omit<Line[number], 'text'>) => Line[]): Line[] {
   const color = a.outcome === 'submitted' ? 'cyan' : a.outcome === 'failed' ? 'red' : a.outcome === 'uncertain' ? 'magenta' : 'gray';
-  return (
-    <Box flexDirection="column">
-      <Text wrap="truncate">
-        <Text dimColor>    attempt {a.n} · {formatTime(a.startedAt)} </Text>
-        <Text color={color}>{a.outcome === 'in_flight' ? 'in flight' : a.outcome}</Text>
-        {a.evidence && <Text dimColor>  ({evidenceText(a.evidence)})</Text>}
-      </Text>
-      {a.error && (
-        <Text color={color} wrap="truncate">
-          {'      '}
-          {sanitize(a.error.message)}
-          {a.error.hint ? <Text dimColor> — {sanitize(a.error.hint)}</Text> : null}
-        </Text>
-      )}
-    </Box>
-  );
+  const out: Line[] = [
+    [
+      { text: `    attempt ${a.n} · ${formatTime(a.startedAt)} `, dim: true },
+      { text: a.outcome === 'in_flight' ? 'in flight' : a.outcome, color },
+      ...(a.evidence ? [{ text: `  (${evidenceText(a.evidence)})`, dim: true }] : []),
+    ],
+  ];
+  if (a.error) {
+    out.push(...wrapped(a.error.message, '      ', { color }));
+    if (a.error.hint) out.push(...wrapped(`→ ${a.error.hint}`, '      ', { dim: true }));
+  }
+  return out;
 }
 
 export function evidenceText(e: SubmitEvidence): string {
-  return e.kind === 'codex-queue' ? `codex queue${e.nativeId ? ` ${shortId(e.nativeId)}` : ''}` : `pipe write to pid ${e.pid}`;
+  return e.kind === 'codex-queue' ? `codex queue${e.nativeId ? ` ${sanitize(shortId(e.nativeId))}` : ''}` : `pipe write to pid ${e.pid}`;
 }
 
 function shortId(id: string): string {
