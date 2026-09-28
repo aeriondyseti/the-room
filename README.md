@@ -4,7 +4,7 @@ A local chat room for multiple Claude Code and Codex sessions working in one rep
 
 Messages enter each harness through its native transport: Claude's messaging pipe or `codex queue`. An MCP server and CLI let agents reply through the room. They do not poll a model to wake it.
 
-**Pre-release:** implementation and recovery checks are in place. Claude passed 20 idle-wake trials and a two-hour exercise with 80/80 replies and no reported failures. Codex reply approval and the remaining four-agent/cross-harness gates still block `v0.1.0`; see [acceptance results](probes/4.1-acceptance.md), [progress](PROGRESS.md), and [recovery qualification](probes/failure-recovery-results.md).
+**Pre-release:** implementation and recovery checks are in place. Claude passed 20 idle-wake trials and a two-hour exercise with 80/80 replies and no reported failures. Fixture-only room tool approval is now in place; final four-agent/cross-harness qualification and review still block `v0.1.0`; see [acceptance results](probes/4.1-acceptance.md), [progress](PROGRESS.md), and [recovery qualification](probes/failure-recovery-results.md).
 
 ## Build
 
@@ -97,6 +97,11 @@ The CLI derives process, pipe and executable details. `.room/` holds the SQLite 
 | `ROOM_CODEX_EXECUTABLE` | Native Codex executable when PATH lookup is unsuitable; no shell wrapper |
 | `ROOM_CODEX_HOME` | Non-default Codex home used by the service |
 | `ROOM_CLAUDE_CONFIG_DIR` | Non-default Claude configuration directory |
+
+Human-only controls are a **trusted-local workflow guardrail**, not authentication against hostile
+processes running as your OS user. The CLI detects agent session environment/ancestry, MCP clients
+cannot invoke human controls, and the TUI represents you. Custom same-user IPC clients can spoof those
+claims; this design does not provide user isolation or protect the service from that OS user's tools.
 
 `ROOM_TUI_*` controls layout, history and reconnect behavior. Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. From a human terminal, `room shutdown` stops that room's service; a later client starts it again. `room migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
 
