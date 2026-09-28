@@ -16,7 +16,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 0.1 | Repo skeleton and contracts | Claude | ⬜ | |
-| 0.2 | Room root and minimal registry | Astra | ⬜ | |
+| 0.2 | Room root and minimal registry | Astra | 🟡 | Isolated sprint/0.2; registry, migration and worktree tests in progress. |
 
 ## Milestone 1 — Room service core
 
