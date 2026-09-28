@@ -117,7 +117,7 @@ Milestone 6+ only after the v0.1.0 tag.
     parent registry; identity accept, reject, and mismatch; a send round trip through the service with
     fake adapters; exact echo of multi-line, quoted, and Unicode text.
 
-- [ ] **2.5 Usage observer** *(Claude)* — read-only readers for Claude JSONL `usage` and Codex
+- [x] **2.5 Usage observer** *(Claude)* — read-only readers for Claude JSONL `usage` and Codex
   `token_count`; byte-offset cursors that tolerate partial lines and rotation; freshness; `unavailable`
   labels; cumulative tokens kept separate from context occupancy.
   **Done-when:** fixture-based tests cover both formats, partial trailing lines, restart from cursors,

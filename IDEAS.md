@@ -93,6 +93,8 @@ alongside the per-agent token/context usage the MVP already shows.
   label which (invariant 3: honest state — unavailable is shown as unavailable, never as zero).
 - Freshness and polling cost; the reset-window semantics (rolling vs fixed weekly).
 
+**Found during 2.5 (2026-09-28):** Codex already writes this locally — every `token_count` event in the rollout JSONL carries `rate_limits.primary` with `used_percent`, `window_minutes: 10080` (weekly) and `resets_at`, plus `plan_type`. The 2.5 observer could surface it with a small parser change. No Claude-side local source identified yet.
+
 ## Harness-update compatibility probes
 
 *Raised 2026-09-28 by Kevin. Status: parked bonus feature; implement after v0.1.0.*

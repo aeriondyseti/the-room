@@ -27,7 +27,7 @@ export interface RoomConfig {
   registryLockTimeoutMs: number;
   /** Poll interval while waiting for the registry lock. */
   registryLockPollMs: number;
-  /** Claude config dir holding `sessions/` (else CLAUDE_CONFIG_DIR, else ~/.claude). */
+  /** Claude config dir holding `sessions/` and `projects/` (else CLAUDE_CONFIG_DIR, else ~/.claude). */
   claudeConfigDir: string | null;
   /**
    * After writing a message to a Claude pipe, how long to watch for the receiver closing the connection before
@@ -37,6 +37,15 @@ export interface RoomConfig {
   claudeSubmitSettleMs: number;
   /** Timeout for the process start-time query used to detect pid reuse. */
   claudeProcStartTimeoutMs: number;
+  /** Codex home holding `sessions/` rollouts (else CODEX_HOME, else ~/.codex). */
+  codexHome: string | null;
+  /** A usage reading older than this is labelled `stale` (values still shown). */
+  usageStaleMs: number;
+  /**
+   * Known context-window sizes by model id, for transcripts that don't record the limit (Claude). A model not
+   * listed keeps `limitTokens: null` (no percentage). Override with ROOM_CONTEXT_LIMITS="model=tokens,model=tokens".
+   */
+  contextLimits: Readonly<Record<string, number>>;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -56,6 +65,10 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   claudeConfigDir: null,
   claudeSubmitSettleMs: 300,
   claudeProcStartTimeoutMs: 5_000,
+  codexHome: null,
+  usageStaleMs: 15 * 60_000,
+  // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
+  contextLimits: Object.freeze({ 'claude-opus-5-5': 1_000_000 }),
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -75,6 +88,9 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   claudeConfigDir: 'ROOM_CLAUDE_CONFIG_DIR',
   claudeSubmitSettleMs: 'ROOM_CLAUDE_SUBMIT_SETTLE_MS',
   claudeProcStartTimeoutMs: 'ROOM_CLAUDE_PROC_START_TIMEOUT_MS',
+  codexHome: 'ROOM_CODEX_HOME',
+  usageStaleMs: 'ROOM_USAGE_STALE_MS',
+  contextLimits: 'ROOM_CONTEXT_LIMITS',
 };
 
 /** Build the effective config from defaults + environment. Invalid numeric overrides throw (never silently ignored). */
@@ -88,6 +104,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RoomConfig {
       const n = /^[0-9]+$/.test(raw) ? Number(raw) : Number.NaN;
       if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`${ENV_KEYS[key]} must be a positive decimal integer, got "${raw}"`);
       (config as unknown as Record<string, unknown>)[key] = n;
+    } else if (typeof current === 'object' && current !== null) {
+      (config as unknown as Record<string, unknown>)[key] = { ...current, ...parseLimits(ENV_KEYS[key], raw) };
     } else {
       (config as unknown as Record<string, unknown>)[key] = raw;
     }
@@ -96,3 +114,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RoomConfig {
 }
 
 export const CONFIG_ENV_KEYS: Readonly<Record<keyof RoomConfig, string>> = ENV_KEYS;
+
+/** Parse "model=tokens,model=tokens" (merged over the defaults); malformed entries throw. */
+function parseLimits(envName: string, raw: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const part of raw.split(',').map((p) => p.trim()).filter(Boolean)) {
+    const m = /^([A-Za-z0-9._:-]+)=([0-9]+)$/.exec(part);
+    const n = m ? Number(m[2]) : Number.NaN;
+    if (!m || !Number.isSafeInteger(n) || n <= 0) throw new Error(`${envName} entries must look like model=tokens, got "${part}"`);
+    out[m[1]!] = n;
+  }
+  return out;
+}
