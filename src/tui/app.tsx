@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Box, Text, useInput, useWindowSize } from 'ink';
 import type { ParticipantState } from '../contracts/domain.js';
 import { toErrorInfo } from '../contracts/errors.js';
-import { conversationLines, colorFor, type Line } from './format.js';
+import type { RoomEvent } from '../contracts/ipc.js';
+import { conversationLines, colorFor, sanitize, type Line } from './format.js';
 import type { RoomSource } from './source.js';
 import { INITIAL_VIEW, reduceView, type RoomView, type ViewAction } from './state.js';
 
@@ -23,7 +24,11 @@ const WIDE_ENOUGH_FOR_PANEL = 90;
 
 export function App({ source, humanName, width, height, historyLimit = 500 }: AppProps) {
   const [view, dispatch] = useReducer(reduceView, INITIAL_VIEW, (v): RoomView => ({ ...v, connection: source.status() }));
-  useRoomSync(source, dispatch, historyLimit);
+  const reload = useRoomSync(source, dispatch, historyLimit);
+  const loadFailed = !view.loaded && view.notice !== null;
+  useInput((input) => {
+    if (loadFailed && input === 'r') reload();
+  });
 
   const window = useWindowSize();
   const cols = Math.max(20, width ?? window.columns);
@@ -49,9 +54,16 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
       <Header view={view} width={cols} />
       {banner && <Banner view={view} width={cols} />}
       <Box flexDirection="row" height={viewportHeight}>
-        {showPanel && <Participants participants={view.participants} humanName={humanName} height={viewportHeight} />}
+        {showPanel && (
+          <Participants participants={view.participants} humanName={humanName} height={viewportHeight} stale={view.connection.state !== 'connected'} />
+        )}
         <Box flexDirection="column" width={convWidth} paddingLeft={1} justifyContent="flex-end">
-          {!view.loaded ? (
+          {loadFailed ? (
+            <Box flexDirection="column">
+              <Text color="red" bold>Couldn't load the room.</Text>
+              <Text dimColor>Press r to try again, or run `room doctor` to check the service.</Text>
+            </Box>
+          ) : !view.loaded ? (
             <Text dimColor>Loading room…</Text>
           ) : view.items.length === 0 ? (
             <EmptyState />
@@ -67,15 +79,25 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
 
 // ---- data sync ------------------------------------------------------------------------------------------
 
-function useRoomSync(source: RoomSource, dispatch: React.Dispatch<ViewAction>, historyLimit: number): void {
+/** Keeps the view in sync with the room. Returns `reload` (used by the retry key after a failed load). */
+function useRoomSync(source: RoomSource, dispatch: React.Dispatch<ViewAction>, historyLimit: number): () => void {
+  const reloadRef = useRef<() => void>(() => {});
   useEffect(() => {
     let alive = true;
     let loading = false;
+    let rerun = false;
+    // Events that arrive while a snapshot is loading are buffered and re-applied on top of it, so an older
+    // snapshot can never roll back a newer delivery/participant update (invariant 3).
+    let buffer: RoomEvent[] | null = null;
     let previous = source.status().state;
     // Contract: subscribe replays messages only, so every (re)connect refreshes who + recent history too.
     const load = async () => {
-      if (loading) return;
+      if (loading) {
+        rerun = true; // a reconnect happened mid-load: load again for the new connection when this one ends
+        return;
+      }
       loading = true;
+      buffer = [];
       try {
         await source.request('subscribe', { afterSeq: null });
         const [who, read] = await Promise.all([
@@ -89,10 +111,21 @@ function useRoomSync(source: RoomSource, dispatch: React.Dispatch<ViewAction>, h
       } catch (err) {
         if (alive) dispatch({ type: 'notice', notice: `Couldn't load the room: ${toErrorInfo(err).message}` });
       } finally {
+        const queued = buffer ?? [];
+        buffer = null;
+        if (alive) for (const event of queued) dispatch({ type: 'event', event });
         loading = false;
+        if (rerun && alive) {
+          rerun = false;
+          void load();
+        }
       }
     };
-    const offEvent = source.onEvent((event) => dispatch({ type: 'event', event }));
+    reloadRef.current = () => void load();
+    const offEvent = source.onEvent((event) => {
+      if (buffer) buffer.push(event);
+      else dispatch({ type: 'event', event });
+    });
     const offStatus = source.onStatus((status) => {
       dispatch({ type: 'status', status });
       if (status.state === 'connected' && previous !== 'connected') void load();
@@ -105,6 +138,7 @@ function useRoomSync(source: RoomSource, dispatch: React.Dispatch<ViewAction>, h
       offStatus();
     };
   }, [source, dispatch, historyLimit]);
+  return () => reloadRef.current();
 }
 
 // ---- scrolling ------------------------------------------------------------------------------------------
@@ -202,23 +236,24 @@ function Banner({ view, width }: { view: RoomView; width: number }) {
   );
 }
 
-function Participants({ participants, humanName, height }: { participants: ParticipantState[]; humanName: string; height: number }) {
+function Participants({ participants, humanName, height, stale }: { participants: ParticipantState[]; humanName: string; height: number; stale: boolean }) {
   // Two rows per participant (name, then status); keep room for the title and footer.
   const capacity = Math.max(0, Math.floor((height - 4) / 2));
   const shown = participants.slice(0, capacity);
   const hidden = participants.length - shown.length;
   return (
     <Box flexDirection="column" width={PANEL_WIDTH} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} paddingRight={1}>
-      <Text dimColor bold>PARTICIPANTS</Text>
+      <Text dimColor bold>PARTICIPANTS{stale ? ' · stale' : ''}</Text>
       {participants.length === 0 && <Text dimColor>none yet</Text>}
       {shown.map((p) => {
-        const live = livenessDot(p.liveness);
-        const status = activityLabel(p);
+        // While disconnected we can't vouch for liveness: grey everything out (invariant 3).
+        const live = stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
+        const status = stale ? { text: 'last known: ' + activityLabel(p).text } : activityLabel(p);
         return (
           <Box key={p.name} flexDirection="column">
             <Text wrap="truncate">
               <Text color={live.color}>{live.glyph} </Text>
-              <Text color={colorFor(p.name)} bold>{p.name}</Text>
+              <Text color={stale ? 'gray' : colorFor(p.name)} bold>{sanitize(p.name)}</Text>
             </Text>
             <Text wrap="truncate" color={status.color} dimColor={status.color === undefined}>
               {'  '}{status.text}

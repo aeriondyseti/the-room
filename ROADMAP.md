@@ -130,7 +130,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 3 — TUI (UI/UX priority)
 
-- [ ] **3.1 TUI shell and conversation** *(Claude)*
+- [x] **3.1 TUI shell and conversation** *(Claude)*
   - **Scope:**
     - an Ink app connected to the service event stream;
     - conversation view with sender, recipients, replies, and per-recipient delivery ticks;

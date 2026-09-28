@@ -1,5 +1,7 @@
 // Pure formatting for the TUI: messages → styled, width-bounded lines. Rendering by lines lets the conversation
-// viewport scroll precisely without measuring Ink boxes.
+// viewport scroll precisely without measuring Ink boxes. Widths are terminal columns (string-width), not UTF-16
+// units, and every peer-supplied string is sanitized so it can't drive the terminal (invariants 5, 9).
+import stringWidth from 'string-width';
 import type { Delivery, MessageWithDeliveries } from '../contracts/domain.js';
 import { HUMAN, SYSTEM } from '../contracts/domain.js';
 
@@ -77,37 +79,59 @@ export const DELIVERY_LEGEND: readonly DeliveryMark[] = [
 
 // ---- text -----------------------------------------------------------------------------------------------
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/** Terminal columns a string occupies. */
+export function cols(s: string): number {
+  return stringWidth(s);
+}
+
+/**
+ * Make peer-supplied text inert: control characters (C0 except newline/tab, DEL, C1), ESC, and bidirectional
+ * overrides become visible symbols, so a message can't move the cursor, recolor, or reorder what's shown.
+ */
+export function sanitize(text: string): string {
+  return text.replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]/g, (ch) => {
+    const code = ch.codePointAt(0)!;
+    if (code === 0x1b) return '␛';
+    if (code < 0x20) return String.fromCodePoint(0x2400 + code); // control pictures (␀…␟)
+    if (code === 0x7f) return '␡';
+    return '�';
+  });
+}
+
 /** Word-wrap to `width` columns, preserving blank lines and hard-splitting words longer than a line. */
 export function wrapText(text: string, width: number): string[] {
   const w = Math.max(1, width);
   const out: string[] = [];
-  for (const raw of text.replace(/\r\n?/g, '\n').replace(/\t/g, '  ').split('\n')) {
+  for (const raw of sanitize(text.replace(/\r\n?/g, '\n').replace(/\t/g, '  ')).split('\n')) {
     if (raw.trim() === '') {
       out.push(' ');
       continue;
     }
     let line = '';
-    for (const word of raw.split(/(\s+)/)) {
+    for (const word of raw.split(/( +)/)) {
       if (word === '') continue;
-      if (/^\s+$/.test(word)) {
-        if (line !== '' && line.length + 1 <= w) line += ' ';
+      if (/^ +$/.test(word)) {
+        if (line !== '' && cols(line) + 1 <= w) line += ' ';
         continue;
       }
-      let rest = word;
-      while (rest.length > 0) {
-        const room = w - line.length;
-        if (rest.length <= room) {
-          line += rest;
-          rest = '';
-        } else if (line.trimEnd() !== '' && rest.length <= w) {
-          out.push(line.trimEnd());
-          line = '';
-        } else {
-          line += rest.slice(0, room);
-          rest = rest.slice(room);
+      if (cols(line) + cols(word) <= w) {
+        line += word;
+        continue;
+      }
+      if (line.trimEnd() !== '' && cols(word) <= w) {
+        out.push(line.trimEnd());
+        line = word;
+        continue;
+      }
+      // Hard-split a word longer than the line, by grapheme so nothing is cut mid-character.
+      for (const { segment } of graphemes.segment(word)) {
+        if (cols(line) + cols(segment) > w && line !== '') {
           out.push(line.trimEnd());
           line = '';
         }
+        line += segment;
       }
     }
     out.push(line.trimEnd());
@@ -128,19 +152,29 @@ export function fitLine(line: Line, width: number): Line {
   for (const seg of line) {
     if (used >= width) break;
     const room = width - used;
-    if (seg.text.length <= room) {
+    const w = cols(seg.text);
+    if (w <= room) {
       out.push(seg);
-      used += seg.text.length;
-    } else {
-      out.push({ ...seg, text: room > 1 ? seg.text.slice(0, room - 1) + '…' : '…' });
-      used = width;
+      used += w;
+      continue;
     }
+    let text = '';
+    for (const { segment } of graphemes.segment(seg.text)) {
+      if (cols(text) + cols(segment) > room - 1) break;
+      text += segment;
+    }
+    out.push({ ...seg, text: text + '…' });
+    used = width;
   }
   return out;
 }
 
 export function lineText(line: Line): string {
   return line.map((s) => s.text).join('');
+}
+
+export function lineCols(line: Line): number {
+  return line.reduce((n, s) => n + cols(s.text), 0);
 }
 
 // ---- messages -------------------------------------------------------------------------------------------
@@ -150,42 +184,57 @@ const INDENT = '  ';
 export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): Line[] {
   const { message } = item;
   const lines: Line[] = [];
-  const header: Line = [{ text: formatTime(message.createdAt), dim: true }, { text: ' ' }];
-  if (message.kind === 'stop_request') header.push({ text: ' STOP REQUEST ', color: 'red', inverse: true, bold: true }, { text: ' ' });
-  header.push({ text: displayName(message.from.name, ctx.humanName), color: colorFor(message.from.name), bold: true });
-  if (message.from.identity.mode === 'declared') header.push({ text: ' (declared)', dim: true, italic: true });
-  header.push({ text: ' → ', dim: true });
+  const name = (n: string) => sanitize(displayName(n, ctx.humanName));
+
+  // Header, in priority order: who said it (never dropped) › to whom › reply ref › seq (dropped first).
+  const core: Line = [{ text: formatTime(message.createdAt), dim: true }, { text: ' ' }];
+  if (message.kind === 'stop_request') core.push({ text: ' STOP REQUEST ', color: 'red', inverse: true, bold: true }, { text: ' ' });
+  core.push({ text: name(message.from.name), color: colorFor(message.from.name), bold: true });
+  if (message.from.identity.mode === 'declared') core.push({ text: ' (declared)', dim: true, italic: true });
+  const recipients: Line = [{ text: ' → ', dim: true }];
   if (message.addressing === 'broadcast') {
-    header.push({ text: message.from.name === HUMAN ? 'everyone' : 'all', dim: true });
+    recipients.push({ text: message.from.name === HUMAN ? 'everyone' : 'all', dim: true });
   } else {
-    message.to.forEach((name, i) => {
-      if (i > 0) header.push({ text: ', ', dim: true });
-      header.push({ text: displayName(name, ctx.humanName), color: colorFor(name) });
+    message.to.forEach((n, i) => {
+      if (i > 0) recipients.push({ text: ', ', dim: true });
+      recipients.push({ text: name(n), color: colorFor(n) });
     });
   }
+  const reply: Line = [];
   if (message.replyTo) {
     const seq = ctx.seqById.get(message.replyTo);
-    header.push({ text: `  ↩ ${seq !== undefined ? `#${seq}` : 'earlier message'}`, dim: true });
+    reply.push({ text: `  ↩ ${seq !== undefined ? `#${seq}` : 'earlier message'}`, dim: true });
   }
-  header.push({ text: `  #${message.seq}`, dim: true });
-  lines.push(fitLine(header, ctx.width));
+  const seqPart: Line = [{ text: `  #${message.seq}`, dim: true }];
+  const candidates = [
+    [...core, ...recipients, ...reply, ...seqPart],
+    [...core, ...recipients, ...reply],
+    [...core, ...recipients],
+  ];
+  lines.push(fitLine(candidates.find((l) => lineCols(l) <= ctx.width) ?? candidates.at(-1)!, ctx.width));
 
   const bodyStyle: Segment = message.kind === 'system' ? { text: '', dim: true, italic: true } : { text: '' };
   for (const text of wrapText(message.body, ctx.width - INDENT.length)) {
     lines.push([{ text: INDENT }, { ...bodyStyle, text }]);
   }
 
-  if (item.deliveries.length > 0) {
-    const marks: Line = [{ text: INDENT }];
-    item.deliveries.forEach((d, i) => {
-      const mark = deliveryMark(d);
-      if (i > 0) marks.push({ text: '  ' });
-      marks.push({ text: `${mark.glyph} `, color: mark.color }, { text: displayName(d.recipient, ctx.humanName), color: mark.color, dim: mark.label === 'queued' });
-      if (mark.label !== 'sent' && mark.label !== 'replied' && mark.label !== 'queued') marks.push({ text: ` ${mark.label}`, color: mark.color, dim: true });
-      if (d.referenced) marks.push({ text: ' (preview + reference)', dim: true });
-    });
-    lines.push(fitLine(marks, ctx.width));
-  }
+  // Delivery marks wrap onto more lines rather than hiding a state behind an ellipsis (invariant 3).
+  let marks: Line = [{ text: INDENT }];
+  item.deliveries.forEach((d, i) => {
+    const mark = deliveryMark(d);
+    const chunk: Line = [{ text: `${mark.glyph} `, color: mark.color }, { text: name(d.recipient), color: mark.color, dim: mark.label === 'queued' }];
+    if (mark.label !== 'sent' && mark.label !== 'replied' && mark.label !== 'queued') chunk.push({ text: ` ${mark.label}`, color: mark.color, dim: true });
+    if (d.referenced) chunk.push({ text: ' (preview + reference)', dim: true });
+    const sep: Line = i > 0 ? [{ text: '  ' }] : [];
+    if (i > 0 && lineCols(marks) + lineCols(sep) + lineCols(chunk) > ctx.width) {
+      lines.push(marks);
+      marks = [{ text: INDENT }];
+    } else {
+      marks.push(...sep);
+    }
+    marks.push(...chunk);
+  });
+  if (item.deliveries.length > 0) lines.push(fitLine(marks, ctx.width));
   return lines;
 }
 

@@ -97,6 +97,53 @@ test('reconnect: banner while down, then state is refreshed (who + read) on reco
   assert.match(up, /● connected/);
 });
 
+test('events that arrive while a snapshot loads are re-applied on top of it (no rollback)', async () => {
+  const src = room(1);
+  const first = (await src.request('read', { limit: 1 })).items[0]!;
+  // Deliver an update from inside the `who` request, i.e. after subscribe but before the snapshot applies.
+  const realRequest = src.request.bind(src);
+  let injected = false;
+  src.request = (async (method: string, params: unknown) => {
+    const result = await realRequest(method as never, params as never);
+    if (method === 'who' && !injected) {
+      injected = true;
+      src.setDelivery(first.message.id, 'astra', { state: 'replied' });
+    }
+    return result;
+  }) as typeof src.request;
+  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
+  await tick(60);
+  assert.match(plain(ui.lastFrame()), /✓ astra/, 'the newer replied state survives the snapshot');
+});
+
+test('a failed load says so and retries on r', async () => {
+  const src = room(1);
+  const realRequest = src.request.bind(src);
+  let fail = true;
+  src.request = (async (method: string, params: unknown) => {
+    if (fail && method === 'read') throw new Error('database is locked');
+    return realRequest(method as never, params as never);
+  }) as typeof src.request;
+  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
+  await tick(60);
+  assert.match(plain(ui.lastFrame()), /Couldn't load the room\.[\s\S]*Press r to try again/);
+  fail = false;
+  ui.stdin.write('r');
+  await tick(60);
+  assert.match(plain(ui.lastFrame()), /message number 1/);
+});
+
+test('while disconnected the participant panel is marked stale', async () => {
+  const src = room(1);
+  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
+  await tick();
+  src.setStatus({ state: 'disconnected' });
+  await tick();
+  const frame = plain(ui.lastFrame());
+  assert.match(frame, /PARTICIPANTS · stale/);
+  assert.match(frame, /last known: busy/);
+});
+
 test('narrow terminals hide the participant panel instead of squeezing it', async () => {
   const ui = render(<App source={room(2)} humanName="Kevin" width={60} height={14} />);
   await tick();

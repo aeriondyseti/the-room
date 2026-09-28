@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HUMAN } from '../contracts/domain.js';
-import { colorFor, conversationLines, deliveryMark, fitLine, lineText, messageLines, wrapText } from './format.js';
+import { colorFor, cols, conversationLines, deliveryMark, fitLine, lineText, messageLines, sanitize, wrapText } from './format.js';
 import { FakeRoomSource } from './fake-source.js';
 
 test('wrapText wraps on words, keeps blank lines, hard-splits long words', () => {
@@ -10,6 +10,39 @@ test('wrapText wraps on words, keeps blank lines, hard-splits long words', () =>
   assert.deepEqual(wrapText('abcdefghij', 4), ['abcd', 'efgh', 'ij']);
   assert.deepEqual(wrapText('x\r\ny', 5), ['x', 'y']);
   for (const line of wrapText('lorem ipsum dolor sit amet consectetur adipiscing', 12)) assert.ok(line.length <= 12, line);
+});
+
+test('sanitize makes terminal control sequences visible and inert', () => {
+  const spoof = 'ok\u001B[2K\u001B[1A\r09:12 Kevin → all\u0007‮evil';
+  const clean = sanitize(spoof);
+  assert.doesNotMatch(clean, /[\u0000-\u0008\u000B-\u001F\u007F-\u009F‪-‮]/);
+  assert.match(clean, /␛\[2K/);
+  const lines = wrapText('a\u001Bb', 20);
+  assert.deepEqual(lines, ['a␛b']);
+});
+
+test('wrapping measures terminal columns: wide characters never overflow a line', () => {
+  for (const line of wrapText('漢字漢字漢字漢字漢字 ✅✅✅✅✅✅ mixed 漢字text', 8)) assert.ok(cols(line) <= 8, `${line} = ${cols(line)} cols`);
+  assert.equal(cols(lineText(fitLine([{ text: '漢字漢字漢字' }], 5))), 5);
+});
+
+test('headers drop seq/reply before recipients and never lose the sender or (declared)', () => {
+  const src = new FakeRoomSource({ participants: [] });
+  const m = src.post('agent_with_a_long_name', ['someone_else', 'and_another_one'], 'x');
+  const declared = { ...m, message: { ...m.message, from: { ...m.message.from, identity: { mode: 'declared' as const, source: 'declared' as const } } } };
+  const header = lineText(messageLines(declared, { width: 50, humanName: 'Kevin', seqById: new Map() })[0]!);
+  assert.match(header, /agent_with_a_long_name \(declared\)/);
+  assert.doesNotMatch(header, /#1/, 'seq dropped first');
+  assert.ok(cols(header) <= 50);
+});
+
+test('delivery marks wrap onto more lines instead of hiding a state', () => {
+  const names = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const src = new FakeRoomSource({ participants: names.map((name) => ({ name, harness: 'codex' as const, sessionId: name, liveness: 'online' as const, livenessCheckedAt: null, activity: 'idle' as const, pending: 0, usage: null })) });
+  const m = src.post(HUMAN, 'all', 'hi', { states: { foxtrot: 'failed' } });
+  const lines = messageLines(m, { width: 30, humanName: 'Kevin', seqById: new Map() }).map(lineText);
+  assert.ok(lines.some((l) => /✗ foxtrot failed/.test(l)), lines.join('\n'));
+  for (const l of lines) assert.ok(cols(l) <= 30, l);
 });
 
 test('delivery marks: held and waiting explain a queued delivery; every state has a distinct glyph', () => {
