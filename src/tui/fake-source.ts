@@ -11,6 +11,7 @@ import type {
 } from '../contracts/domain.js';
 import { HUMAN } from '../contracts/domain.js';
 import type { Method, Params, Result, RoomEvent } from '../contracts/ipc.js';
+import type { ActivityItem, ActivityPage, ActivityStreamId } from '../contracts/activity.js';
 import type { ConnectionStatus, RoomSource } from './source.js';
 
 type Listener<T> = (value: T) => void;
@@ -26,6 +27,22 @@ export class FakeRoomSource implements RoomSource {
   private clock: number;
   /** Every request received (tests assert on these). */
   readonly requests: Array<{ method: Method; params: unknown }> = [];
+  private activity = new Map<string, { stream: ActivityStreamId; items: ActivityItem[]; coverage: ActivityPage['coverage']; reason?: string; olderEvicted: boolean }>();
+
+  /** Set a participant's observed activity (and optionally announce new items live, as the service would). */
+  setActivity(participant: string, items: ActivityItem[], opts: { coverage?: ActivityPage['coverage']; reason?: string; olderEvicted?: boolean; generation?: number } = {}): ActivityStreamId {
+    const p = this.participants.find((x) => x.name === participant);
+    const stream: ActivityStreamId = { participant, harness: p?.harness ?? 'claude', sessionId: p?.sessionId ?? participant, generation: opts.generation ?? 1 };
+    this.activity.set(participant, { stream, items, coverage: opts.coverage ?? 'full', ...(opts.reason ? { reason: opts.reason } : {}), olderEvicted: opts.olderEvicted ?? false });
+    return stream;
+  }
+
+  appendActivity(participant: string, items: ActivityItem[]): void {
+    const a = this.activity.get(participant);
+    if (!a) throw new Error(`no activity for ${participant}`);
+    a.items.push(...items);
+    this.emit({ type: 'activity.appended', stream: a.stream, items: structuredClone(items), reset: false });
+  }
 
   constructor(options: { roomLabel?: string; participants?: ParticipantState[]; startAt?: number } = {}) {
     this.roomLabel = options.roomLabel ?? 'demo room';
@@ -151,6 +168,15 @@ export class FakeRoomSource implements RoomSource {
       }
       case 'shutdown':
         return { stopping: true };
+      case 'activity': {
+        const p = params as Params<'activity'>;
+        const a = this.activity.get(p.participant);
+        if (!a) return { stream: null, items: [], earliestSeq: null, lastSeq: null, hasMore: false, olderEvicted: false, reset: false, coverage: 'unavailable', reason: 'no activity source observed for this participant yet', checkedAt: null, backlog: false };
+        const limit = p.limit ?? 50;
+        const all = a.items;
+        const pick = p.beforeSeq != null ? all.filter((i) => i.seq < p.beforeSeq!).slice(-limit) : p.afterSeq != null ? all.filter((i) => i.seq > p.afterSeq!).slice(0, limit) : all.slice(-limit);
+        return { stream: a.stream, items: structuredClone(pick), earliestSeq: all[0]?.seq ?? null, lastSeq: all.at(-1)?.seq ?? null, hasMore: false, olderEvicted: a.olderEvicted, reset: false, coverage: a.coverage, ...(a.reason ? { reason: a.reason } : {}), checkedAt: null, backlog: false };
+      }
       case 'deliveries': {
         const p = params as Params<'deliveries'>;
         return { deliveries: structuredClone(this.items.find((i) => i.message.id === p.messageId)?.deliveries ?? []) };
