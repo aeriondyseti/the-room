@@ -43,6 +43,17 @@ export function activityLabel(p: ParticipantState): { text: string; color?: stri
 }
 
 /**
+ * M7: how many messages addressed to this agent its latest snapshot does not cover ("3 not covered"). Empty when
+ * covered, unknown (no inbox info from the service), or disconnected: an unknown count is never shown as zero. Display
+ * only; it never stands in for a token.
+ */
+export function inboxCell(p: ParticipantState, stale: boolean): Line {
+  const n = p.inbox?.uncovered;
+  if (stale || n === undefined || n <= 0) return [];
+  return [{ text: `${n} not covered`, color: 'yellow' }];
+}
+
+/**
  * One participant chip: `● name status ctx ▓▓▓▓░░░░░░ 42.0% · model · branch*N`. Colours group by meaning (6.8): the
  * name keeps its conversation colour, context is yellow, model and branch cyan, dirty count magenta. While disconnected
  * everything is greyed "last known" (invariant 3). `bars: false` shows the context as a number only (tight widths).
@@ -55,6 +66,8 @@ export function participantChip(p: ParticipantState, opts: { stale: boolean; mon
     { text: sanitize(p.name), color: opts.stale ? 'gray' : colorFor(p.name), bold: true },
     { text: ` ${opts.stale ? `last known: ${status.text}` : status.text}`, color: opts.stale ? undefined : status.color, dim: opts.stale || status.color === undefined },
   ];
+  const inbox = inboxCell(p, opts.stale);
+  if (inbox.length) chip.push({ text: ' · ', dim: true }, ...inbox);
   if (!opts.stale) chip.push({ text: ' ' }, ...contextBar(p.usage, { stale: false, bar: opts.bars !== false }));
   // 6.7: model and git in compact form (full cwd/worktree/status live in /who). Unknown parts are simply omitted.
   chip.push(...workspaceSegments(p, opts.stale));
