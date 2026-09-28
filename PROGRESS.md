@@ -50,7 +50,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 4.1 | Room end to end on live agents | Claude + Astra | ⬜ | |
-| 4.2 | Failure and recovery qualification | Astra | ⬜ | |
+| 4.2 | Failure and recovery qualification | Astra | 🟡 | Process-crash, four-instance membership, worktree tests pass; live checks pending. |
 
 ## Milestone 5 — Ergonomics polish, then v0.1.0
 
