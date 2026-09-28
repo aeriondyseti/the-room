@@ -35,12 +35,13 @@ export function openKickProposal(registry:Registry,observed:readonly Participant
 }
 
 /** Count one native binding's vote; names can change without transferring votes. */
-export function voteKickProposal(proposal:KickProposal,voter:TargetSnapshot,now:Date):{proposal:KickProposal;voteRecorded:boolean;unanimous:boolean} {
+export function voteKickProposal(proposal:KickProposal,voter:TargetSnapshot,now:Date):{proposal:KickProposal;vote:'recorded'|'already_recorded'|'not_a_voter'|'target';unanimous:boolean} {
   if(proposal.status!=='open')throw new RoomError('invalid_state','The kick proposal is no longer open.');
   if(now.getTime()>=Date.parse(proposal.expiresAt))throw new RoomError('invalid_state','The kick proposal expired; open a new one.');
+  if(same({harness:proposal.target.harness,sessionId:proposal.target.sessionId},voter))return{proposal,vote:'target',unanimous:false};
   const index=proposal.voters.findIndex(v=>same(v.binding,voter));
-  if(index<0)throw new RoomError('identity_mismatch','This binding is not in the proposal electorate.');
-  if(proposal.voters[index]!.votedAt!==null)return{proposal,voteRecorded:false,unanimous:proposal.voters.every(v=>v.votedAt!==null)};
+  if(index<0)return{proposal,vote:'not_a_voter',unanimous:false};
+  if(proposal.voters[index]!.votedAt!==null)return{proposal,vote:'already_recorded',unanimous:proposal.voters.every(v=>v.votedAt!==null)};
   const voters=proposal.voters.map((v,i)=>i===index?{...v,votedAt:now.toISOString()}:v);
-  return{proposal:{...proposal,voters},voteRecorded:true,unanimous:voters.every(v=>v.votedAt!==null)};
+  return{proposal:{...proposal,voters},vote:'recorded',unanimous:voters.every(v=>v.votedAt!==null)};
 }

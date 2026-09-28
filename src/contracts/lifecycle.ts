@@ -35,7 +35,12 @@ export interface KickProposal {
 }
 
 export type KickOutcome =
-  | { status: 'open'; proposal: KickProposal; voteRecorded: boolean }
+  | {
+      status: 'open';
+      proposal: KickProposal;
+      /** A nonvoter or target gets the frozen roster back without changing it. */
+      vote: 'recorded' | 'already_recorded' | 'not_a_voter' | 'target';
+    }
   | {
       status: 'executed';
       /** Human kicks execute directly; agent kicks carry the unanimous proposal. */
@@ -44,5 +49,5 @@ export type KickOutcome =
       /** Queued deliveries cancelled with a visible tombstone; submitted attempts stay historical. */
       cancelled: number;
       noticeId: MessageId | null;
-      voteRecorded: boolean;
+      vote: 'recorded' | 'human';
     };

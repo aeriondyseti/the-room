@@ -16,13 +16,14 @@ test('online electorate is frozen by binding; unknown and stale are shown as exc
   assert.ok(proposal.voters[0]!.votedAt,'the authenticated proposer votes even with unknown monitor status');
   assert.equal(proposal.voters[1]!.votedAt,null);
   const voted=voteKickProposal(proposal,{harness:'claude',sessionId:fable.session_id},new Date(now.getTime()+1000));
-  assert.equal(voted.voteRecorded,true);assert.equal(voted.unanimous,true);
-  assert.equal(voteKickProposal(voted.proposal,{harness:'claude',sessionId:fable.session_id},new Date(now.getTime()+2000)).voteRecorded,false);
-  assert.throws(()=>voteKickProposal(proposal,{harness:'claude',sessionId:target.session_id},now),{code:'identity_mismatch'});
+  assert.equal(voted.vote,'recorded');assert.equal(voted.unanimous,true);
+  assert.equal(voteKickProposal(voted.proposal,{harness:'claude',sessionId:fable.session_id},new Date(now.getTime()+2000)).vote,'already_recorded');
+  assert.equal(voteKickProposal(proposal,{harness:'claude',sessionId:target.session_id},now).vote,'target');
 
   const excluded=openKickProposal(registry,[observed('fable','unknown',now.toISOString())], 'target',{harness:'codex',sessionId:astra.session_id},'reason',now,15_000,600_000);
   assert.deepEqual(excluded.excluded,[{name:'fable',reason:'unknown'}]);
   assert.equal(excluded.voters.length,1);
+  assert.equal(voteKickProposal(excluded,{harness:'claude',sessionId:fable.session_id},now).vote,'not_a_voter');
   const stale=openKickProposal(registry,[observed('fable','online',new Date(now.getTime()-31_000).toISOString())], 'target',{harness:'codex',sessionId:astra.session_id},'reason',now,15_000,600_000);
   assert.deepEqual(stale.excluded,[{name:'fable',reason:'stale'}]);
 });
