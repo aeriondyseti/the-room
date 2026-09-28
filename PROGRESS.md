@@ -41,7 +41,7 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 3.1 | TUI shell and conversation | Claude | ✅ | review: reviews/3.1.md · try: room tui --demo |
+| 3.1 | TUI shell and conversation | Claude | ✅ | v0.0.6 · review: reviews/3.1.md · try: room tui --demo |
 | 3.2 | Composer and commands | Claude | ⬜ | |
 | 3.3 | Participants, usage, and delivery detail | Claude | ⬜ | |
 
@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 5 / 20 features complete · **current version: v0.0.5** · last tag: v0.0.5
+**Summary:** 6 / 20 features complete · **current version: v0.0.6** · last tag: v0.0.6
