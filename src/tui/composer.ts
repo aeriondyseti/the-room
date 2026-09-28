@@ -3,7 +3,7 @@
 
 // ---- parsing --------------------------------------------------------------------------------------------
 
-export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout';
+export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout' | 'compact';
 
 export interface CommandInfo {
   name: ComposerCommand;
@@ -15,6 +15,7 @@ export interface CommandInfo {
 /** The single command catalogue: /help, the `/` suggestion list and parsing all derive from it (no drift). */
 export const COMMAND_CATALOGUE: readonly CommandInfo[] = [
   { name: 'activity', args: '@name', description: "an agent's tool calls, results and messages (read-only)" },
+  { name: 'compact', args: '[on|off]', description: 'top bar: compact lines instead of the full grid (Ctrl+T toggles); remembered' },
   { name: 'detail', args: '[#N]', description: 'delivery detail: attempts, evidence, errors' },
   { name: 'help', args: '', description: 'keys and commands' },
   { name: 'layout', args: '[top|left]', description: 'switch between the top bar and the left panel (Ctrl+B toggles); remembered' },

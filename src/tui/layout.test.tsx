@@ -14,7 +14,7 @@ import { demoSource } from './demo.js';
 import { lineCols, lineText } from './format.js';
 import { leftPanelFits, sidePanelLines } from './sidepanel.js';
 import { accountLines, participantLines } from './topbar.js';
-import { PALETTE, contextBar, sliderBar, usageBar } from './bars.js';
+import { STATE_COLOR, contextBar, sliderBar, usageBar } from './bars.js';
 import { readSavedLayout, saveLayout, startingLayout, tuiPrefsPath } from './prefs.js';
 import { layoutFlag } from '../cli/tui-command.js';
 
@@ -45,7 +45,7 @@ test('side panel: name + ctx, status, model · branch per agent; usage one windo
   assert.ok(lines.every((l) => lineCols(l) <= 32), 'no line exceeds the panel width');
   assert.deepEqual(text.slice(1, 6), ['● claude', '  busy · 1 queued', '  ctx ▓▓▓▓░░░░░░ 42.0%', '  opus-5-5 · sprint/6.8*2', '● astra']);
   const u = text.indexOf('PLAN USAGE');
-  assert.deepEqual(text.slice(u + 1, u + 7), ['Claude', '  (ccstatusline, login', '  unverified)', '  5h ▓░░░░░░░░░ 7.0%', '  weekly ▓▓░░░░░░░░ 21.0%', '  Fable weekly ▓▓░░░░░░░░ 22.0%'], 'qualifiers first, wrapped, never cut');
+  assert.deepEqual(text.slice(u + 1, u + 5), ['Claude', '  5h ▓░░░░░░░░░ 7.0%', '  weekly ▓▓░░░░░░░░ 21.0%', '  Fable weekly ▓▓░░░░░░░░ 22.0%'], 'no \"login unverified\" note (hidden, 6.10)');
   assert.ok(text.includes('you: Kevin'));
 });
 
@@ -142,17 +142,21 @@ test('bars: ccstatusline slider (10 cells, round(clamp)) with one-decimal percen
   assert.deepEqual([0, 4, 5, 43, 95, 100, 130, -5].map((p) => sliderBar(p)), [
     '░░░░░░░░░░', '░░░░░░░░░░', '▓░░░░░░░░░', '▓▓▓▓░░░░░░', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '░░░░░░░░░░',
   ]);
-  assert.equal(lineText(usageBar('weekly', 43, PALETTE.weekly, { stale: false })), 'weekly ▓▓▓▓░░░░░░ 43.0%');
-  assert.equal(lineText(usageBar('weekly', 4, PALETTE.weekly, { stale: false })), 'weekly ░░░░░░░░░░ 4.0%', 'a low non-zero reading keeps its number');
-  assert.equal(lineText(usageBar('5h', null, PALETTE.fiveHour, { stale: false })), '5h n/a', 'unknown: no bar, never an empty 0% bar');
-  const high = usageBar('5h', 95, PALETTE.fiveHour, { stale: false });
+  assert.equal(lineText(usageBar('weekly', 43, { stale: false })), 'weekly ▓▓▓▓░░░░░░ 43.0%');
+  assert.equal(lineText(usageBar('weekly', 4, { stale: false })), 'weekly ░░░░░░░░░░ 4.0%', 'a low non-zero reading keeps its number');
+  assert.equal(lineText(usageBar('5h', null, { stale: false })), '5h —', 'unknown: no bar, never an empty 0% bar');
+  const high = usageBar('5h', 95, { stale: false });
   assert.equal(lineText(high), '5h ▓▓▓▓▓▓▓▓▓▓ 95.0%!');
-  assert.ok(high.every((s) => s.color === PALETTE.fiveHour), 'label, bar and number share the group colour');
-  const stale = usageBar('5h', 95, PALETTE.fiveHour, { stale: true });
+  assert.deepEqual(high.map((s) => s.color), [undefined, STATE_COLOR.critical, STATE_COLOR.critical], 'quiet label; bar and number in the state colour (red > 90%)');
+  assert.equal(usageBar('5h', 43, { stale: false })[1]?.color, STATE_COLOR.ok, 'green under 70%');
+  assert.equal(usageBar('5h', 70, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber from 70%');
+  assert.equal(usageBar('5h', 90, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber up to 90%');
+  assert.equal(lineText(usageBar('', null, { stale: false })), '—', 'a bare grid cell with no reading is a dash, never 0');
+  const stale = usageBar('5h', 95, { stale: true });
   assert.equal(lineText(stale), '5h ▓▓▓▓▓▓▓▓▓▓ 95.0%', 'stale: no warning emphasis');
   assert.ok(stale.every((s) => s.color === undefined && s.dim));
-  assert.equal(lineText(usageBar('5h', 43, PALETTE.fiveHour, { stale: false, bar: false })), '5h 43.0%');
-  assert.equal(lineText(contextBar(null, { stale: false })), 'ctx n/a');
+  assert.equal(lineText(usageBar('5h', 43, { stale: false, bar: false })), '5h 43.0%');
+  assert.equal(lineText(contextBar(null, { stale: false })), 'ctx —');
   assert.equal(lineText(contextBar({ source: 'codex-token-count', status: 'ok', observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } }, { stale: false })), 'ctx 12k', 'tokens without a limit: no bar');
 });
 
@@ -188,11 +192,11 @@ test('review fixes: quick successive saves persist the latest choice', async () 
   assert.deepEqual(results, [true, true, true]);
   assert.equal(await readSavedLayout(path), 'left');
 });
-test('cross-review (Astra): on a very short panel a shown value never loses its identity qualifier', () => {
+test('cross-review (Astra): on a very short panel a shown value never loses its source qualifier', () => {
   for (const height of [7, 8, 9, 10, 11, 12]) {
-    const text = sidePanelLines([], [claude], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+    const text = sidePanelLines([], [{ ...claude, fallback: true }], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
     const firstValue = text.findIndex((l) => /\d+\.\d%/.test(l));
     if (firstValue < 0) continue;
-    assert.ok(text.slice(0, firstValue).some((l) => /unverified/.test(l)), `height ${height}: "${text.join(' | ')}"`);
+    assert.ok(text.slice(0, firstValue).some((l) => /statusline/.test(l)), `height ${height}: "${text.join(' | ')}"`);
   }
 });

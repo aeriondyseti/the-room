@@ -51,6 +51,7 @@ For unattended operation, approve the room tools through the harness's permissio
 | Alt+Enter | Add a line to the message |
 | `/who` | Show participants, observed status and usage freshness |
 | `/layout [top\|left]`, Ctrl+B | Switch between the top bar and a left panel; the choice is remembered for this room |
+| `/compact [on\|off]`, Ctrl+T | Top bar: compact lines instead of the full AGENTS / BUDGETS grid; remembered |
 | `/detail #12` | Inspect delivery attempts and errors |
 | `/pause` | Hold future deliveries and send a stop request |
 | `/resume` | Release held deliveries in order |
@@ -65,15 +66,15 @@ Pause is **a delivery hold plus a stop request**, not a forced interrupt. A busy
 
 ## Plan usage
 
-The top bar (or the left panel: `/layout`) shows each agent as a chip (status, context usage, model and branch), and below that the subscription usage for each account, shown once per account and never summed across agents: the **5h** and **weekly** windows with reset times, plus any model-specific weekly limit Claude reports (e.g. **Fable weekly**). A value the provider doesn't report shows as `n/a`, never `0`; an old or failed reading is marked `(stale)`; a missing source says why.
+The top bar (or the left panel: `/layout`) shows each agent as a chip (status, context usage, model and branch), and below that the subscription usage for each account, shown once per account and never summed across agents: the **5h** and **weekly** windows with reset times, plus any model-specific weekly limit Claude reports (e.g. **Fable weekly**). A value the provider doesn't report shows as `—`, never `0`; an old or failed reading is marked `(stale)`; a missing source says why.
 
-Readings use the same 10-cell bars and colours as a ccstatusline `slider` (e.g. `5h ▓▓▓▓░░░░░░ 38.0%`): 5h magenta, weekly and model limits blue, context yellow, model and branch cyan. A reading at 65% or more is marked with a bold `!`, so nothing depends on colour alone (`--no-color` / `NO_COLOR` keep the bars, numbers and markers). When the terminal is too narrow for a whole bar, the plain percentage is shown instead.
+The top bar has two labelled sections: **AGENTS**, one aligned row per agent (state, context, model, branch), and **BUDGETS**, a grid with the `5h` / `weekly` columns named once, one row per limit (e.g. Claude, Fable, Codex), and reset times and caveats in their own columns. Readings use ccstatusline's 10-cell `slider` bars (e.g. `▓▓▓▓░░░░░░ 38.0%`). Bars are coloured by level: green under 70%, amber 70–90%, red above 90%. A reading at 70% or more also gets a bold `!`, so nothing depends on colour alone (`--no-color` / `NO_COLOR` keep the bars, numbers and markers). A missing value is `—`, never `0`. When the terminal is too narrow for the grid, bars become plain percentages and then the bar wraps. On a short terminal, or while an overlay (help, `/who`, `/detail`, `/activity`) is open, the grid yields to the wrapping chip and metric lines; your saved density is kept.
 
-- **Codex:** read-only from the running Codex daemon (`account/rateLimits/read`). No credentials or auth files are read. Codex currently reports only a weekly window, so its 5h shows `n/a`.
+- **Codex:** read-only from the running Codex daemon (`account/rateLimits/read`). No credentials or auth files are read. Codex currently reports only a weekly window, so its 5h shows `—`.
 - **Claude:** sources are tried cheapest first, and the first with a reading wins.
   1. **ccstatusline's cache** (recommended; no credentials, no extra calls; used only for the default Claude profile).
-     It is one shared file written by whichever ccstatusline ran last, so the login it reflects is not verified and
-     it's labelled as such. If your statusline is
+     It is one shared file written by whichever ccstatusline ran last, so the login it reflects is not verified (the room
+     records that, but doesn't repeat it on screen). If your statusline is
      [ccstatusline](https://github.com/sirmalloc/ccstatusline), it already fetches plan usage (5h, weekly and
      model-specific limits such as Fable) and caches the numbers in `~/.cache/ccstatusline/usage.json`. The room just
      reads that file. When no Claude session is rendering a statusline, the file ages and is shown `(stale)`.

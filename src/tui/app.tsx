@@ -37,6 +37,8 @@ import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
+import { agentGrid, budgetGrid } from './topgrid.js';
+import type { TopBarMode } from './prefs.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { DEFAULT_CONFIG } from '../core/config.js';
@@ -61,6 +63,9 @@ export interface AppProps {
   panelBreakpoint?: number;
   /** Remember a layout switch (resolves false if it couldn't be saved). Absent = not remembered (e.g. demo). */
   onLayoutChange?: (layout: TuiLayout) => Promise<boolean>;
+  /** Top bar density (6.10): the organised grid, or compact lines; /compact or Ctrl+T switches it. */
+  topBar?: TopBarMode;
+  onTopBarChange?: (mode: TopBarMode) => Promise<boolean>;
 }
 
 const MAX_DRAFT_ROWS = 5;
@@ -68,6 +73,12 @@ const MAX_DRAFT_ROWS = 5;
 const MAX_SUGGESTIONS = 6;
 /** Participant chips wrap over at most this many top-bar lines (then "+N more · /who"). */
 const TOP_BAR_PARTICIPANT_LINES = 2;
+/** Agent rows in the full top-bar grid (then "+N more · /who"). */
+const TOP_BAR_AGENT_ROWS = 6;
+/** The full grid yields to chips when it would leave the conversation fewer rows than this. */
+const MIN_CONVERSATION_ROWS = 10;
+/** Header, rule, composer (rule + To + one draft row) and status bar. */
+const TOP_BAR_OTHER_CHROME_ROWS = 6;
 /** How often the top bar re-renders its reset countdowns. */
 const TOP_BAR_CLOCK_MS = 30_000;
 
@@ -96,6 +107,8 @@ function Room({
   panelWidth = DEFAULT_CONFIG.tuiPanelWidth,
   panelBreakpoint = DEFAULT_CONFIG.tuiPanelBreakpoint,
   onLayoutChange,
+  topBar: initialTopBar = 'full',
+  onTopBarChange,
 }: Omit<AppProps, 'theme'>) {
   const t = useTheme();
   const { exit } = useApp();
@@ -133,12 +146,28 @@ function Room({
   const leftFits = leftPanelFits(colsTotal, panelWidth, panelBreakpoint);
   const showLeft = layout === 'left' && leftFits;
   const stale = view.connection.state !== 'connected';
+  // Top bar (6.10, Kevin's mockup): AGENTS and BUDGETS as aligned, labelled grids; when a grid can't fit the width it
+  // falls back to the wrapping chips / metric lines. Compact (explicit, never automatic): one line per section.
+  const [topBar, setTopBar] = useState<TopBarMode>(initialTopBar);
   const topLines = useMemo((): Line[] => {
     if (showLeft) return [];
-    const lines = [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale })];
+    const chips = (maxLines: number) => participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines });
+    const usage = () => accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale });
+    const grid = topBar === 'compact' ? null : [
+      ...(agentGrid(view.participants, { width: colsTotal, stale, maxRows: TOP_BAR_AGENT_ROWS }) ?? chips(TOP_BAR_PARTICIPANT_LINES)),
+      ...(budgetGrid(view.accounts, { width: colsTotal, now: clock, disconnected: stale }) ?? usage()),
+    ];
+    // Height guard (like the width guard): the full grid never squeezes the conversation below a readable height; on a
+    // short terminal the top bar shows the wrapping chips instead (the saved density is kept).
+    // While an overlay (help, /who, detail, activity) is open it gets the room: the grid yields the same way.
+    // Persistent extra rows count too (the connection/notice banner, the left-layout notice); transient ones (feedback,
+    // a multi-line draft, suggestions) don't, so the grid doesn't flicker while typing.
+    const persistent = (view.connection.state !== 'connected' || (view.notice !== null && view.loaded) ? 1 : 0) + (layout === 'left' ? 1 : 0);
+    const gridFits = grid !== null && !overlay && rows - grid.length - persistent - TOP_BAR_OTHER_CHROME_ROWS >= MIN_CONVERSATION_ROWS;
+    const lines = gridFits ? grid : [...chips(topBar === 'compact' ? 1 : TOP_BAR_PARTICIPANT_LINES), ...usage()];
     if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${leftPanelMinCols(panelWidth, panelBreakpoint)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
     return lines;
-  }, [showLeft, layout, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
+  }, [showLeft, layout, topBar, overlay, rows, view.connection.state, view.notice, view.loaded, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
   const convWidth = colsTotal - (showLeft ? panelWidth + 1 : 0) - 1;
   const saveGen = useRef(0);
   const switchLayout = (next: TuiLayout): Feedback => {
@@ -154,6 +183,18 @@ function Room({
       });
     }
     return { tone: 'ok', text: `Layout: ${what}${onLayoutChange ? ' (remembered)' : ''}.${note} /layout or Ctrl+B switches back.` };
+  };
+  const topBarGen = useRef(0);
+  const switchTopBar = (next: TopBarMode): Feedback => {
+    setTopBar(next);
+    const gen = ++topBarGen.current;
+    if (onTopBarChange) {
+      void onTopBarChange(next).then((ok) => {
+        if (!ok && gen === topBarGen.current) setFeedback({ tone: 'error', text: `Top bar: ${next} for now — the choice couldn't be saved.` });
+      });
+    }
+    const where = layout === 'left' && leftFits ? ' (applies to the top-bar layout)' : '';
+    return { tone: 'ok', text: `Top bar: ${next === 'compact' ? 'compact' : 'full grid'}${onTopBarChange ? ' (remembered)' : ''}${where}. /compact or Ctrl+T switches back.` };
   };
   const banner = view.connection.state !== 'connected' || (view.notice !== null && view.loaded);
   const loadFailed = !view.loaded && view.notice !== null;
@@ -193,6 +234,16 @@ function Room({
     const off = Math.min(detailOffset, max);
     return { visible: detailAll.slice(off, off + room), below: Math.max(0, detailAll.length - off - room), max };
   }, [detailAll, detailOffset, viewportHeight]);
+  // Help pages like /detail (same offset state; both reset when the overlay closes).
+  const help = useMemo(() => {
+    if (overlay !== 'help') return null;
+    const all = helpLines();
+    const room = Math.max(1, viewportHeight - 1);
+    const max = Math.max(0, all.length - room);
+    const off = Math.min(detailOffset, max);
+    return { visible: all.slice(off, off + room), below: Math.max(0, all.length - off - room), max };
+  }, [overlay, detailOffset, viewportHeight]);
+  const pager = detail ?? help;
   const endLine = lines.length - scroll.offset;
   const visible = lines.slice(Math.max(0, endLine - viewportHeight), endLine);
 
@@ -299,6 +350,15 @@ function Room({
       case 'quit':
         exit();
         return;
+      case 'compact': {
+        const arg = args.trim().toLowerCase();
+        if (arg !== '' && arg !== 'on' && arg !== 'off') {
+          setFeedback({ tone: 'error', text: 'Usage: /compact [on|off] — no argument switches.' });
+          return;
+        }
+        setFeedback(finish(switchTopBar(arg === 'on' ? 'compact' : arg === 'off' ? 'full' : topBar === 'full' ? 'compact' : 'full')));
+        return;
+      }
       case 'layout': {
         const arg = args.trim().toLowerCase();
         if (arg !== '' && arg !== 'top' && arg !== 'left') {
@@ -373,9 +433,9 @@ function Room({
         setDetailOffset(0);
         return;
       }
-      if (detail) {
+      if (pager) {
         const page = Math.max(1, viewportHeight - 2);
-        const clamp = (n: number) => Math.min(detail.max, Math.max(0, n));
+        const clamp = (n: number) => Math.min(pager.max, Math.max(0, n));
         if (key.pageDown) setDetailOffset((o) => clamp(o + page));
         else if (key.pageUp) setDetailOffset((o) => clamp(o - page));
         else if (key.downArrow) setDetailOffset((o) => clamp(o + 1));
@@ -466,6 +526,7 @@ function Room({
     if (key.delete) return edit(del(draft));
     if (input === '?' && draft.text === '') return setOverlay('help');
     if (key.ctrl && input === 'b') return setFeedback(switchLayout(layout === 'top' ? 'left' : 'top'));
+    if (key.ctrl && input === 't') return setFeedback(switchTopBar(topBar === 'full' ? 'compact' : 'full'));
     if (key.ctrl || key.meta || input === '') return;
     edit(insert(draft, input));
   });
@@ -484,7 +545,12 @@ function Room({
         {showLeft && <SidePanel view={view} width={panelWidth} height={viewportHeight} stale={stale} now={clock} humanName={humanName} />}
         <Box flexDirection="column" width={convWidth} paddingLeft={1} justifyContent={overlay ? 'flex-start' : 'flex-end'} overflow="hidden">
           {overlay === 'help' ? (
-            <HelpOverlay />
+            <Box flexDirection="column" flexShrink={0}>
+              {help?.visible.map((line, i) => (
+                <LineView key={i} line={line} />
+              ))}
+              {help && help.below > 0 && <Text color={t.color('cyan')}>↓ {help.below} more line{help.below === 1 ? '' : 's'} · PgDn</Text>}
+            </Box>
           ) : overlay === 'who' ? (
             <WhoOverlay participants={view.participants} />
           ) : overlay !== null && 'activity' in overlay ? (
@@ -886,56 +952,43 @@ function draftLines(draft: Draft, rows: number): Array<{ before: string; cursor:
   });
 }
 
-function HelpOverlay() {
-  const t = useTheme();
+/**
+ * The help as lines (6.10: a pager like /detail, so a growing command list never falls off a short terminal). The key
+ * column is measured, so like items line up and no key runs into its description.
+ */
+export function helpLines(): Line[] {
   const keys: Array<[string, string]> = [
     ['Enter', 'send (to everyone unless you start with @names)'],
     ['@name …', 'address one or more agents; Tab completes names'],
     ['Alt+Enter, or \\ at line end', 'new line'],
     ['↑ / ↓', 'previous / next message you sent'],
     ['Esc', 'clear the draft (never interrupts an agent)'],
-    ['PgUp / PgDn, Shift+↑/↓', 'scroll the conversation'],
+    ['PgUp / PgDn, Shift+↑/↓', 'scroll the conversation (and this help)'],
     ['End (empty draft), Ctrl+End', 'back to live'],
-    ['Ctrl+B', 'switch between the top bar and the left panel'],
+    ['Ctrl+B', 'layout: top bar ⇄ left panel'],
+    ['Ctrl+T', 'top bar: full grid ⇄ compact'],
     ['Ctrl+C', 'quit'],
   ];
   const commands: Array<[string, string]> = [
     ...COMMAND_CATALOGUE.map((c): [string, string] => [`/${c.name}${c.args ? ` ${c.args}` : ''}`, c.description]),
     ['?', 'this help (with an empty draft); type / to list commands'],
   ];
-  return (
-    <Box flexDirection="column" flexShrink={0}>
-      <Text bold>Keys</Text>
-      {keys.map(([k, d]) => (
-        <Text key={k} wrap="truncate">
-          <Text color={t.color('cyan')}>{k.padEnd(27)}</Text>
-          <Text dimColor>{d}</Text>
-        </Text>
-      ))}
-      <Text> </Text>
-      <Text bold>Commands</Text>
-      {commands.map(([k, d]) => (
-        <Text key={k} wrap="truncate">
-          <Text color={t.color('cyan')}>{k.padEnd(27)}</Text>
-          <Text dimColor>{d}</Text>
-        </Text>
-      ))}
-      <Text> </Text>
-      <Text bold>Delivery marks</Text>
-      <Text wrap="truncate">
-        {DELIVERY_LEGEND.map((m, i) => (
-          <Text key={i}>
-            <Text color={t.color(m.color)}>{m.glyph}</Text>
-            <Text dimColor> {m.label}   </Text>
-          </Text>
-        ))}
-      </Text>
-      <Text> </Text>
-      <Text dimColor wrap="truncate">Monochrome: set NO_COLOR=1 or run `room tui --no-color`. Esc to close.</Text>
-    </Box>
-  );
+  const keyWidth = Math.max(...[...keys, ...commands].map(([k]) => k.length)) + 2;
+  const row = ([k, d]: [string, string]): Line => [{ text: k.padEnd(keyWidth), color: 'cyan' }, { text: d, dim: true }];
+  const legend: Line = DELIVERY_LEGEND.flatMap((m): Line => [{ text: m.glyph, color: m.color }, { text: ` ${m.label}   `, dim: true }]);
+  return [
+    [{ text: 'Keys', bold: true }],
+    ...keys.map(row),
+    [{ text: ' ' }],
+    [{ text: 'Commands', bold: true }],
+    ...commands.map(row),
+    [{ text: ' ' }],
+    [{ text: 'Delivery marks', bold: true }],
+    legend,
+    [{ text: ' ' }],
+    [{ text: 'Monochrome: set NO_COLOR=1 or run `room tui --no-color`. Esc to close.', dim: true }],
+  ];
 }
-
 function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
   const t = useTheme();
   return (
