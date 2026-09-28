@@ -97,7 +97,7 @@ export class Ledger {
   /** Addressed history follows the frozen native target even after a name rebind. */
   inbox(scope: string): MessageWithDeliveries[] {
     const rows=this.db.prepare(`SELECT DISTINCT m.id,m.seq FROM messages m JOIN deliveries d ON d.message_id=m.id
-      WHERE json_extract(d.payload,'$.target.harness') || ':' || json_extract(d.payload,'$.target.sessionId') = ? AND m.sender_scope<>? ORDER BY m.seq`).all(scope,scope) as {id:string;seq:number}[];
+      WHERE json_extract(d.payload,'$.target.harness') || ':' || json_extract(d.payload,'$.target.sessionId') = ? AND m.sender_scope<>? AND d.state<>'withdrawn' ORDER BY m.seq`).all(scope,scope) as {id:string;seq:number}[];
     return rows.map(row=>this.read(row.id));
   }
   setInboxDisplay(scope:string,snapshot:string):void {
@@ -208,7 +208,7 @@ export class Ledger {
     return (this.db.prepare("SELECT payload FROM deliveries WHERE json_extract(payload,'$.attempts[#-1].outcome')='in_flight'").all() as unknown as DeliveryRow[]).map(row=>JSON.parse(row.payload) as Delivery);
   }
   queued(recipient?: string): Delivery[] {
-    return (this.db.prepare(`SELECT d.payload FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.state='queued' ${recipient === undefined ? '' : 'AND d.recipient=?'} ORDER BY CASE WHEN json_type(m.payload,'$.crossing.urgent')='object' THEN 0 ELSE 1 END,m.seq,d.recipient`).all(...(recipient === undefined ? [] : [recipient])) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
+    return (this.db.prepare(`SELECT d.payload FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.state='queued' ${recipient === undefined ? '' : 'AND d.recipient=?'} ORDER BY CASE WHEN COALESCE(json_extract(d.payload,'$.priority'),CASE WHEN json_type(m.payload,'$.crossing.urgent')='object' THEN 'urgent' ELSE 'normal' END)='urgent' THEN 0 ELSE 1 END,m.seq,d.recipient`).all(...(recipient === undefined ? [] : [recipient])) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
   }
   withdraw(scope:string,messageId:string,recipients?:string[]):WithdrawOutcome {
     return this.transaction(()=>{
