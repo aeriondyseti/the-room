@@ -40,6 +40,7 @@ import {
 import { DELIVERY_LEGEND, colorFor, cols, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
+import { SettingsPane } from './settings.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
@@ -100,7 +101,7 @@ const TOP_BAR_CLOCK_MS = 30_000;
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
 
 type Feedback = { tone: 'ok' | 'info' | 'error'; text: string } | null;
-type Overlay = 'help' | 'who' | { detail: number } | { activity: string } | null;
+type Overlay = 'help' | 'who' | 'settings' | { detail: number } | { activity: string } | null;
 
 export function App({ theme = COLOR_THEME, ...props }: AppProps) {
   return (
@@ -376,6 +377,10 @@ function Room({
         finish(null);
         setOverlay('who');
         return;
+      case 'settings':
+        finish(null);
+        setOverlay('settings');
+        return;
       case 'activity': {
         const name = args.replace(/^@/, '').trim();
         if (!name) {
@@ -487,6 +492,7 @@ function Room({
     // insert, delete or submit twice (Astra's 6.13 cross-review).
     if (key.eventType === 'release') return;
     if (overlay !== null && typeof overlay === 'object' && 'activity' in overlay) return; // the activity pane owns its keys
+    if (overlay === 'settings') return; // so does the settings pane
     if (overlay) {
       if (key.escape || key.return || input === 'q' || input === '?') {
         setOverlay(null);
@@ -626,6 +632,16 @@ function Room({
             </Box>
           ) : overlay === 'who' ? (
             <WhoOverlay participants={view.participants} />
+          ) : overlay === 'settings' ? (
+            <SettingsPane
+              source={source}
+              width={convWidth - 1}
+              height={viewportHeight}
+              onClose={(result) => {
+                setOverlay(null);
+                if (result) setFeedback(result);
+              }}
+            />
           ) : overlay !== null && 'activity' in overlay ? (
             <ActivityPane source={source} participant={overlay.activity} width={convWidth - 1} height={viewportHeight} onClose={() => setOverlay(null)} />
           ) : overlay !== null ? (
