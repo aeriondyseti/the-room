@@ -61,7 +61,7 @@ their own rows**.
 |---|---|---|---|---|
 | 5.1 | TUI polish | Claude | ✅ | v0.0.18 · review: reviews/5.1.md · UX pass: docs/ux/5.1-ux-pass.md · colour/mono theme, code blocks, first-run states, runtime context in /detail, ROOM_TUI_* tunables |
 | 5.2 | Agent ergonomics | Astra | ✅ | v0.0.17; review: reviews/5.2.md; 193 tests; peer-approved envelope. |
-| 5.3 | Human ergonomics and release | Claude + Astra | ⬜ | |
+| 5.3 | Human ergonomics and release | Claude + Astra | ✅ | **v0.1.0** · review: reviews/5.3.md (two clean final reviews; fresh-clone npm ci + 208/208) · README quickstart, `room doctor`, `room tui` first-run/`/restart` · acceptance scope: 20+20 idle-wake trials (Claude pipe, Codex queue), 2h mixed soak on Claude fixtures, bounded busy-Codex scenario, four-agent scenarios 9/9 on re-run with the original failures retained (probes/4.1-acceptance.md) |
 
 ## Milestone 6 — Post-release
 
@@ -73,4 +73,4 @@ their own rows**.
 
 ---
 
-**Summary:** 18 / 22 features complete (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.0.23** · last tag: v0.0.23
+**Summary:** 19 / 22 features complete (MVP + polish; Milestone 6 is post-release) (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.1.0** · last tag: v0.1.0

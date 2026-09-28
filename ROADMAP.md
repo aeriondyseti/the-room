@@ -213,7 +213,7 @@ Milestone 6+ only after the v0.1.0 tag.
   **Done-when:** each agent-facing error has a remediation hint covered by tests; envelope format
   reviewed by both agents.
 
-- [ ] **5.3 Human ergonomics and release** *(Claude, with Astra)* — a one-command setup check
+- [x] **5.3 Human ergonomics and release** *(Claude, with Astra)* — a one-command setup check
   (`room doctor`), README quickstart, `room tui` startup experience; coordinated merge and tag
   **v0.1.0**.
   **Done-when:** README quickstart works from a clean clone; the v0.1.0 tag is on `main`.
