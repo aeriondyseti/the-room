@@ -16,9 +16,9 @@ class FakeAdapter implements DeliveryAdapter {
  async probe(target:{sessionId:string}):Promise<LivenessProbe>{return{liveness:this.offline.has(target.sessionId)?'offline':'online',activity:'unknown'};}
  async submit(request:SubmitRequest):Promise<SubmitResult>{this.sent.push(request);return this.action(request);}
 }
-async function setup(t:TestContext,sendHoldMs:number|undefined=0){const root=await mkdtemp(path.join(tmpdir(),'room-dispatch-'));const adapter=new FakeAdapter();
+async function setup(t:TestContext,sendHoldMs:number|null=0){const root=await mkdtemp(path.join(tmpdir(),'room-dispatch-'));const adapter=new FakeAdapter();
  await joinParticipant(root,'astra',{harness:'codex',session_id:a});await joinParticipant(root,'other',{harness:'codex',session_id:b});
- const room=new RoomService(root,[adapter],{sendHoldMs});t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true});});return{root,room,adapter};}
+ const room=new RoomService(root,[adapter],sendHoldMs===null?{}:{sendHoldMs});t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true});});return{root,room,adapter};}
 async function call<M extends Method>(room:RoomService,method:M,params:Params<M>):Promise<Result<M>>{return await room.handle({v:1,type:'request',id:'test',method,params} as RequestFrame,'cli') as Result<M>;}
 const send=(room:RoomService,body='hello',to=['astra'])=>call(room,'send',{caller:human,to,body});
 const until=async(condition:()=>boolean)=>{const end=Date.now()+2000;while(!condition()){if(Date.now()>end)throw Error('Condition timed out');await new Promise(r=>setTimeout(r,2));}};
@@ -50,11 +50,32 @@ test('withdraw during hold excludes the body while the timer dispatches the rema
 });
 
 test('settings IPC applies live, restricts writes to human, and can turn the hold off',async t=>{
- const {room,adapter}=await setup(t,undefined);
+ const {room,adapter}=await setup(t,null);
  const settings=await call(room,'settings_update',{caller:human,patch:{deliveryHoldMs:0}});
  assert.equal(settings.effective.deliveryHoldMs,0);
  const first=await send(room);await room.dispatcher.idle();assert.equal(adapter.sent[0]!.messageId,first.message.id);
  await assert.rejects(room.handle({v:1,type:'request',id:'x',method:'settings_update',params:{caller:human,patch:{batchHeld:false}}},'mcp'),/human/);
+});
+
+test('batch uncertainty settles every member and never auto-replays',async t=>{
+ const {room,adapter}=await setup(t,100);
+ adapter.action=async()=>{throw new Error('ambiguous write');};
+ const first=await send(room,'one'),second=await send(room,'two');
+ await until(()=>adapter.sent.length===1);await room.dispatcher.idle();
+ for(const msg of [first,second])assert.equal(room.ledger.delivery(msg.message.id,'astra').state,'uncertain');
+ await room.dispatcher.idle();assert.equal(adapter.sent.length,1);
+});
+
+test('pause preserves hold deadline and resume releases elapsed burst without another wait',async t=>{
+ const {room,adapter}=await setup(t,100);
+ await call(room,'pause',{caller:human});await room.dispatcher.idle();adapter.sent=[];
+ const first=await send(room,'held one'),second=await send(room,'held two');
+ const deadline=room.ledger.delivery(first.message.id,'astra').notBefore!;
+ await new Promise(r=>setTimeout(r,150));assert.equal(adapter.sent.length,0);
+ await call(room,'resume',{caller:human});await room.dispatcher.idle();
+ assert.equal(adapter.sent.length,1);assert.match(adapter.sent[0]!.envelope,/batch=2/);
+ assert.equal(room.ledger.delivery(first.message.id,'astra').notBefore,deadline);
+ assert.equal(room.ledger.delivery(second.message.id,'astra').state,'submitted');
 });
 test('one worker per recipient preserves ordered messages while offline peers do not block',async t=>{
  const {room,adapter}=await setup(t);adapter.offline.add(a);
