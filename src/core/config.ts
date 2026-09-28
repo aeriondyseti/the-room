@@ -32,6 +32,8 @@ export interface RoomConfig {
   adapterTimeoutMs: number;
   /** Default page size for `read`. */
   readPageSize: number;
+  inboxPageBytes: number;
+  inboxPartBytes: number;
   /** Display name for the human in the TUI and envelopes. */
   humanDisplayName: string;
   /** Explicit room root override (else resolved from git). */
@@ -129,6 +131,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   ipcRequestTimeoutMs: 30_000,
   adapterTimeoutMs: 30_000,
   readPageSize: 50,
+  inboxPageBytes: 65536,
+  inboxPartBytes: 4096,
   humanDisplayName: 'Kevin',
   roomRoot: null,
   codexExecutable: null,
@@ -185,6 +189,8 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   ipcRequestTimeoutMs: 'ROOM_IPC_REQUEST_TIMEOUT_MS',
   adapterTimeoutMs: 'ROOM_ADAPTER_TIMEOUT_MS',
   readPageSize: 'ROOM_READ_PAGE_SIZE',
+  inboxPageBytes: 'ROOM_INBOX_PAGE_BYTES',
+  inboxPartBytes: 'ROOM_INBOX_PART_BYTES',
   humanDisplayName: 'ROOM_HUMAN_NAME',
   roomRoot: 'ROOM_ROOT',
   codexExecutable: 'ROOM_CODEX_EXECUTABLE',

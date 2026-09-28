@@ -57,6 +57,7 @@ export class Ledger {
         CREATE INDEX IF NOT EXISTS delivery_order ON deliveries(recipient,state);
         CREATE TABLE IF NOT EXISTS participants (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS usage_cursors (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS crossing_records (id TEXT PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS room_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
         INSERT OR IGNORE INTO room_state VALUES(1,'{"paused":false,"pausedAt":null,"stopRequestId":null}');
         PRAGMA user_version = 1;
@@ -64,6 +65,23 @@ export class Ledger {
     } catch (error) { this.db.close(); throw error; }
   }
   close(): void { this.db.close(); }
+
+  /** Persisted opaque capabilities and audit entries. Scope is a native binding,
+   * never a mutable display name. Records are immutable once issued.
+   */
+  putCrossing(id: string, scope: string, kind: string, value: unknown): void {
+    this.db.prepare('INSERT INTO crossing_records(id,scope,kind,payload) VALUES(?,?,?,?)').run(id,scope,kind,JSON.stringify(value));
+  }
+  crossing<T>(id: string, scope: string, kind: string): T | null {
+    const row=this.db.prepare('SELECT payload FROM crossing_records WHERE id=? AND scope=? AND kind=?').get(id,scope,kind) as {payload:string}|undefined;
+    return row ? JSON.parse(row.payload) as T : null;
+  }
+  /** Addressed history follows the frozen native target even after a name rebind. */
+  inbox(scope: string): MessageWithDeliveries[] {
+    const rows=this.db.prepare(`SELECT DISTINCT m.id,m.seq FROM messages m JOIN deliveries d ON d.message_id=m.id
+      WHERE json_extract(d.payload,'$.target.harness') || ':' || json_extract(d.payload,'$.target.sessionId') = ? ORDER BY m.seq`).all(scope) as {id:string;seq:number}[];
+    return rows.map(row=>this.read(row.id));
+  }
 
   /** All callbacks are synchronous. Savepoints keep caught nested failures from partially committing. */
   transaction<T>(operation: () => T): T {
