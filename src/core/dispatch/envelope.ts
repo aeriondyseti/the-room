@@ -6,7 +6,7 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  const room=createHash('sha256').update(root).digest('hex').slice(0,12);
  const authority=message.from.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
  const header=`[room ${room} #${message.id} ${authority} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`;
- const footer=`\n--\nReply through room_send (or room send) to ${message.from.name}, with reply_to=${message.id}. Kevin sees all room messages.`;
+ const footer=`\n--\nReply via room_send({reply_to:"${message.id}",text:"..."}) or room reply ${message.id} --file <path>. Replies go to ${message.from.name}; don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
  const full=header+message.body+footer;
  if(full.length<=limit)return{text:full,referenced:false};
  const reference=`\n[Referenced content: fetch the complete original with room_read({message_id:"${message.id}"}) or room read ${message.id}.]\n`;

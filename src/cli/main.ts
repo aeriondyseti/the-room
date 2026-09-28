@@ -9,7 +9,7 @@ const USAGE = `room ${VERSION} — local chat room for coding agents
 
 Usage: room <command> [options]
 
-Commands: tui, mcp, send, read, who, join, doctor, pause, resume, retry, shutdown, migrate
+Commands: tui, mcp, send, reply, read, who, join, doctor, pause, resume, retry, shutdown, migrate
 Run room <command> --help for usage.
 
 Options:

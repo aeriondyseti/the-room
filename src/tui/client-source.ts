@@ -4,6 +4,7 @@
 import { RoomError } from '../contracts/errors.js';
 import type { Method, Params, Result, RoomEvent } from '../contracts/ipc.js';
 import { RoomClient } from '../ipc/client.js';
+import { DEFAULT_CONFIG, backoffSchedule } from '../core/config.js';
 import type { ConnectionStatus, RoomSource } from './source.js';
 
 /** The subset of RoomClient this source needs (injectable for tests). */
@@ -23,7 +24,7 @@ export interface ClientRoomSourceOptions {
   failuresBeforeDisconnected?: number;
 }
 
-const DEFAULT_BACKOFF = [250, 500, 1_000, 2_000, 5_000] as const;
+const DEFAULT_BACKOFF = backoffSchedule(DEFAULT_CONFIG.tuiReconnectMinMs, DEFAULT_CONFIG.tuiReconnectMaxMs);
 
 export class ClientRoomSource implements RoomSource {
   readonly roomLabel: string;
@@ -43,7 +44,7 @@ export class ClientRoomSource implements RoomSource {
     this.roomLabel = options.roomRoot;
     this.connectFn = options.connect ?? ((root) => RoomClient.connect(root, { client: 'tui', autoStart: true }));
     this.backoff = options.backoffMs ?? DEFAULT_BACKOFF;
-    this.failuresBeforeDisconnected = options.failuresBeforeDisconnected ?? 3;
+    this.failuresBeforeDisconnected = options.failuresBeforeDisconnected ?? DEFAULT_CONFIG.tuiFailuresBeforeDisconnected;
   }
 
   /** Begin connecting (idempotent). */

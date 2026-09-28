@@ -177,7 +177,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
     Release is never marked complete without these.
 
-- [ ] **4.2 Failure and recovery qualification** *(Astra)*
+- [x] **4.2 Failure and recovery qualification** *(Astra)*
   - **Scope:**
     - service restart with pending work;
     - concurrent startup;
@@ -193,12 +193,12 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 5 — Ergonomics polish (then tag v0.1.0)
 
-- [ ] **5.1 TUI polish** *(Claude)* — visual hierarchy, theming (colour and no-colour), help overlay,
+- [x] **5.1 TUI polish** *(Claude)* — visual hierarchy, theming (colour and no-colour), help overlay,
   key-binding hints, message formatting (wrapping, code blocks), empty and first-run states, and
   onboarding hints.
   **Done-when:** a documented UX pass with before/after notes; snapshot tests updated; no regressions.
 
-- [ ] **5.2 Agent ergonomics** *(Astra)* — tool and CLI error messages that say what to do next, reply
+- [x] **5.2 Agent ergonomics** *(Astra)* — tool and CLI error messages that say what to do next, reply
   shortcuts (`reply_to` defaults), `room doctor` remediation hints, and envelope readability.
   **Done-when:** each agent-facing error has a remediation hint covered by tests; envelope format
   reviewed by both agents.

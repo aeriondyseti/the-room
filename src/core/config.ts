@@ -58,6 +58,19 @@ export interface RoomConfig {
    * listed keeps `limitTokens: null` (no percentage). Override with ROOM_CONTEXT_LIMITS="model=tokens,model=tokens".
    */
   contextLimits: Readonly<Record<string, number>>;
+  /** TUI: participant panel width in columns. */
+  tuiPanelWidth: number;
+  /** TUI: the panel shows only when the terminal is at least this wide (else the single-column layout). */
+  tuiPanelBreakpoint: number;
+  /** TUI: messages loaded on first connect. */
+  tuiHistoryLimit: number;
+  /** TUI: max pages read when catching up after a reconnect (beyond it, a notice says history may be missing). */
+  tuiCatchUpMaxPages: number;
+  /** TUI: first reconnect delay; doubles per failure up to tuiReconnectMaxMs. */
+  tuiReconnectMinMs: number;
+  tuiReconnectMaxMs: number;
+  /** TUI: consecutive connection failures before the header says "disconnected" (it keeps retrying). */
+  tuiFailuresBeforeDisconnected: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -87,6 +100,13 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
   contextLimits: Object.freeze({ 'claude-opus-5-5': 1_000_000 }),
+  tuiPanelWidth: 26,
+  tuiPanelBreakpoint: 90,
+  tuiHistoryLimit: 500,
+  tuiCatchUpMaxPages: 50,
+  tuiReconnectMinMs: 250,
+  tuiReconnectMaxMs: 5_000,
+  tuiFailuresBeforeDisconnected: 3,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -115,7 +135,22 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   codexHome: 'ROOM_CODEX_HOME',
   usageStaleMs: 'ROOM_USAGE_STALE_MS',
   contextLimits: 'ROOM_CONTEXT_LIMITS',
+  tuiPanelWidth: 'ROOM_TUI_PANEL_WIDTH',
+  tuiPanelBreakpoint: 'ROOM_TUI_PANEL_BREAKPOINT',
+  tuiHistoryLimit: 'ROOM_TUI_HISTORY_LIMIT',
+  tuiCatchUpMaxPages: 'ROOM_TUI_CATCH_UP_MAX_PAGES',
+  tuiReconnectMinMs: 'ROOM_TUI_RECONNECT_MIN_MS',
+  tuiReconnectMaxMs: 'ROOM_TUI_RECONNECT_MAX_MS',
+  tuiFailuresBeforeDisconnected: 'ROOM_TUI_FAILURES_BEFORE_DISCONNECTED',
 };
+
+/** Doubling reconnect schedule from min to max (inclusive), e.g. 250, 500, 1000, 2000, 4000, 5000. */
+export function backoffSchedule(minMs: number, maxMs: number): number[] {
+  const out: number[] = [];
+  for (let d = Math.max(1, minMs); d < maxMs; d *= 2) out.push(d);
+  out.push(Math.max(minMs, maxMs));
+  return out;
+}
 
 /** Build the effective config from defaults + environment. Invalid numeric overrides throw (never silently ignored). */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RoomConfig {
