@@ -1,3 +1,6 @@
+import { randomBytes } from 'node:crypto';
+import { InboxStore } from '../ledger/inbox.js';
+import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.js';
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import { Ledger } from '../ledger/ledger.js';
@@ -20,12 +23,13 @@ const ACTIVITY_CURSORS='activity-reader';
 
 export class RoomService {
   readonly ledger: Ledger;
+  readonly inbox: InboxStore;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
-  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
+  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.inbox=new InboxStore(this.ledger);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event),(scope,messageId)=>this.inbox.envelopeToken(scope,messageId)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   /** With a workspace provider, every participant reports workspace (null = not observed yet), so /who can say so. */
   private workspaceEnabled=false;
@@ -51,8 +55,41 @@ export class RoomService {
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
     switch(request.method) {
+      case 'withdraw': {
+        const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        const messageId=text(p.messageId,'messageId');
+        if(p.recipients!==undefined&&(!Array.isArray(p.recipients)||p.recipients.some(n=>typeof n!=='string')))throw new RoomError('bad_request','Withdraw recipients must be strings.');
+        const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
+        this.refreshInboxDisplay();
+        for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
+        // Recompute pending for existing bindings without changing their inbox coverage.
+        for(const participant of this.ledger.participants()){
+          const pending=this.ledger.queued(participant.name).length;
+          if(pending!==participant.pending){const updated={...participant,pending};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});}
+        }
+        return result;
+      }
+      case 'inbox': {
+        const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        if(caller.sender.kind!=='agent')throw new RoomError('bad_request','Inbox snapshots belong to agent bindings.');
+        const options:Omit<InboxRequest,'caller'>={};
+        if(p.snapshot!==undefined)options.snapshot=text(p.snapshot,'snapshot');
+        if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
+        if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
+        if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
+        const page=this.inbox.review(caller.scope,options);this.refreshInboxDisplay();return page;
+      }
+      case 'guarded_send':
       case 'send': {
         const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        const guarded=request.method==='guarded_send';
+        if(!guarded&&caller.sender.kind==='agent')throw new RoomError('bad_request','Agent sends require guarded_send with an inbox snapshot.');
+        const urgent=p.urgent===undefined?null:{reason:text(record(p.urgent).reason,'urgent.reason')};
+        if(urgent&&urgent.reason.length>loadConfig().urgentReasonMaxChars)throw new RoomError('bad_request',`Urgency reason exceeds ${loadConfig().urgentReasonMaxChars} characters.`);
+        const snapshot=optionalText(p.snapshot,'snapshot')??undefined;
+        const revisesAttemptId=optionalText(p.revisesAttemptId,'revisesAttemptId');
+        if(revisesAttemptId&&!this.ledger.crossing(revisesAttemptId,caller.scope,'blocked_send'))throw new RoomError('bad_request','Revised attempt does not belong to this sender.');
+        const crossing={attemptId:randomBytes(24).toString('base64url'),guard:(caller.sender.kind==='human'?'human':urgent?'urgent':'current') as 'human'|'urgent'|'current',urgent,newSinceSnapshot:caller.sender.kind==='agent'?this.inbox.uncovered(caller.scope,snapshot):null,revisesAttemptId};
         const body=text(p.body,'body');
         if(Buffer.byteLength(JSON.stringify(body),'utf8')>MAX_FRAME_BYTES/2)throw new RoomError('message_too_large','Message exceeds the room IPC body budget.');
         if(p.to!==null && p.to!==undefined && (!Array.isArray(p.to)||p.to.some(v=>typeof v!=='string')))throw new RoomError('bad_request','Recipients must be a string array.');
@@ -60,9 +97,13 @@ export class RoomService {
         if(!requested.length && caller.sender.kind==='agent')throw new RoomError('no_recipients','Agent messages require explicit recipients.');
         const broadcast=!requested.length || requested.includes('all');
         if(requested.includes('all') && requested.length!==1)throw new RoomError('bad_request','Use all alone or list specific names.');
-        const identity={sender:caller.sender,senderScope:caller.scope,body,requestedRecipients:broadcast?null:requested,
+        const identity={sender:caller.sender,senderScope:caller.scope,crossing,body,requestedRecipients:broadcast?null:requested,
           addressing:broadcast?'broadcast' as const:'direct' as const,replyTo:optionalText(p.replyTo,'replyTo'),clientMessageId:optionalText(p.clientMessageId,'clientMessageId')};
-        const retry=this.ledger.findRetry(identity);if(retry)return retry;
+        const retry=this.ledger.findRetry(identity);if(retry){
+          if(!guarded)return retry;
+          const meta=retry.message.crossing;
+          return {status:'sent',result:retry,attemptId:meta?.attemptId??retry.message.id,guard:meta?.guard??'legacy',newSinceSnapshot:meta?.newSinceSnapshot??null};
+        }
         const recipients=broadcast ? Object.keys(registry).filter(n=>n!==caller.sender.name) : requested;
         if(!recipients.length)throw new RoomError('no_recipients','No participants are enrolled for this message.');
         const targets=recipients.map(name=>{
@@ -72,23 +113,35 @@ export class RoomService {
           return {name,target:{harness:binding.harness,sessionId:binding.session_id}};
         });
         const saved=this.ledger.transaction(()=>{
-          const result=this.ledger.enqueue({sender:caller.sender,senderScope:caller.scope,body,requestedRecipients:broadcast?null:requested,
+          if(guarded&&caller.sender.kind==='agent'&&!urgent){
+            const uncovered=this.inbox.uncovered(caller.scope,snapshot);
+            if(uncovered!==0){
+              const reason=snapshot===undefined?'snapshot_required':uncovered===null?'snapshot_invalid':'snapshot_stale';
+              const inbox=this.inbox.review(caller.scope,uncovered===null?{}:{snapshot});
+              const rejected:GuardedSendOutcome={status:'not_sent',reason,attemptId:crossing.attemptId,inbox,guidance:''};
+              this.ledger.putCrossing(crossing.attemptId,caller.scope,'blocked_send',{reason,at:new Date().toISOString(),revisesAttemptId,remaining:inbox.remaining});
+              return {result:null,replyDelivery:null,rejected};
+            }
+          }
+          const result=this.ledger.enqueue({sender:caller.sender,senderScope:caller.scope,crossing,body,requestedRecipients:broadcast?null:requested,
             recipients:targets,addressing:broadcast?'broadcast':'direct',replyTo:optionalText(p.replyTo,'replyTo'),
             clientMessageId:optionalText(p.clientMessageId,'clientMessageId'),held:this.ledger.roomState().paused});
           let replyDelivery=null;
           if(!result.deduplicated&&result.message.replyTo&&caller.sender.kind==='agent'){
             const prior=this.ledger.deliveries(result.message.replyTo).find(d=>d.recipient===caller.sender.name&&`${d.target.harness}:${d.target.sessionId}`===caller.scope);
-            if(prior)replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
+            if(prior&&prior.state!=='withdrawn')replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
           }
-          return{result,replyDelivery};
+          return{result,replyDelivery,rejected:null};
         });
+        if(saved.rejected){this.refreshInboxDisplay();return saved.rejected;}
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
+          this.refreshInboxDisplay();
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
         }
-        return result;
+        return guarded?{status:'sent',result,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:result;
       }
       case 'read': {
         const id=optionalText(p.messageId,'messageId');
@@ -158,11 +211,23 @@ export class RoomService {
       default:throw new RoomError('bad_request','This request is handled by the IPC connection.');
     }
   }
+  private inboxDisplay(scope:string) {
+    const display=this.ledger.inboxDisplay(scope);if(!display)return null;
+    const uncovered=this.inbox.uncovered(scope,display.snapshot);
+    return uncovered===null?null:{...display,uncovered};
+  }
+  private refreshInboxDisplay():void {
+    for(const participant of this.ledger.participants()){
+      const inbox=this.inboxDisplay(`${participant.harness}:${participant.sessionId}`);
+      if(JSON.stringify(participant.inbox??null)===JSON.stringify(inbox))continue;
+      const updated={...participant,inbox};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});
+    }
+  }
   async participants():Promise<ParticipantState[]> {
     const registry=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
     return Object.entries(registry).map(([name,binding])=>{
       const saved=previous.find(p=>p.name===name&&p.harness===binding.harness&&p.sessionId===binding.session_id);
-      return {name,harness:binding.harness,sessionId:binding.session_id,liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,
+      return {name,harness:binding.harness,sessionId:binding.session_id,inbox:this.inboxDisplay(`${binding.harness}:${binding.session_id}`),liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,
         activity:saved?.activity??'unknown',pending:queued.filter(d=>d.recipient===name).length,usage:saved?.usage??null,...(this.workspaceEnabled?{workspace:saved?.workspace??null}:saved?.workspace!==undefined?{workspace:saved.workspace}:{})};
     });
   }

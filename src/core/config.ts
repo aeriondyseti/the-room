@@ -24,6 +24,8 @@ export interface RoomConfig {
   claudeMaxEnvelopeChars: number;
   /** Preview length used by the oversized-message reference fallback. */
   oversizePreviewChars: number;
+  /** M7: cap the reason repeated in urgent native envelopes. */
+  urgentReasonMaxChars: number;
   /** How long a client waits for an auto-started service to become ready. */
   serviceStartTimeoutMs: number;
   /** Timeout for one IPC request. */
@@ -32,6 +34,8 @@ export interface RoomConfig {
   adapterTimeoutMs: number;
   /** Default page size for `read`. */
   readPageSize: number;
+  inboxPageBytes: number;
+  inboxPartBytes: number;
   /** Display name for the human in the TUI and envelopes. */
   humanDisplayName: string;
   /** Explicit room root override (else resolved from git). */
@@ -125,10 +129,13 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   codexMaxEnvelopeChars: 24_000,
   claudeMaxEnvelopeChars: 900_000,
   oversizePreviewChars: 2_000,
+  urgentReasonMaxChars: 500,
   serviceStartTimeoutMs: 10_000,
   ipcRequestTimeoutMs: 30_000,
   adapterTimeoutMs: 30_000,
   readPageSize: 50,
+  inboxPageBytes: 65536,
+  inboxPartBytes: 4096,
   humanDisplayName: 'Kevin',
   roomRoot: null,
   codexExecutable: null,
@@ -181,10 +188,13 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   codexMaxEnvelopeChars: 'ROOM_CODEX_MAX_ENVELOPE_CHARS',
   claudeMaxEnvelopeChars: 'ROOM_CLAUDE_MAX_ENVELOPE_CHARS',
   oversizePreviewChars: 'ROOM_OVERSIZE_PREVIEW_CHARS',
+  urgentReasonMaxChars: 'ROOM_URGENT_REASON_MAX_CHARS',
   serviceStartTimeoutMs: 'ROOM_SERVICE_START_TIMEOUT_MS',
   ipcRequestTimeoutMs: 'ROOM_IPC_REQUEST_TIMEOUT_MS',
   adapterTimeoutMs: 'ROOM_ADAPTER_TIMEOUT_MS',
   readPageSize: 'ROOM_READ_PAGE_SIZE',
+  inboxPageBytes: 'ROOM_INBOX_PAGE_BYTES',
+  inboxPartBytes: 'ROOM_INBOX_PART_BYTES',
   humanDisplayName: 'ROOM_HUMAN_NAME',
   roomRoot: 'ROOM_ROOT',
   codexExecutable: 'ROOM_CODEX_EXECUTABLE',

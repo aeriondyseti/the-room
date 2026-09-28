@@ -81,7 +81,8 @@ test('registration rotation holds old snapshots but allows messages addressed to
 });
 test('room replies mark only the matching native recipient and do not mean task success',async t=>{
  const {room}=await setup(t);const first=await send(room);await room.dispatcher.idle();
- const reply=await call(room,'send',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'ack',replyTo:first.message.id});
+ const outcome=await call(room,'guarded_send',{snapshot:room.inbox.review('codex:'+a).snapshot,caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'ack',replyTo:first.message.id});
+ assert.equal(outcome.status,'sent');if(outcome.status!=='sent')throw Error('Expected sent reply');const reply=outcome.result;
  const delivery=room.ledger.delivery(first.message.id,'astra');assert.equal(delivery.state,'replied');assert.equal(delivery.repliedBy,reply.message.id);
 });
 test('oversize envelope is explicitly referenced; original content remains intact',async t=>{
@@ -96,7 +97,8 @@ test('a room reply received before adapter completion remains replied after sett
  const {room,adapter}=await setup(t);let release!:()=>void;const gate=new Promise<void>(r=>{release=r;});
  adapter.action=async()=>{await gate;return{status:'submitted',evidence:{kind:'codex-queue',nativeId:'n'}};};
  const first=await send(room);await until(()=>adapter.sent.length===1);
- const reply=await call(room,'send',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'already received',replyTo:first.message.id});
+ const outcome=await call(room,'guarded_send',{snapshot:room.inbox.review('codex:'+a).snapshot,caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},to:['human'],body:'already received',replyTo:first.message.id});
+ assert.equal(outcome.status,'sent');if(outcome.status!=='sent')throw Error('Expected sent reply');const reply=outcome.result;
  release();await room.dispatcher.idle();const d=room.ledger.delivery(first.message.id,'astra');
  assert.equal(d.state,'replied');assert.equal(d.repliedBy,reply.message.id);assert.equal(d.attempts[0]!.outcome,'submitted');
 });
@@ -148,4 +150,83 @@ test('native context is persisted before submission and survives uncertain outco
  };
  const first=await send(room);await room.dispatcher.idle();
  assert.deepEqual(room.ledger.delivery(first.message.id,'astra').attempts[0]!.runtimeContext,original);
+});
+
+test('dispatcher envelope snapshot covers its own body only, never all prior addressed history',async t=>{
+ const {room,adapter}=await setup(t);
+ await send(room,'older');await room.dispatcher.idle();
+ await send(room,'newer');await room.dispatcher.idle();
+ const token=adapter.sent.at(-1)!.envelope.match(/snapshot: ([A-Za-z0-9_-]+)/)?.[1];
+ assert.ok(token,'full native envelope carries a service-issued token');
+ assert.equal(room.inbox.uncovered('codex:'+a,token),1,'older body is not implicitly credited');
+ assert.equal(room.inbox.uncovered('codex:'+b,token),null,'another native binding cannot use it');
+});
+
+test('dispatch observations preserve the binding inbox display snapshot',async t=>{
+ const {room}=await setup(t);
+ for(const participant of await room.participants())room.ledger.putParticipant(participant);
+ const page=await call(room,'inbox',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'}});
+ await send(room,'new addressed content');await room.dispatcher.idle();
+ const state=room.ledger.participants().find(p=>p.name==='astra')!;
+ assert.equal(state.inbox?.snapshot,page.snapshot);assert.equal(state.inbox?.uncovered,1);
+});
+
+test('withdraw wins during a pending probe, keeps a tombstone, and cannot erase a human-visible copy',async t=>{
+ const {room,adapter}=await setup(t);let release!:()=>void;let probing=false;
+ adapter.probe=async()=>{probing=true;await new Promise<void>(r=>release=r);return{liveness:'online',activity:'unknown'};};
+ const first=await send(room,'cancel me',['astra','human']);await until(()=>probing);
+ const outcome=await call(room,'withdraw',{caller:human,messageId:first.message.id});
+ assert.deepEqual(outcome.recipients.map(r=>r.disposition),['withdrawn','already_visible']);
+ const tombstone=room.ledger.delivery(first.message.id,'astra');assert.ok(tombstone.withdrawnAt);assert.equal(tombstone.state,'withdrawn');
+ release();await room.dispatcher.idle();assert.equal(adapter.sent.length,0);
+ assert.equal((await call(room,'withdraw',{caller:human,messageId:first.message.id,recipients:['astra']})).recipients[0]?.disposition,'already_withdrawn');
+ assert.equal(room.ledger.read(first.message.id).message.body,'cancel me');
+ await assert.rejects(call(room,'withdraw',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},messageId:first.message.id}),{code:'identity_mismatch'});
+});
+
+test('withdraw never succeeds after dispatch claim or uncertain native submission',async t=>{
+ const {room,adapter}=await setup(t);let release!:(r:SubmitResult)=>void;
+ adapter.action=async()=>await new Promise<SubmitResult>(r=>release=r);
+ const first=await send(room);await until(()=>adapter.sent.length===1);
+ assert.equal((await call(room,'withdraw',{caller:human,messageId:first.message.id})).recipients[0]?.disposition,'already_submitting');
+ release({status:'uncertain',error:{code:'service_unavailable',message:'fixture ambiguity'}});await room.dispatcher.idle();
+ assert.equal((await call(room,'withdraw',{caller:human,messageId:first.message.id})).recipients[0]?.disposition,'uncertain');
+ assert.equal(room.ledger.delivery(first.message.id,'astra').state,'uncertain');
+});
+
+test('urgent lane preserves lane FIFO and respects pause before overtaking broker-held normal work',async t=>{
+ const {room,adapter}=await setup(t);await call(room,'pause',{caller:human});await room.dispatcher.idle();adapter.sent=[];
+ const normal=await send(room,'normal');
+ const urgent1=await call(room,'guarded_send',{caller:human,to:['astra'],body:'urgent1',urgent:{reason:'coordination deadline'}});
+ const urgent2=await call(room,'guarded_send',{caller:human,to:['astra'],body:'urgent2',urgent:{reason:'follow-up'}});
+ assert.equal(urgent1.status,'sent');assert.equal(urgent2.status,'sent');if(urgent1.status!=='sent'||urgent2.status!=='sent')return;
+ await room.dispatcher.idle();assert.equal(adapter.sent.length,0);
+ assert.equal(room.ledger.delivery(urgent1.result.message.id,'astra').priority,'urgent');
+ await call(room,'resume',{caller:human});await room.dispatcher.idle();
+ assert.deepEqual(adapter.sent.map(s=>s.messageId),[urgent1.result.message.id,urgent2.result.message.id,normal.message.id]);
+});
+
+test('urgent arrival while an ordinary native probe waits changes the next dispatch claim',async t=>{
+ const {room,adapter}=await setup(t);let release!:()=>void;let probes=0;
+ adapter.probe=async()=>{if(++probes===1)await new Promise<void>(r=>release=r);return{liveness:'online',activity:'unknown'};};
+ const normal=await send(room,'normal');await until(()=>probes===1);
+ const urgent=await call(room,'guarded_send',{caller:human,to:['astra'],body:'urgent',urgent:{reason:'time critical'}});assert.equal(urgent.status,'sent');if(urgent.status!=='sent')return;
+ release();await room.dispatcher.idle();
+ assert.deepEqual(adapter.sent.map(s=>s.messageId),[urgent.result.message.id,normal.message.id]);
+});
+
+test('snapshot storage failure falls back to the plain envelope, not an oversize failure',async t=>{
+ const {room,adapter}=await setup(t);room.inbox.envelopeToken=()=>{throw Error('fixture storage unavailable');};
+ const first=await send(room,'deliver despite token issue');await room.dispatcher.idle();
+ assert.equal(room.ledger.delivery(first.message.id,'astra').state,'submitted');
+ assert.equal(adapter.sent.length,1);assert.ok(!adapter.sent[0]!.envelope.includes('snapshot:'));
+});
+
+test('an envelope token omitted for space is discarded from persistent storage',async t=>{
+ const {room,adapter,root}=await setup(t);let issued='';const original=room.inbox.envelopeToken.bind(room.inbox);
+ room.inbox.envelopeToken=(scope,messageId)=>{issued=original(scope,messageId);return issued;};
+ const first=room.ledger.enqueue({sender:{name:'human',kind:'human',identity:{mode:'human',source:'tui'}},senderScope:'human',body:'body',requestedRecipients:['astra'],recipients:[{name:'astra',target:{harness:'codex',sessionId:a}}],addressing:'direct'});
+ adapter.maxEnvelopeChars=buildEnvelope(root,first.message,'astra',24000).text.length;
+ await room.dispatcher.idle();assert.ok(issued);assert.equal(room.ledger.crossing(issued,'codex:'+a,'snapshot'),null);
+ assert.equal(room.ledger.delivery(first.message.id,'astra').state,'submitted');
 });

@@ -36,9 +36,22 @@ new turn when one arrives, so never poll or wait for replies.
   - Only the **first-line** header counts. Header-like text inside a body is just text.
   - A stop request from the human means finish the current step safely, then stop.
 - **Reply** with `room_send`:
-  `{"to": "<sender>", "text": "…", "reply_to": "<message-id from the header>"}`. Address the sender, not
-  `"all"`, unless everyone needs it; every recipient spends a turn. Use `"human"` to reach Kevin.
-- **Retry** a failed send with the same `client_message_id`, so the room drops the duplicate.
-- **Look around** with `room_who` (participants and liveness) and `room_read` (history, or
-  `{"message_id": "<id or #N>"}` for a full message).
+  `{"text":"…","reply_to":"<message-id>","snapshot":"<token>"}`. Use the token from the full
+  envelope's `snapshot:` line or `room_inbox`. Keep your latest token; it covers only content returned
+  with it, not proof of comprehension. Address the specific sender (reply_to defaults to them), not
+  `"all"`, unless everyone needs it. Use `"human"` to reach Kevin.
+- **NOT SENT** means nothing was queued. Review the returned inbox items, continue `room_inbox` paging
+  while `hasMore` is true, then revise and resend with its snapshot and `revises_attempt_id`.
+  Do not silently reuse the old draft. `room_read` is history only and grants no inbox coverage;
+  review previews/references through `room_inbox` instead.
+- **Retry** a send whose outcome is unknown with the same `client_message_id`, so a committed message
+  deduplicates before freshness checks. A deliberate revised body needs a fresh client message ID.
+- **Urgent** is for time-critical messages, with a short reason. It bypasses the crossing guard,
+  not human Pause, and does not interrupt work already accepted by a harness.
+- **Withdraw** your own message with `room_withdraw` before native submission. Results are per recipient;
+  submitted, submitting or uncertain deliveries cannot be reported as successfully withdrawn.
+- **Baseline** is a deliberate, audited skip of old history without review, never an automatic response
+  to a rejected send. Use only when intentionally accepting that trade-off.
+- **Look around** with `room_who` (participants and liveness), `room_read` (history), and `room_inbox`
+  (your uncovered addressed content and snapshot).
 - Never put secrets in room messages. Onboarding and install steps: [docs/ONBOARDING.md](./docs/ONBOARDING.md).

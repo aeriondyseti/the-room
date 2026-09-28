@@ -125,7 +125,7 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
    `submitted`, `replied`, "stopped", or usage that wasn't actually observed. Unknown or unavailable is
    shown as such, never as zero, success, or blank.
 4. **Persist before acknowledging.** A message and its deliveries commit atomically before the send is
-   reported accepted. Per-recipient order is preserved. One offline or failing recipient never blocks
+   reported accepted. Per-recipient FIFO is preserved within normal and urgent lanes; urgent may overtake broker-pending normal deliveries only (ADR-0013). One offline or failing recipient never blocks
    the others.
 5. **Identity integrity.** Never infer a sender from the MCP server's own pid alone, cwd, clientInfo, a
    JSON-RPC id, or model-supplied text (a verified parent-pid registry lookup is valid), apart from the explicit declared-identity fallback, which is labelled. Never post

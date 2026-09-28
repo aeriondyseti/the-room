@@ -11,7 +11,7 @@ import { buildEnvelope } from './envelope.js';
 export class Dispatcher {
  private adapters=new Map<Harness,DeliveryAdapter>();private workers=new Map<string,Promise<void>>();
  private timer:NodeJS.Timeout|null=null;private stopped=false;private scheduling=false;private started=false;
- constructor(private root:string,private ledger:Ledger,adapters:DeliveryAdapter[],private emit:(event:RoomEvent)=>void){for(const adapter of adapters)this.adapters.set(adapter.harness,adapter);}
+ constructor(private root:string,private ledger:Ledger,adapters:DeliveryAdapter[],private emit:(event:RoomEvent)=>void,private snapshotFor?:(scope:string,messageId:string)=>string){for(const adapter of adapters)this.adapters.set(adapter.harness,adapter);}
  start():void {
   if(this.started)return;this.started=true;this.recover();this.timer=setInterval(()=>{void this.kick();},loadConfig().dispatchPollMs);this.timer.unref();void this.kick();
  }
@@ -59,6 +59,7 @@ export class Dispatcher {
   while(!this.stopped){
    const next=this.ledger.queued(name).find(d=>!d.held);if(!next)return;selected(next);
    const registry=await readRegistry(this.root);const binding=registry[name];
+   if(this.ledger.delivery(next.messageId,name).state!=='queued')continue;
    if(!binding||binding.harness!==next.target.harness||binding.session_id!==next.target.sessionId){
     this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;
    }
@@ -67,19 +68,38 @@ export class Dispatcher {
    probe=await adapter.probe(next.target);
    if(this.stopped)return;
    const fresh=(await readRegistry(this.root))[name];
+   const afterProbe=this.ledger.delivery(next.messageId,name);if(afterProbe.state!=='queued'||afterProbe.held)continue;
    if(!fresh||fresh.harness!==next.target.harness||fresh.session_id!==next.target.sessionId){this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;}
    const old=this.ledger.participants().find(p=>p.name===name&&p.sessionId===next.target.sessionId&&p.harness===next.target.harness);
-   const participant={name,...next.target,liveness:probe.liveness,livenessCheckedAt:new Date().toISOString(),activity:probe.activity,pending:this.ledger.queued(name).length,usage:old?.usage??null};
+   const participant={...old,name,...next.target,liveness:probe.liveness,livenessCheckedAt:new Date().toISOString(),activity:probe.activity,pending:this.ledger.queued(name).length,usage:old?.usage??null};
    this.ledger.putParticipant(participant);this.emit({type:'participant.updated',participant});
    // Pause may have happened while a probe was awaiting the native process query.
    const current=this.ledger.delivery(next.messageId,name);if(current.state!=='queued'||current.held)continue;
+   // Urgent work may have arrived during the asynchronous native probe. Claim
+   // the current lane head, not the stale selection from before that await.
+   if(this.ledger.queued(name).find(d=>!d.held)?.messageId!==current.messageId)continue;
    if(probe.liveness==='offline'||probe.liveness==='rebind_needed'){
     this.wait(current,probe.liveness==='offline'?'offline':'rebind_needed');return;
    }
    const message=this.ledger.read(current.messageId).message;
    let envelope;
-   try{envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);}catch(error){
+   try{
+    envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);
+   }catch(error){
     this.change(current,d=>{d.state='failed';d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error:{code:'message_too_large',message:(error as Error).message}});});continue;
+   }
+   // Snapshot issuance is optional assistance. A storage/read failure must not be
+   // misreported as message_too_large or stop an otherwise valid native delivery.
+   if(!envelope.referenced&&this.snapshotFor){
+    const scope=`${current.target.harness}:${current.target.sessionId}`;let snapshot:string|undefined;
+    try{
+     snapshot=this.snapshotFor(scope,message.id);
+     const candidate=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars,{snapshot});
+     if(candidate.snapshot)envelope=candidate;
+     else this.ledger.discardCrossing(snapshot,scope,'snapshot');
+    }catch{
+     if(snapshot)try{this.ledger.discardCrossing(snapshot,scope,'snapshot');}catch{/* Best effort cleanup; use the plain envelope. */}
+    }
    }
    const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null,...(adapter.runtimeContext?{runtimeContext:{...adapter.runtimeContext}}:{})});});
    let result:SubmitResult;

@@ -4,9 +4,9 @@
 // column. Pure line model (like the top bar) so it's testable; the app draws it beside the conversation.
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
-import { colorFor, cols, fitLine, lineCols, sanitize, type Line } from './format.js';
+import { colorFor, cols, fitLine, formatTime, lineCols, sanitize, type Line } from './format.js';
 import { contextBar, numberWidth, RESET_MARK, usageBar } from './bars.js';
-import { accountNotes, activityLabel, harnessLabel, resetHint, stateDot, workspaceSegments } from './topbar.js';
+import { accountNotes, activityLabel, harnessLabel, inboxCell, resetHint, stateDot, workspaceSegments } from './topbar.js';
 import { durationLabel } from './topgrid.js';
 
 export type TuiLayout = 'top' | 'left';
@@ -152,6 +152,12 @@ function participantBlock(p: ParticipantState, opts: { stale: boolean }, g: Pane
   const lines: Line[] = [];
   // Context in the panel's shared label/value columns. Not shown while disconnected (invariant 3).
   if (!opts.stale) lines.push(...metricRows('ctx', contextBar(p.usage, { stale: false, bar: g.cells > 0, cells: g.cells || undefined, numberWidth: g.numW, label: '' }), null, g));
+  // M7: which snapshot the count summarizes (its check time). Covered is shown as covered, unknown not at all. It
+  // outranks model/branch, so it comes before them in the detail order.
+  if (!opts.stale && p.inbox) {
+    const count = inboxCell(p, false);
+    lines.push(fitLine([{ text: '  ' }, ...(count.length ? count : [{ text: 'inbox covered', dim: true }]), { text: ` · as of ${formatTime(p.inbox.checkedAt)}`, dim: true }], g.width));
+  }
   // 6.7 workspace: model and branch*dirty, quiet; omitted when unknown (full detail in /who).
   const ws = workspaceSegments(p, opts.stale).slice(1); // drop the leading " · "
   if (ws.length) lines.push(fitLine([{ text: '  ' }, ...ws], g.width));
@@ -251,7 +257,7 @@ export function sidePanelLines(
     // ctx + model · branch, else ctx only, else names only.
     const spare = room - chosen.reduce((n, i) => n + blocks[i]!.head.length, 0) - (chosen.length < blocks.length ? 1 : 0);
     const need = (k: number) => chosen.reduce((n, i) => n + Math.min(k, blocks[i]!.detail.length), 0);
-    const level = [2, 1, 0].find((k) => need(k) <= spare) ?? 0;
+    const level = [3, 2, 1, 0].find((k) => need(k) <= spare) ?? 0;
     for (const i of chosen) body.push(...blocks[i]!.head, ...blocks[i]!.detail.slice(0, level));
     if (chosen.length < blocks.length) body.push([{ text: `+${blocks.length - chosen.length} more · /who`, dim: true }]);
   }
