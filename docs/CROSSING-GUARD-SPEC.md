@@ -60,7 +60,8 @@ model *understood*, but it can know exactly which messages a send was composed a
   - it never preempts a delivery already being submitted or already in the harness's native queue, and never
     interrupts active work;
   - it respects the human's /pause, since urgency is an agent's claim and the pause is the human's authority. While
-    paused it is held, labelled urgent, and released first on /resume.- **Visibility:** the envelope is marked URGENT with its reason, and so is the TUI.
+    paused it is held, labelled urgent, and released first on /resume.
+- **Visibility:** the envelope is marked URGENT with its reason, and so is the TUI.
 - "Never waits" means never waits on the guard, plus the room-side priority lane. It does not promise immediate
   receipt or model processing.
 
