@@ -2,7 +2,7 @@ import type {Delivery} from '../contracts/domain.js';
 
 /** Shared delivery evidence and recovery guidance for CLI and MCP clients. */
 export function deliveryDetail(d:Delivery):string {
- const status=d.waiting?`waiting: ${d.waiting.replaceAll('_',' ')}`:d.held?'held (room paused)':d.state;
+ const status=d.waiting?`waiting: ${d.waiting.replaceAll('_',' ')}`:d.held?'held (room paused)':d.state==='withdrawn'&&d.withdrawalCause==='kick'?'withdrawn (kicked)':d.state;
  let text=`${status}${d.referenced?' (full text available with room read)':''}`;
  if(d.state==='failed'||d.state==='uncertain'||d.waiting){
   const error=d.attempts?.at(-1)?.error;

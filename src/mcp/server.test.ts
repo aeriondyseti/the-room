@@ -386,5 +386,5 @@ test('room_kick is a vote: opens or joins a proposal, or reports an executed rem
   const executed = await call('room_kick', { name: 'ghost' });
   assert.equal('reason' in (f.requests[1]!.params as Record<string, unknown>), false, 'an omitted reason is not sent');
   assert.match(executed.text, /^Removed "ghost" from the room \(by unanimous consent\)/);
-  assert.match(executed.text, /2 queued deliveries to it cancelled with a "kicked" tombstone/);
+  assert.match(executed.text, /2 queued deliveries to it cancelled, shown as withdrawn \(kicked\)/);
 });

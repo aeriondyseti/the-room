@@ -210,3 +210,9 @@ test('kick: the call is a vote; exit 4 when it changed nothing', async (t) => {
   assert.match(second.out, /not a voter .* nothing changed/);
   assert.equal((await run('kick', [])).code, 2);
 });
+test('rename to the same name exits 4 and says nothing changed', async (t) => {
+  const { run } = await setup(t, { rename: (p) => ({ oldName: p['newName'], registration: { name: p['newName'], harness: 'codex', sessionId: 's' }, relabeled: 0, noticeId: null }) });
+  const r = await run('rename', ['astra']);
+  assert.equal(r.code, 4);
+  assert.match(r.out, /^"astra" is already your name; nothing changed\./);
+});

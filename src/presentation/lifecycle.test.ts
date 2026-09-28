@@ -15,7 +15,9 @@ test('a self-rename tells the agent its new name and that it got no notice', () 
   const t = renameText(rename(), true);
   assert.match(t, /You are now "fable" \(was "claude"; same session\)/);
   assert.match(t, /2 queued deliveries relabelled to the new name \(same session; nothing was resent\)/);
+  assert.match(t, /A room notice was posted to the other agents and the human/);
   assert.match(t, /you were not sent one, so your snapshot stays current/);
+  assert.doesNotMatch(t, /were told/, 'a posted notice is not proof of receipt');
 });
 
 test('a human rename names both and says the renamed agent was told', () => {
@@ -31,7 +33,7 @@ test('an open proposal shows the vote disposition, the frozen roster, exclusions
   assert.match(t, /^Your vote to remove "astra2" is recorded\./);
   assert.match(t, /Voters \(fixed when it opened\): fable, astra\./);
   assert.match(t, /Voted: fable\. Still needed: astra\./);
-  assert.match(t, /Not voting \(not qualified when it opened, not presumed offline\): opus \(unknown\)/);
+  assert.match(t, /Not voting \(not qualified when it opened\): opus \(status unknown, not presumed offline\)/);
   assert.match(t, /executes when every remaining voter calls room_kick for "astra2"; otherwise it expires in about 9 minutes/);
   assert.match(kickText({ status: 'open', proposal: proposal(), vote: 'recorded' }, 'cli'), /calls room kick for/);
 });
@@ -47,11 +49,23 @@ test('an executed removal states who, why, what was cancelled, and that the sess
   const t = kickText(byConsent);
   assert.match(t, /^Removed "astra2" from the room \(by unanimous consent\)\./);
   assert.match(t, /Reason: thread is gone\. Voters: fable, astra\./);
-  assert.match(t, /6 queued deliveries to it cancelled with a "kicked" tombstone \(nothing redirected\)/);
-  assert.match(t, /Its session was not touched; it can rejoin/);
+  assert.match(t, /6 queued deliveries to it cancelled, shown as withdrawn \(kicked\); nothing redirected/);
+  assert.match(t, /it can rejoin with room_join/);
+  assert.match(kickText(byConsent, 'cli'), /it can rejoin with room join --as NAME/);
   const byHuman: KickOutcome = { status: 'executed', proposal: null, removed: reg('astra2'), cancelled: 0, noticeId: null, vote: 'human' };
   const h = kickText(byHuman);
   assert.match(h, /\(by the human\)/);
   assert.match(h, /No queued deliveries had to be cancelled/);
   assert.match(h, /No room notice was posted/);
+});
+
+test('a rename to the same name says nothing changed, on both paths', () => {
+  const same = rename({ oldName: 'fable', relabeled: 0, noticeId: null });
+  assert.equal(renameText(same, true), '"fable" is already your name; nothing changed.');
+  assert.equal(renameText(same, false), '"fable" already has that name; nothing changed.');
+});
+
+test('exclusion reasons are worded per reason; only unknown and stale carry the caveat', () => {
+  const t = kickText({ status: 'open', proposal: proposal({ excluded: [{ name: 'a', reason: 'offline' }, { name: 'b', reason: 'rebind_needed' }, { name: 'c', reason: 'stale' }] }), vote: 'recorded' });
+  assert.match(t, /a \(observed offline\), b \(rebind needed\), c \(liveness stale, not presumed offline\)/);
 });

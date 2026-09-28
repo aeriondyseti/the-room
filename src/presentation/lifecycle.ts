@@ -4,9 +4,16 @@ import type { KickOutcome, KickProposal, RenameOutcome } from '../contracts/life
 
 export type Surface = 'mcp' | 'cli';
 const KICK = { mcp: 'room_kick', cli: 'room kick' } as const;
+const JOIN = { mcp: 'room_join', cli: 'room join --as NAME' } as const;
+
+/** The service short-circuits a rename to the same name: nothing was applied, and the text must say so. */
+export function renameNoop(outcome: RenameOutcome): boolean {
+  return outcome.oldName === outcome.registration.name;
+}
 
 /** A rename result. `self` is whether the caller renamed its own binding (the agent path). */
 export function renameText(outcome: RenameOutcome, self: boolean): string {
+  if (renameNoop(outcome)) return self ? `"${outcome.registration.name}" is already your name; nothing changed.` : `"${outcome.registration.name}" already has that name; nothing changed.`;
   const lines = [
     self
       ? `You are now "${outcome.registration.name}" (was "${outcome.oldName}"; same session). Others must address "${outcome.registration.name}" from now on; "${outcome.oldName}" no longer resolves.`
@@ -21,8 +28,8 @@ export function renameText(outcome: RenameOutcome, self: boolean): string {
     outcome.noticeId === null
       ? 'No room notice was posted.'
       : self
-        ? 'The other agents and the human were told by a room notice; you were not sent one, so your snapshot stays current.'
-        : 'Every agent (the renamed one included) and the human were told by a room notice.',
+        ? 'A room notice was posted to the other agents and the human (native delivery follows); you were not sent one, so your snapshot stays current.'
+        : 'A room notice was posted to every agent (the renamed one included) and the human; native delivery follows.',
   );
   return lines.join('\n');
 }
@@ -39,9 +46,17 @@ function roster(p: KickProposal): string {
   const waiting = p.voters.filter((v) => v.votedAt === null).map((v) => v.name);
   const out = [`Voters (fixed when it opened): ${p.voters.map((v) => v.name).join(', ') || 'none'}.`];
   out.push(`Voted: ${voted.join(', ') || 'nobody yet'}. Still needed: ${waiting.join(', ') || 'nobody'}.`);
-  if (p.excluded.length) out.push(`Not voting (not qualified when it opened, not presumed offline): ${p.excluded.map((e) => `${e.name} (${e.reason.replace('_', ' ')})`).join(', ')}.`);
+  if (p.excluded.length) out.push(`Not voting (not qualified when it opened): ${p.excluded.map((e) => `${e.name} (${EXCLUSION[e.reason]})`).join(', ')}.`);
   return out.join('\n');
 }
+
+/** Per-reason wording: only unknown and stale carry the "not presumed offline" caveat; offline was observed. */
+const EXCLUSION: Record<KickProposal['excluded'][number]['reason'], string> = {
+  offline: 'observed offline',
+  rebind_needed: 'rebind needed',
+  unknown: 'status unknown, not presumed offline',
+  stale: 'liveness stale, not presumed offline',
+};
 
 /** A kick result: an open proposal with this caller's vote disposition, or an executed removal. */
 export function kickText(outcome: KickOutcome, surface: Surface = 'mcp'): string {
@@ -51,9 +66,9 @@ export function kickText(outcome: KickOutcome, surface: Surface = 'mcp'): string
     lines.push(
       outcome.cancelled === 0
         ? 'No queued deliveries had to be cancelled.'
-        : `${outcome.cancelled} queued deliver${outcome.cancelled === 1 ? 'y' : 'ies'} to it cancelled with a "kicked" tombstone (nothing redirected).`,
+        : `${outcome.cancelled} queued deliver${outcome.cancelled === 1 ? 'y' : 'ies'} to it cancelled, shown as withdrawn (kicked); nothing redirected.`,
     );
-    lines.push(`Its session was not touched; it can rejoin with room_join, which everyone will see.${outcome.noticeId === null ? ' No room notice was posted.' : ' A room notice was posted.'}`);
+    lines.push(`Its session was not touched; it can rejoin with ${JOIN[surface]}, which everyone will see.${outcome.noticeId === null ? ' No room notice was posted.' : ' A room notice was posted.'}`);
     return lines.join('\n');
   }
   const p = outcome.proposal;

@@ -41,7 +41,7 @@ import { DELIVERY_LEGEND, colorFor, cols, conversationLines, deliveryMark, fitLi
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
 import { SettingsPane } from './settings.js';
-import { kickText, renameText } from '../presentation/lifecycle.js';
+import { kickText, renameNoop, renameText } from '../presentation/lifecycle.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
@@ -390,7 +390,7 @@ function Room({
         }
         return run('rename', async () => {
           const outcome = await source.request('rename', { caller: { kind: 'human' }, oldName: names[0]!, newName: names[1]! });
-          return finish({ tone: 'ok', text: renameText(outcome, false).split('\n')[0]! });
+          return finish({ tone: renameNoop(outcome) ? 'info' : 'ok', text: renameText(outcome, false).split('\n')[0]! });
         });
       }
       case 'kick': {
