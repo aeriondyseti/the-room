@@ -22,11 +22,13 @@ import {
   left,
   parseComposer,
   parseRetryArgs,
+  parseSeqArg,
   right,
   type Draft,
   type History,
 } from './composer.js';
-import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, sanitize, type Line } from './format.js';
+import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, sanitize, usageLabel, type Line } from './format.js';
+import { DeliveryDetail } from './detail.js';
 import type { RoomSource } from './source.js';
 import { INITIAL_VIEW, reduceView, type RoomView, type ViewAction } from './state.js';
 
@@ -49,7 +51,7 @@ const CATCH_UP_MAX_PAGES = 50;
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
 
 type Feedback = { tone: 'ok' | 'info' | 'error'; text: string } | null;
-type Overlay = 'help' | 'who' | null;
+type Overlay = 'help' | 'who' | { detail: number } | null;
 
 export function App({ source, humanName, width, height, historyLimit = 500 }: AppProps) {
   const { exit } = useApp();
@@ -165,6 +167,20 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
         finish(null);
         setOverlay('who');
         return;
+      case 'detail': {
+        const seq = args === '' ? (view.items.at(-1)?.message.seq ?? null) : parseSeqArg(args);
+        if (seq === null) {
+          setFeedback({ tone: 'error', text: args === '' ? 'No messages yet.' : 'Usage: /detail #<message number>' });
+          return;
+        }
+        if (!view.items.some((i) => i.message.seq === seq)) {
+          setFeedback({ tone: 'error', text: `No message #${seq} in view.` });
+          return;
+        }
+        finish(null);
+        setOverlay({ detail: seq });
+        return;
+      }
       case 'quit':
         exit();
         return;
@@ -292,6 +308,15 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
             <HelpOverlay />
           ) : overlay === 'who' ? (
             <WhoOverlay participants={view.participants} />
+          ) : overlay !== null ? (
+            (() => {
+              const item = view.items.find((i) => i.message.seq === overlay.detail);
+              return item ? (
+                <DeliveryDetail item={item} humanName={humanName} seqById={seqById} width={convWidth - 1} />
+              ) : (
+                <Text dimColor>Message #{overlay.detail} is no longer loaded. Esc to close.</Text>
+              );
+            })()
           ) : loadFailed ? (
             <Box flexDirection="column">
               <Text color="red" bold>Couldn't load the room.</Text>
@@ -475,15 +500,22 @@ function useScroll(lineCount: number, messageCount: number, viewportHeight: numb
 
 function Header({ view, width }: { view: RoomView; width: number }) {
   const conn = connectionBadge(view.connection.state);
-  const agents = view.participants.length;
+  // While disconnected the counts are stale, so only the total is shown.
+  const summary = view.connection.state === 'connected' ? participantsSummary(view.participants) : participantsSummary(view.participants).slice(0, 1);
   return (
     <Box width={width} justifyContent="space-between">
       <Text>
         <Text inverse bold> vibe-pairing </Text>
         {view.room.paused && <Text color="yellow" inverse bold> ⏸ PAUSED </Text>}
       </Text>
-      <Text>
-        <Text dimColor>{agents === 1 ? '1 agent' : `${agents} agents`}  </Text>
+      <Text wrap="truncate">
+        {summary.map((part, i) => (
+          <Text key={i} color={part.color} dimColor={part.color === undefined}>
+            {i > 0 ? ' · ' : ''}
+            {part.text}
+          </Text>
+        ))}
+        <Text>  </Text>
         <Text color={conn.color}>{conn.glyph} {conn.label}</Text>
       </Text>
     </Box>
@@ -538,12 +570,19 @@ function Participants({ participants, humanName, height, stale }: { participants
         // While disconnected we can't vouch for liveness: grey everything out (invariant 3).
         const live = stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
         const status = stale ? { text: 'last known: ' + activityLabel(p).text } : activityLabel(p);
+        const usage = usageLabel(p.usage);
+        // Leave a clear gap between a long name and its usage label: truncate the name, never the usage.
+        const nameRoom = PANEL_WIDTH - 2 /* padding+border */ - 2 /* glyph */ - (stale ? 0 : usage.text.length + 1);
+        const name = lineText(fitLine([{ text: sanitize(p.name) }], Math.max(4, nameRoom)));
         return (
           <Box key={p.name} flexDirection="column">
-            <Text wrap="truncate">
-              <Text color={live.color}>{live.glyph} </Text>
-              <Text color={stale ? 'gray' : colorFor(p.name)} bold>{sanitize(p.name)}</Text>
-            </Text>
+            <Box justifyContent="space-between" width={PANEL_WIDTH - 2}>
+              <Text>
+                <Text color={live.color}>{live.glyph} </Text>
+                <Text color={stale ? 'gray' : colorFor(p.name)} bold>{name}</Text>
+              </Text>
+              {!stale && <Text color={usage.color} dimColor={usage.dim}>{usage.text}</Text>}
+            </Box>
             <Text wrap="truncate" color={status.color} dimColor={status.color === undefined}>
               {'  '}{status.text}
             </Text>
@@ -670,6 +709,7 @@ function HelpOverlay() {
     ['/pause [message]', 'hold new deliveries and ask every agent to stop'],
     ['/resume', 'release held deliveries in order'],
     ['/retry #N [@agent]', 're-send a failed or uncertain delivery'],
+    ['/detail [#N]', 'delivery detail: attempts, evidence, errors'],
     ['/who', 'participants and their status'],
     ['/help or ?', 'this help'],
   ];
