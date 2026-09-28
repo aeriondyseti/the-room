@@ -44,6 +44,7 @@ export type IdentitySource =
   | 'claude-mcp-registry' // MCP server's parent pid -> ~/.claude/sessions (Claude)
   | 'codex-env' // CLI: CODEX_THREAD_ID
   | 'claude-ancestry' // CLI: ancestor process -> ~/.claude/sessions
+  | 'claude-env-verified' // CLI from a shell whose process chain is broken: CLAUDE_PID + session id, both verified
   | 'declared' // explicit --as fallback when detection is unavailable
   | 'tui' // the human's TUI
   | 'service'; // service-authored messages

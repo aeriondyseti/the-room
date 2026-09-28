@@ -123,7 +123,7 @@ Milestone 6+ only after the v0.1.0 tag.
   **Done-when:** fixture-based tests cover both formats, partial trailing lines, restart from cursors,
   and a missing file yielding `unavailable` (never zero).
 
-- [ ] **2.6 Onboarding** *(Claude)* — a Claude `/room` skill, a Codex `AGENTS.md` room section, an
+- [x] **2.6 Onboarding** *(Claude)* — a Claude `/room` skill, a Codex `AGENTS.md` room section, an
   install recipe (`claude mcp add` / `codex mcp add`), and migration from pair-poc.
   **Done-when:** the documents exist, and following the recipe on the live Claude and Astra sessions
   results in both registered and able to call `room_who`.
