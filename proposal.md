@@ -14,6 +14,7 @@ Kevin has selected these first-version requirements:
 - Connect to already-running sessions first. Launching or replacing sessions is not required.
 - Claude Code and Codex are required. agy is optional and cannot delay either required harness.
 - More than two agents and multiple simultaneous instances of the same harness are required in MVP. A room may contain, for example, two Codex sessions and two Claude Code sessions; it must not assume a single participant per harness or a fixed pair.
+- A thin local stdio MCP front-end is included in MVP and is the preferred agent interface when configured; CLI access remains the baseline/fallback. Kevin accepts resuming existing sessions to load the MCP server. Existing-session support does not require seamless hot installation.
 
 Initial platform: native Windows, matching the installations and transports investigated. Support multiple participants per harness, with Astra and Claude as the first end-to-end fixture. No driver/navigator roles, turn grants, automatic task assignment, or repo-wide edit locks.
 
@@ -86,15 +87,48 @@ These are different event types with different effects:
 | Native assistant text and tool output | Original harness panes in MVP; optional activity view later | Never by observation alone |
 | Delivery receipt or reconnect event | Delivery detail and status | Only the scheduler's explicitly recorded recovery action |
 
-Agents communicate through `room send`, so agent-to-agent messages enter the room before transport. Existing sessions receive concise enrollment instructions for publishing replies with `reply_to`. CLI tools provide an attach-first path without requiring that an existing session reload MCP configuration.
+Agents communicate through the `room_send` MCP tool when configured, or `room send` as the fallback, so agent-to-agent messages enter the room before transport. Existing sessions receive concise enrollment instructions for publishing replies with `reply_to`. MCP and CLI use the same service operations and delivery ledger. A session can be resumed to load MCP, or use the CLI without changing its MCP configuration.
 
-Resolve the calling Codex session through `CODEX_THREAD_ID`; for Claude, qualify ancestor-process lookup against its live session registry, or a verified exported session ID. `room send --as <name>` verifies detected identity against that participant's `session.toml` entry and refuses a clear mismatch. If detection is unavailable, accept the explicitly declared registered name in this local, trusted room, marking its identity as declared rather than verified. Never silently post an unbound agent message as the human or require retroactively changing a running session's environment. Session IDs and process ancestry are routing evidence, not isolation from malicious processes running as the same OS user. Include detection, declared fallback, mismatches, and concurrent enrollment in the attachment probes.
+For CLI calls, resolve the calling Codex session through `CODEX_THREAD_ID`; for Claude, qualify ancestor-process lookup against its live session registry. `room send --as <name>` verifies detected identity against that participant's `session.toml` entry and refuses a clear mismatch. If detection is unavailable, accept the explicitly declared registered name in this local, trusted room, marking its identity as declared rather than verified. MCP caller identity uses the separate per-harness rules below. Never silently post an unbound agent message as the human. These checks provide local routing evidence, not isolation from malicious processes running as the same OS user.
 
-Agents must publish conversational replies through `room send` for them to appear in the MVP room view; native-only replies remain in the original harness pane. Enrollment instructions make this explicit. This requirement governs where replies are published, not whether a message wakes the agent: waking is harness-driven. Associate observed copies of room input with its original ID for delivery evidence, without adding duplicate conversation rows. Never automatically turn tool output or assistant commentary into broadcast messages.
+Agents must publish conversational replies through `room_send` or `room send` for them to appear in the MVP room view; native-only replies remain in the original harness pane. Enrollment instructions make this explicit. This requirement governs where replies are published, not whether a message wakes the agent: waking is harness-driven. Associate observed copies of room input with its original ID for delivery evidence, without adding duplicate conversation rows. Never automatically turn tool output or assistant commentary into broadcast messages.
+
+## MCP front-end and caller identity
+
+The MCP process is a thin client of the room service. It has no independent message store, delivery queue, listener-rearming requirement, or native wake logic. Structured arguments remove sender-shell quoting hazards; the downstream native adapters still enforce their own payload limits and access requirements. Use the official MCP SDK for the product front-end; the dependency-free experimental probes are not a requirement to hand-roll the production protocol. Keep the room service itself minimal.
+
+| MCP tool | Contract |
+| --- | --- |
+| `room_send({to, text, reply_to?, client_message_id?})` | Resolve caller, validate explicit recipients, persist once, and return room message ID and per-recipient state promptly; never wait for inference to finish |
+| `room_read({message_id?, cursor?, limit?})` | Read room messages with bounded output and pagination; support fetching referenced oversized content |
+| `room_who({})` | List participant identities and runtime state with evidence/freshness labels |
+| `room_join({name})` | Derive native caller identity and reuse the CLI registration operation; write only harness/session ID to that participant's registry section |
+
+Sending and joining are write operations; read/who are read-only. Tool availability and approvals are configured explicitly for the room server; do not claim that MCP bypasses harness approval policy or sandbox restrictions. Human pause/admin actions are not included in the agent tool surface. A write requires resolved identity; registration may establish a new entry, while other calls require an existing binding.
+
+### Codex MCP identity
+
+For the tested Codex 0.157.1 host, read `params._meta.threadId` fresh on every tool call and resolve that native UUID against `session.toml`. Cross-check supplied `sessionId` and nested `x-codex-turn-metadata` thread/session fields; inconsistent native identity fields are an error. Environment `CODEX_THREAD_ID` and `CODEX_SESSION_ID` were absent in the tested MCP children even though shell commands exposed the thread ID.
+
+Two concurrent threads under the same host supplied their own correct per-call IDs and used separate MCP processes. Resuming one thread preserved its native ID while replacing the MCP process. Therefore neither MCP PID nor an environment snapshot is the caller identity. Do not infer identity from cwd, clientInfo, JSON-RPC request ID, or a process-global participant selected by an earlier call. This is observed version-specific behavior, not a portable MCP guarantee; missing metadata produces an explicit unavailable-identity result and CLI fallback, not guessed attribution.
+
+### Claude Code MCP identity
+
+On every call, read the live Claude registry entry for the MCP server's direct parent PID, validating PID/process-start identity. If needed, walk verified ancestors to locate a unique owning Claude process. Resolve its current `sessionId` against `session.toml`; never choose by display name. Cross-check `CLAUDE_CODE_SESSION_ID` from the MCP environment. Claude's tested per-call metadata contained tool-use/progress identifiers but no native session ID.
+
+A uniquely validated fresh registry identity is primary. If the environment disagrees, flag the mismatch and use the registry identity only when it resolves unambiguously to the registered participant; never fall back to the stale environment's participant or silently rewrite a binding. Missing/ambiguous registry evidence, conflicting live identities, or an unregistered identity rejects sending and requests registration/rebinding as appropriate. The same resolution may be used by `room_join` to explicitly establish the new binding. Do not infer a native session from MCP PID, cwd, clientInfo, or model-supplied identity.
+
+Claude's reported 2.1.283 headless probes found direct-parent registry identity and `CLAUDE_CODE_SESSION_ID` agreeing in two concurrent sessions and after `--resume`, with the native ID preserved despite new processes. The interactive/background launch paths and identity changes while an MCP process remains alive still require qualification. `CLAUDE_CODE_MESSAGING_TOKEN` may be inherited but must never be logged or returned by room tools; caller identification does not require that token.
+
+### Installation, retries, and compatibility
+
+Provide a narrow MCP setup recipe and keep the existing CLI usable if tools are unavailable. Resume the exact native conversation when installing; verify that its registry binding still matches afterward. Do not switch to a fork or new thread implicitly. No MCP installation detail, process metadata, or credentials are added to the minimal `session.toml` schema.
+
+MCP and CLI accept the same optional `client_message_id`. Scope deduplication by room and resolved sender identity, return the original result for an identical retry, and reject reuse with a different payload. Preserve that key across a timeout and fallback to CLI rather than posting twice. This room-level guarantee does not make ambiguous native delivery safe to resend.
 
 ## Architecture and persistence
 
-Use one local room service for persistence, delivery, and observation, with lightweight TUI and CLI clients. This service is a dispatcher, not an agent supervisor or turn-grant system. It stays alive independently of a TUI view; closing the view does not cancel agent work. Multiple readers may attach to one room, but there is only one writer/dispatcher owner.
+Use one local room service for persistence, delivery, and observation, with lightweight TUI, CLI, and MCP clients. This service is a dispatcher, not an agent supervisor or turn-grant system. It stays alive independently of a TUI view or MCP process; closing either does not cancel agent work. Multiple readers may attach to one room, but there is only one writer/dispatcher owner.
 
 Any client may start the service when absent, detached and without opening a window, under the single-owner startup lock. It waits for readiness before sending. Failure to start produces an explicit error; a message is not reported accepted until the service commits it. An explicit service-shutdown command is separate from closing the TUI or pausing the room.
 
@@ -104,7 +138,7 @@ SQLite stores the room sequence, messages, resolved recipients, per-recipient de
 
 Start with `messages`, `deliveries`, `participants`, and `usage_cursors`. Delivery rows retain an attempt number, native ID where available, current state, error, timestamps, and prior attempt evidence; retrying must not erase the outcome being reconciled. No generalized workflow or transcript archive schema is needed for MVP.
 
-Use a local named-pipe IPC interface for the TUI and CLI. Single-owner locking prevents two dispatchers from submitting the same delivery. One room belongs to a repository; registered worktrees map to the same canonical room using Git common-directory resolution, with an explicit override for ambiguous layouts. Validate a linked-worktree fixture instead of assuming that taking the parent directory always yields the intended room.
+Use a local named-pipe IPC interface for the TUI, CLI, and MCP front-end. Single-owner locking prevents two dispatchers from submitting the same delivery. One room belongs to a repository; registered worktrees map to the same canonical room using Git common-directory resolution, with an explicit override for ambiguous layouts. Validate a linked-worktree fixture instead of assuming that taking the parent directory always yields the intended room.
 
 Proposed commands:
 
@@ -135,7 +169,7 @@ Resolve the exact registered session at send time, validate process identity, re
 
 Borrow and test the known registry/protocol behavior from `claude-message-mcp`, keeping version-sensitive details in one adapter. The reported 2.1.283 experiments and Astra/Claude introduction demonstrate current feasibility. Respect held/refused inbound messages and the receiver's permission policy. Native pipe completion is transport evidence only.
 
-Replies normally go through `room send`, so first-version delivery need not publish a synthetic Claude peer for every external agent. Native-peer discovery integration can be added later if it materially improves use.
+Replies normally go through `room_send` or `room send`, so first-version delivery need not publish a synthetic Claude peer for every external agent. Native-peer discovery integration can be added later if it materially improves use.
 
 ### Message envelope
 
@@ -175,6 +209,8 @@ The next milestone after MVP can add full activity/transcript views, with expand
 
 Evidence: [Claude messaging findings](findings-claude-messaging.md), [Codex messaging findings](findings-codex-messaging.md), the initial [Codex investigation](codex-proposal.md), and the live Astra/Claude introduction in this project. The introduction and acknowledgment establish one actual two-way exchange between these participants. They do not establish repeated reliability or full output capture.
 
+MCP identity evidence: Astra directly observed correct Codex per-call metadata in thread `01a0e605-2485-7693-a111-97e35d22a97e`; Kevin relayed matching tool/shell results from thread `01a0e657-f65e-7ce1-892c-c1fad1b41efd` before and after resume. MCP environment IDs were absent in all three observations. Claude's headless concurrent/resume results were inspected with `git show 7be2154:probes/claude-identity-results.md` on branch `claude/mcp-identity-probe`; those probe artifacts were not merged as part of this proposal edit. Claude's tools were pre-allowed, so these results do not establish approval-prompt UX.
+
 Before declaring either adapter supported, qualify:
 
 1. Existing-session registration, caller identity, and native delivery, plus read-only usage/status sources and message correlation. Full tool-output capture is not an MVP gate.
@@ -184,17 +220,18 @@ Before declaring either adapter supported, qualify:
 5. Pause with a stop-request exemption, repeated pause, resume ordering, oversized-message references, concurrent service startup, linked-worktree room identity, and responsive TUI rendering. Test desktop clients separately from CLI/TUI configurations; steering remains deferred.
 6. Identity rotation and rebind: exercise clear/new/fork/resume, changing pipes/PIDs, duplicate Claude display names, and a Codex thread missing from an unrelated daemon's loaded list. Verify distinct offline/unknown/rebind-needed states, no cross-session misdelivery, preserved pending snapshots, and explicit readdressing. In the four-agent fixture, verify a targeted reply does not fan out and agent `@all` excludes its sender.
 7. Minimal-registry migration and runtime resolution: preserve existing participant identities, ensure join writes only harness/session ID, derive fresh Claude connection details without rewriting the file, and resolve executable/cwd through their designated sources. Reject ambiguous or unsupported configuration rather than silently choosing another session.
+8. MCP qualification: actual Claude background/TUI launches, live clear/compact and fork/new behavior, missing/conflicting caller signals, and approval allow/deny behavior under intended policies. Reuse the completed two-session/resume identity evidence for its tested configurations. Verify exact multiline/quote/Unicode input, long-message fallback, paging, lost-response retry across MCP/CLI, and service restart/reconnect without duplicate room posts. Include the MCP preferred path in the four-agent fixture and exercise CLI fallback.
 
 Retain runnable probe commands, versions/configurations, message IDs, timestamps, event excerpts, and tagged responses. Repeat idle wake at least 20 times per supported configuration and run a two-hour mixed exercise. Measure enqueue, turn-start, observation, and response latency separately. The reported 2.5–8-second Codex sample is not a hard bound; choose and publish a latency target after repeatable measurements rather than asserting an unproven five- or ten-second guarantee.
 
 ## Delivery milestones
 
 1. **Qualify attachment and remaining native-delivery behavior.** Start with these actual sessions, then qualify the four-agent fixture with two instances per harness. Confirm independent registration, receipt, room replies, usage where supported, and no identity collisions. Document unsupported cases.
-2. **Room service and adapters.** Durable message transactions, `session.toml` enrollment, native sends, delivery evidence/recovery, agent CLI, minimal usage readers, and the Claude `/room` skill plus Codex equivalent instructions. Prove a two-way exchange through the room.
+2. **Room service, adapters, and agent access.** Durable message transactions, `session.toml` enrollment, native sends, delivery evidence/recovery, agent CLI and preferred MCP front-end, minimal usage readers, and the Claude `/room` skill plus Codex equivalent instructions. Include installation/resume instructions and per-call identity checks. Prove a two-way exchange through the room using MCP, with CLI fallback.
 3. **Separate-pane MVP TUI.** Broadcast composer, targeted sends, room messages, participant/usage panel, scrollback, delivery details, pause/stop-request/resume, and reconnect replay.
 4. **Acceptance and operational polish.** Failure probes, honest pause semantics, responsiveness under long conversations, repeated/two-hour exercises, and integration diagnostics.
 
-Full harness/tool-output views are the next milestone after MVP. Launching agents, web UI, agy, optional MCP packaging, automatic file claims, steering, hard stop/remote approval controls, and alternative transport fallbacks are later extensions. No fallback may silently restart sessions or weaken their permissions.
+Full harness/tool-output views are the next milestone after MVP. Launching agents, web UI, agy, broader plugin distribution, automatic file claims, steering, hard stop/remote approval controls, and alternative transport fallbacks are later extensions. The local agent MCP front-end is part of MVP. No fallback may silently restart sessions or weaken their permissions.
 
 The first release is complete when Kevin can connect multiple existing agents, including multiple instances of each required harness, watch their room conversation in a separate pane, send one direction to all or target one instance, and see their room replies without manually waking them. Each participant's delivery and metric limitations remain visible. The initial Astra/Claude pair is a starting fixture, not the scope limit.
 
@@ -208,4 +245,5 @@ The first release is complete when Kevin can connect multiple existing agents, i
 - Incorporate Claude's concrete review of service startup, caller identity, envelope limits, minimal MVP receipt states, and Kevin's cooperative pause decision.
 - Incorporate Kevin's self-registration decision: repository-root `session.toml` is authoritative, agents preserve each other's entries, and declared sender identity is allowed when automatic checks are unavailable.
 - Incorporate the R11 minimal-registry requirement: only harness and native session ID per named participant; the CLI derives connection details and SQLite stores runtime state. The existing verbose file is migration input, not the target schema.
+- Incorporate R12/R13 and Kevin's approval: preferred local MCP tools in MVP with CLI fallback, Codex per-call metadata identity, Claude fresh parent-registry identity with environment cross-check, and unchanged native wake paths. Tested identity/resume behavior is distinguished from remaining launch-path and approval probes.
 - Claude's final review (R8) approved the design conditional on that enrollment edit. Astra incorporated it and reviewed the resulting document; this document is now the single implementation proposal. Both original proposals and findings remain historical input.
