@@ -153,6 +153,8 @@ export interface RequestMap {
 
 export type Method = keyof RequestMap;
 export const METHODS = [
+  'settings_get',
+  'settings_update',
   'inbox',
   'guarded_send',
   'withdraw',

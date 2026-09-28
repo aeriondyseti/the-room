@@ -1,9 +1,39 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { RoomSettings } from './settings.js';
+
+test('bad runtime file retains good values, cold fallback uses defaults, repair backs up raw bytes',async t=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
+ t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
+ const settings=new RoomSettings(root,{});await settings.update({deliveryHoldMs:700});
+ const dir=path.join(root,'.room'),file=path.join(dir,'settings.json');
+ await writeFile(file,'broken-json');
+ const fallback=await settings.get();assert.equal(fallback.effective.deliveryHoldMs,700);assert.equal(fallback.problem?.fallback,'last_good');
+ const cold=new RoomSettings(root,{});assert.equal((await cold.get()).problem?.fallback,'defaults');
+ const repaired=await settings.update({deliveryHoldMs:600});assert.equal(repaired.problem,undefined);
+ const backup=(await readdir(dir)).find(n=>n.startsWith('settings.backup.'))!;
+ assert.equal(await readFile(path.join(dir,backup),'utf8'),'broken-json');
+ await writeFile(file,JSON.stringify({version:2,future:true}));
+ assert.equal((await settings.get()).effective.deliveryHoldMs,600);
+ await assert.rejects(settings.update({}),/newer version/);
+ assert.equal(JSON.parse(await readFile(file,'utf8')).version,2);
+});
+
+test('deleted companion policy can be repaired and oversized startup files do not seed fallback',async t=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
+ t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
+ const dir=path.join(root,'.room');await mkdir(dir);
+ const file=path.join(dir,'settings.json');await writeFile(file,JSON.stringify({version:1,batchMaxHoldMs:5000}));
+ const settings=new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'3000'});
+ await rm(file);assert.equal((await settings.get()).effective.deliveryHoldMs,3000);
+ assert.equal((await settings.update({})).effective.batchMaxHoldMs,5000);
+ await writeFile(file,JSON.stringify({version:1,deliveryHoldMs:1500,extra:'x'.repeat(1024*1024)}));
+ const cold=new RoomSettings(root,{});const view=await cold.get();
+ assert.equal(view.problem?.fallback,'defaults');assert.equal(view.effective.deliveryHoldMs,500);
+});
 
 test('live settings preserve unknown keys, reset saved values, and retain environment precedence',async t=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
@@ -37,6 +67,5 @@ test('concurrent patches merge and invalid policies never replace the saved file
   await assert.rejects(a.update({deliveryHoldMs:Infinity}));
   await assert.rejects(a.update({surprise:true}));
   assert.equal((await a.get()).configured.batchMaxHoldMs,2000);
-  const overridden=new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'2500'});
-  await assert.rejects(overridden.get());
+  assert.throws(()=>new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'2500'}));
 });

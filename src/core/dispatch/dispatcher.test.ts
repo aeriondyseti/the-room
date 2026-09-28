@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test,type TestContext } from 'node:test';
-import { mkdtemp,rm } from 'node:fs/promises';
+import { mkdtemp,rm,writeFile } from 'node:fs/promises';
 import path from 'node:path';import {tmpdir} from 'node:os';
 import {RoomService} from '../service/service.js';
 import {joinParticipant} from '../registry/registry.js';
@@ -55,6 +55,27 @@ test('settings IPC applies live, restricts writes to human, and can turn the hol
  assert.equal(settings.effective.deliveryHoldMs,0);
  const first=await send(room);await room.dispatcher.idle();assert.equal(adapter.sent[0]!.messageId,first.message.id);
  await assert.rejects(room.handle({v:1,type:'request',id:'x',method:'settings_update',params:{caller:human,patch:{batchHeld:false}}},'mcp'),/human/);
+});
+
+test('invalid live settings cannot block human or guarded agent sends',async t=>{
+ const {root,room}=await setup(t,null);
+ await call(room,'settings_update',{caller:human,patch:{deliveryHoldMs:0}});
+ await writeFile(path.join(root,'.room','settings.json'),'broken');
+ const settings=await call(room,'settings_get',{});assert.equal(settings.problem?.fallback,'last_good');
+ assert.equal((await send(room,'human still sends')).message.body,'human still sends');
+ const caller={kind:'agent' as const,native:{harness:'codex' as const,sessionId:b,source:'codex-env' as const},declaredName:'other'};
+ const page=await call(room,'inbox',{caller});
+ const agent=await call(room,'guarded_send',{caller,to:['astra'],body:'agent still sends',snapshot:page.snapshot});
+ assert.equal(agent.status,'sent');
+});
+
+test('debounce publishes the revised sibling deadline after persistence',async t=>{
+ const {room}=await setup(t,500);
+ const first=await send(room,'one');
+ const updates:string[]=[];
+ room.onEvent(e=>{if(e.type==='delivery.updated'&&e.delivery.messageId===first.message.id){assert.equal(e.delivery.notBefore,room.ledger.delivery(first.message.id,'astra').notBefore);updates.push(e.delivery.notBefore!);}});
+ await new Promise(r=>setTimeout(r,10));await send(room,'two');
+ assert.equal(updates.length,1);assert.ok(updates[0]!>first.deliveries[0]!.notBefore!);
 });
 
 test('batch uncertainty settles every member and never auto-replays',async t=>{
