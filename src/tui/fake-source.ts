@@ -12,6 +12,7 @@ import type {
 import { HUMAN } from '../contracts/domain.js';
 import type { Method, Params, Result, RoomEvent } from '../contracts/ipc.js';
 import type { ActivityItem, ActivityPage, ActivityStreamId } from '../contracts/activity.js';
+import type { AccountUsage } from '../contracts/account.js';
 import type { ConnectionStatus, RoomSource } from './source.js';
 
 type Listener<T> = (value: T) => void;
@@ -28,6 +29,14 @@ export class FakeRoomSource implements RoomSource {
   /** Every request received (tests assert on these). */
   readonly requests: Array<{ method: Method; params: unknown }> = [];
   private activity = new Map<string, { stream: ActivityStreamId; items: ActivityItem[]; coverage: ActivityPage['coverage']; reason?: string; olderEvicted: boolean }>();
+
+  private accounts: AccountUsage[] | null = null;
+
+  /** Subscription usage the fake `who` reports; `announce` also emits `account.updated` for each (as the service would). */
+  setAccounts(accounts: AccountUsage[], announce = false): void {
+    this.accounts = accounts;
+    if (announce) for (const account of accounts) this.emit({ type: 'account.updated', account: structuredClone(account) });
+  }
 
   /** Set a participant's observed activity (and optionally announce new items live, as the service would). */
   setActivity(participant: string, items: ActivityItem[], opts: { coverage?: ActivityPage['coverage']; reason?: string; olderEvicted?: boolean; generation?: number } = {}): ActivityStreamId {
@@ -133,7 +142,7 @@ export class FakeRoomSource implements RoomSource {
       case 'subscribe':
         return { subscribed: true, lastSeq: this.items.length };
       case 'who':
-        return { participants: this.participants.map((p) => ({ ...p })), room: { ...this.room } };
+        return { participants: this.participants.map((p) => ({ ...p })), room: { ...this.room }, ...(this.accounts ? { accounts: structuredClone(this.accounts) } : {}) };
       case 'read': {
         const p = params as Params<'read'>;
         const after = p.afterSeq ?? null;

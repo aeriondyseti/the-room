@@ -22,8 +22,6 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
   const { themeFrom } = await import('../tui/theme.js');
   const display = {
     theme: themeFrom(process.env, argv),
-    panelWidth: config.tuiPanelWidth,
-    panelBreakpoint: config.tuiPanelBreakpoint,
     historyLimit: config.tuiHistoryLimit,
     catchUpMaxPages: config.tuiCatchUpMaxPages,
   };

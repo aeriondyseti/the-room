@@ -8,13 +8,14 @@ import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import { RoomService } from '../core/service/service.js';
 import type { MonitorDeps } from '../core/service/monitor.js';
 import type { ActivityReader } from '../observer/activity-reader.js';
+import type { AccountUsageProvider } from '../contracts/account.js';
 import { integer, record } from '../core/service/validation.js';
 import { loadConfig } from '../core/config.js';
 import { VERSION } from '../version.js';
 import { endpointFor } from './endpoint.js';
 
 export interface RunningServer { service:RoomService; pid:number; close():Promise<void> }
-export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>;adapters?:DeliveryAdapter[];monitor?:{observer:MonitorDeps['observer'];intervalMs:number};activity?:{reader:ActivityReader;intervalMs:number}} = {}):Promise<RunningServer> {
+export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>;adapters?:DeliveryAdapter[];monitor?:{observer:MonitorDeps['observer'];intervalMs:number};activity?:{reader:ActivityReader;intervalMs:number};accounts?:{providers:AccountUsageProvider[];intervalMs:number;staleAfterMs:number}} = {}):Promise<RunningServer> {
   await mkdir(path.join(root,'.room'),{recursive:true});
   const endpoint=endpointFor(root);const nonce=randomUUID();const lock=path.join(root,'.room','service.lock');
   const sockets=new Set<Socket>();const active=new Set<Promise<unknown>>();const subscribed=new Set<Socket>();const replaying=new Map<Socket,RoomEvent[]>();let service:RoomService;let closing:Promise<void>|null=null;let stopping=false;let startupError:unknown;let signalReady!:()=>void;const ready=new Promise<void>(resolve=>{signalReady=resolve;});
@@ -108,6 +109,7 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
     service=new RoomService(root,options.adapters);
     if(options.monitor)service.enableMonitor(options.monitor.observer,options.monitor.intervalMs);
     if(options.activity)service.enableActivity(options.activity.reader,options.activity.intervalMs);
+    if(options.accounts)service.enableAccounts(options.accounts.providers,options.accounts.intervalMs,options.accounts.staleAfterMs);
     await options.beforeReady?.();
     await writeFile(lock,JSON.stringify({pid:process.pid,nonce,endpoint,startedAt:new Date().toISOString()}));
     service.onEvent(value=>{

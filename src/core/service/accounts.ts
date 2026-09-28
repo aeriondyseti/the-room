@@ -77,6 +77,12 @@ export class AccountMonitor {
     }
     const good = this.lastGood.get(id);
     if (!good) return sample; // never succeeded: unavailable, as reported
+    // The source identified a DIFFERENT account (e.g. the user switched logins): the old account's numbers must not
+    // be shown for it, even as stale. Fall back only for the same account, or a failure that learned no identity.
+    if (sample.account.scope === 'account' && sample.account.key !== good.account.key) {
+      this.lastGood.delete(id);
+      return sample;
+    }
     // Keep the last good values, labelled stale, with this attempt's reason and time.
     return { ...good, status: 'stale', reason: sample.reason ?? 'the latest reading failed', checkedAt: sample.checkedAt ?? this.now().toISOString() };
   }

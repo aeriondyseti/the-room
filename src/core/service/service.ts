@@ -9,6 +9,8 @@ import { loadConfig } from '../config.js';
 import { integer, nativeEvidence, optionalText, record, requireHuman, resolveCaller, text } from './validation.js';
 import { ParticipantMonitor, type MonitorDeps } from './monitor.js';
 import { ActivityService } from './activity.js';
+import { AccountMonitor } from './accounts.js';
+import type { AccountUsageProvider } from '../../contracts/account.js';
 import type { ActivityCursorState, ActivityReader } from '../../observer/activity-reader.js';
 import type { ActivityRequest } from '../../contracts/activity.js';
 import type { UsageCursor as ObserverCursor } from '../../observer/observer.js';
@@ -22,6 +24,7 @@ export class RoomService {
   private listeners = new Set<(event: RoomEvent)=>void>();
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
+  private accounts: AccountMonitor|null=null;
   constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   enableMonitor(observer:MonitorDeps['observer'],intervalMs:number):void{
@@ -34,8 +37,12 @@ export class RoomService {
     this.activity=new ActivityService({reader,participants:()=>this.participants(),publish:event=>this.publish(event),
       loadCursors:()=>this.ledger.cursor<ActivityCursorState[]>(ACTIVITY_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(ACTIVITY_CURSORS,cursors),intervalMs});
   }
-  start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();}
-  async close():Promise<void>{await this.activity?.stop();await this.monitor?.stop();await this.dispatcher.stop();this.ledger.close();}
+  /** Subscription usage once per account (6.6; presentation only, read-only providers). */
+  enableAccounts(providers:AccountUsageProvider[],intervalMs:number,staleAfterMs:number):void{
+    this.accounts=new AccountMonitor({providers,publish:event=>this.publish(event),intervalMs,staleAfterMs});
+  }
+  start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
+  async close():Promise<void>{await this.accounts?.stop();await this.activity?.stop();await this.monitor?.stop();await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
@@ -86,7 +93,7 @@ export class RoomService {
         const after=p.afterSeq===undefined||p.afterSeq===null?null:integer(p.afterSeq,'afterSeq',0);
         return this.ledger.list(after,Math.min(integer(p.limit,'limit',loadConfig().readPageSize,1),loadConfig().readPageSize));
       }
-      case 'who': return {participants:await this.participants(),room:this.ledger.roomState()};
+      case 'who': return {participants:await this.participants(),room:this.ledger.roomState(),...(this.accounts?{accounts:this.accounts.snapshot()}:{})};
       case 'join': {
         const name=text(p.name,'name');if(!isValidParticipantName(name))throw new RoomError('bad_request','Choose a valid lowercase participant name.');
         const native=nativeEvidence(p.native);const prior=await readRegistry(this.root);

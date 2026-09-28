@@ -76,12 +76,6 @@ test('fences never drop text: inline ``` stays prose, the full info string shows
   assert.deepEqual(longInfo.slice(0, 3), ['  ┌ ' + 'a'.repeat(16), '    ' + 'a'.repeat(14), '  │ x'], 'a long info string wraps');
 });
 
-test('the panel never squeezes the conversation below a readable width, whatever the tunables say', async () => {
-  const src = new FakeRoomSource({ participants: [agent('astra')] });
-  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} panelWidth={80} panelBreakpoint={90} />);
-  await tick();
-  assert.doesNotMatch(plain(ui.lastFrame()), /PARTICIPANTS/, '80-col panel + 30-col minimum > 100 cols: single column');
-});
 
 test('first run: no agents → welcome with join steps; agents but no messages → who is here', async () => {
   const empty = render(<App source={new FakeRoomSource({ participants: [] })} humanName="Kevin" width={100} height={20} />);
@@ -111,14 +105,3 @@ test('/detail shows which native runtime took an attempt', async () => {
   assert.match(text, /via C:\\codex\.exe · home C:\\home\\\.codex/);
 });
 
-test('layout tunables: the participant panel follows panelBreakpoint and panelWidth', async () => {
-  const src = () => new FakeRoomSource({ participants: [agent('astra')] });
-  const narrow = render(<App source={src()} humanName="Kevin" width={100} height={16} panelBreakpoint={120} />);
-  await tick();
-  assert.doesNotMatch(plain(narrow.lastFrame()), /PARTICIPANTS/, 'below the configured breakpoint: single column');
-  cleanup();
-  const wide = render(<App source={src()} humanName="Kevin" width={100} height={16} panelWidth={34} />);
-  await tick();
-  const row = plain(wide.lastFrame()).split('\n').find((l) => l.includes('PARTICIPANTS'))!;
-  assert.equal(row.indexOf('│'), 33, 'panel border sits at the configured width');
-});

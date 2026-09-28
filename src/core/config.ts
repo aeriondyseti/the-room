@@ -60,10 +60,6 @@ export interface RoomConfig {
    * listed keeps `limitTokens: null` (no percentage). Override with ROOM_CONTEXT_LIMITS="model=tokens,model=tokens".
    */
   contextLimits: Readonly<Record<string, number>>;
-  /** TUI: participant panel width in columns. */
-  tuiPanelWidth: number;
-  /** TUI: the panel shows only when the terminal is at least this wide (else the single-column layout). */
-  tuiPanelBreakpoint: number;
   /** TUI: messages loaded on first connect. */
   tuiHistoryLimit: number;
   /** TUI: max pages read when catching up after a reconnect (beyond it, a notice says history may be missing). */
@@ -85,6 +81,10 @@ export interface RoomConfig {
   activityReadBytes: number;
   /** How often the service polls participants' transcripts for new activity. */
   activityPollMs: number;
+  /** How often each subscription-usage source is sampled (bounded: per source, never per participant or render). */
+  accountsPollMs: number;
+  /** A usage reading older than this is shown as stale (values kept, labelled). */
+  accountsStaleMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -116,8 +116,6 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
   contextLimits: Object.freeze({ 'claude-opus-5-5': 1_000_000 }),
-  tuiPanelWidth: 26,
-  tuiPanelBreakpoint: 90,
   tuiHistoryLimit: 500,
   tuiCatchUpMaxPages: 50,
   tuiReconnectMinMs: 250,
@@ -129,6 +127,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   activityMaxLineBytes: 1024 * 1024,
   activityReadBytes: 4 * 1024 * 1024,
   activityPollMs: 2_000,
+  accountsPollMs: 120_000,
+  accountsStaleMs: 15 * 60_000,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -159,8 +159,6 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   codexHome: 'ROOM_CODEX_HOME',
   usageStaleMs: 'ROOM_USAGE_STALE_MS',
   contextLimits: 'ROOM_CONTEXT_LIMITS',
-  tuiPanelWidth: 'ROOM_TUI_PANEL_WIDTH',
-  tuiPanelBreakpoint: 'ROOM_TUI_PANEL_BREAKPOINT',
   tuiHistoryLimit: 'ROOM_TUI_HISTORY_LIMIT',
   tuiCatchUpMaxPages: 'ROOM_TUI_CATCH_UP_MAX_PAGES',
   tuiReconnectMinMs: 'ROOM_TUI_RECONNECT_MIN_MS',
@@ -172,6 +170,8 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   activityMaxLineBytes: 'ROOM_ACTIVITY_MAX_LINE_BYTES',
   activityReadBytes: 'ROOM_ACTIVITY_READ_BYTES',
   activityPollMs: 'ROOM_ACTIVITY_POLL_MS',
+  accountsPollMs: 'ROOM_ACCOUNTS_POLL_MS',
+  accountsStaleMs: 'ROOM_ACCOUNTS_STALE_MS',
 };
 
 /** Doubling reconnect schedule from min to max (inclusive), e.g. 250, 500, 1000, 2000, 4000, 5000. */

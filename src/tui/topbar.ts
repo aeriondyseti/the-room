@@ -1,6 +1,7 @@
 // Top bar (6.6): participants as compact chips across the top, replacing the left sidebar (Kevin: "the sidebar is a
 // lot of empty space"). Pure line model so layout is testable; the conversation gets the full terminal width.
 import type { ParticipantState } from '../contracts/domain.js';
+import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import { colorFor, cols, fitLine, lineCols, sanitize, usageLabel, type Line, type Segment } from './format.js';
 
 export function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
@@ -81,6 +82,63 @@ export function participantLines(participants: readonly ParticipantState[], opts
     lines.push(last.length ? [...last, GAP, ...marker] : marker);
   }
   return lines;
+}
+
+// ---- subscription usage (6.6) ------------------------------------------------------------------------------
+
+const HARNESS_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
+/** Kevin pinned the display to these two windows for every subscription. */
+const PINNED: ReadonlyArray<{ minutes: number; label: string }> = [{ minutes: 300, label: '5h' }, { minutes: 10_080, label: 'weekly' }];
+
+/** "in 3h12m" under a day, else "Mon 09:00"; null when unknown. */
+export function resetHint(iso: string | null, now: number = Date.now()): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const mins = Math.max(0, Math.round((t - now) / 60_000));
+  if (mins < 24 * 60) return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}m`;
+  const d = new Date(t);
+  return `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function pctSegments(label: string, w: UsageWindow | undefined, opts: { mono: boolean; stale: boolean; now: number }): Line {
+  if (!w || w.usedPercent === null) return [{ text: `${label} n/a`, dim: true }];
+  const pct = Math.round(w.usedPercent);
+  const color = opts.stale ? undefined : pct >= 85 ? 'red' : pct >= 65 ? 'yellow' : undefined;
+  const reset = resetHint(w.resetsAt, opts.now);
+  return [
+    { text: `${label} ` , dim: true },
+    { text: `${pct}%${opts.mono && color ? '!' : ''}`, color, bold: !!color, dim: opts.stale },
+    ...(reset ? [{ text: ` ↻${reset}`, dim: true }] : []),
+  ];
+}
+
+/** One account: pinned 5h + weekly for the main bucket, then each other bucket's weekly (e.g. "Fable weekly"). */
+export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: number }): Line {
+  const now = opts.now ?? Date.now();
+  const name: Segment = { text: HARNESS_LABEL[a.account.harness] ?? a.account.harness, bold: true };
+  if (a.status === 'unavailable') return [name, { text: ` usage unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, dim: true }];
+  const stale = a.status === 'stale';
+  const out: Line = [name];
+  const [main, ...others] = a.buckets;
+  const byMinutes = (b: UsageBucket | undefined, m: number) => b?.windows.find((w) => w.durationMinutes === m);
+  for (const p of PINNED) out.push({ text: '  ' }, ...pctSegments(p.label, byMinutes(main, p.minutes), { mono: opts.mono, stale, now }));
+  for (const b of others) {
+    const weekly = byMinutes(b, 10_080) ?? b.windows[0];
+    if (!weekly) continue;
+    out.push({ text: '  ' }, ...pctSegments(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly, { mono: opts.mono, stale, now }));
+  }
+  if (stale) out.push({ text: ' (stale)', dim: true, italic: true });
+  return out;
+}
+
+/** Account usage lines: all on one line when they fit, else one per account (each fitted to the width). */
+export function accountLines(accounts: readonly AccountUsage[], opts: { width: number; mono: boolean; now?: number }): Line[] {
+  if (accounts.length === 0) return [];
+  const parts = accounts.map((a) => accountSegments(a, opts));
+  const joined: Line = parts.flatMap((p, i) => (i === 0 ? p : [{ text: '   │   ', dim: true }, ...p]));
+  if (lineCols(joined) <= opts.width) return [joined];
+  return parts.map((p) => fitLine(p, opts.width));
 }
 
 function countChips(lines: readonly Line[]): number {
