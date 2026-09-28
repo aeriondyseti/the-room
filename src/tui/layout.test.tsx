@@ -212,7 +212,9 @@ test('6.15: a bar is one flat surface — fill = solid bright background, track 
   const fill = bar.find((s) => s.surface?.kind === 'fill')!;
   const track = bar.find((s) => s.surface?.kind === 'track')!;
   assert.deepEqual(surfaceStyle(fill, false), { backgroundColor: STATE_COLOR.ok, color: TEXT_ON_FILL });
-  assert.deepEqual(surfaceStyle(track, false), { backgroundColor: TRACK_BG, color: TEXT_ON_TRACK, dim: track.dim }, 'track text has an explicit light foreground');
+  assert.deepEqual(surfaceStyle(track, false), { backgroundColor: TRACK_BG, color: TEXT_ON_TRACK }, 'track text has an explicit light foreground');
+  const staleTrack = usageBar('', 43, { stale: true }).find((s) => s.surface?.kind === 'track' && /\S/.test(s.text))!;
+  assert.equal(surfaceStyle(staleTrack, false).dim, undefined, 'a stale label reads as one on both surfaces (not dimmed on either)');
   assert.deepEqual(surfaceStyle(fill, true), { inverse: true, dim: fill.dim }, 'monochrome: the fill is reverse video');
   assert.deepEqual(surfaceStyle(track, true), { inverse: false, dim: track.dim, blank: '░' }, 'monochrome: the track shows ░ so the extent (and a 0% bar) stays visible');
   const staleFill = usageBar('', 43, { stale: true }).find((s) => s.surface?.kind === 'fill')!;
@@ -231,6 +233,7 @@ test('6.15: rendered colour frames (top/left × full/compact) — no stipple, a 
       assert.doesNotMatch(plain(frame), /░/, `${where}: no ░ anywhere`);
       assert.match(frame, /\u001B\[48;5;237m/, `${where}: the track is a 256-colour background`);
       assert.match(frame, /\u001B\[30m/, `${where}: label text on a fill is dark`);
+      assert.match(frame, /\u001B\[(4[1-3]|48;5;214)m/, `${where}: a fill is drawn as a state-colour background`);
       cleanup();
     }
   }

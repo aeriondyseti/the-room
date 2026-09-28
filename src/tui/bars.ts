@@ -78,11 +78,12 @@ export function surfaceStyle(seg: Segment, mono: boolean): { color?: string; bac
   // Monochrome has no backgrounds: the fill is reverse video and the track's blank cells show "░", so a bar's extent
   // (and a 0% bar) stays visible without colour.
   if (mono) return fill ? { inverse: true, dim: seg.dim } : { inverse: false, dim: seg.dim, blank: '░' };
-  // Colour: flat surfaces. Text on a (grey) stale fill isn't dimmed — the grey already says stale, and dim black on
-  // grey could vanish; text on the track has an explicit light foreground so it's readable on any terminal theme.
+  // Colour: flat surfaces. Label text is never dimmed on either surface (the grey fill and the "last known"/"stale"
+  // labels already say stale; dim black on grey could vanish, and a label straddling fill and track should read as one).
+  // Text on the track has an explicit light foreground so it's readable on any terminal theme.
   return fill
     ? { backgroundColor: seg.surface.color ?? STALE_FILL, color: TEXT_ON_FILL }
-    : { backgroundColor: TRACK_BG, color: TEXT_ON_TRACK, dim: seg.dim };
+    : { backgroundColor: TRACK_BG, color: TEXT_ON_TRACK };
 }
 /**
  * One metric: `label [bar with "21.0%" inside]` (label quiet; the bar in the state colour), or `label 21.0%` when
