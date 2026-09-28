@@ -37,6 +37,8 @@ export class ParticipantMonitor {
   private queued: Set<string> | 'all' | null = null;
   private lastCursors: string | null = null;
   private stopped = false;
+  /** Set when stop() gave up waiting for an in-flight pass: that pass must not write anything any more. */
+  private abandoned = false;
   private readonly now: () => Date;
 
   constructor(private readonly deps: MonitorDeps) {
@@ -57,13 +59,15 @@ export class ParticipantMonitor {
 
   /**
    * Stop polling. An in-flight pass gets a short grace, then is abandoned (TD-0023: shutdown never waits out a slow
-   * probe or git sample); once stopped, a pass saves, publishes and persists nothing.
+   * probe or git sample); an abandoned pass saves, publishes and persists nothing.
    */
   async stop(): Promise<void> {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    await settleWithin(this.running, this.deps.stopGraceMs ?? DEFAULT_CONFIG.monitorStopGraceMs);
+    // Past the grace the pass is abandoned: from then on it writes nothing (the ledger may be closing). A pass that
+    // finishes within the grace still persists its results, e.g. observer cursors for the next start.
+    if (!(await settleWithin(this.running, this.deps.stopGraceMs ?? DEFAULT_CONFIG.monitorStopGraceMs))) this.abandoned = true;
   }
 
   /** Last background error (contained; the next tick retries). */
@@ -113,11 +117,11 @@ export class ParticipantMonitor {
       if (this.stopped) return;
       if (only && !only.has(p.name)) continue;
       const observed = await this.observe(p);
-      if (this.stopped) return; // abandoned by stop(): the service may be closing its ledger
+      if (this.abandoned) return; // abandoned by stop(): the service may be closing its ledger
       // Probes and transcript reads are slow: re-read the participant and apply only the observed fields to its
       // CURRENT state, and skip it if it was removed or rebound meanwhile (never overwrite a newer binding/pending).
       const current = (await this.deps.participants()).find((c) => c.name === p.name);
-      if (this.stopped) return;
+      if (this.abandoned) return;
       if (!current || current.harness !== p.harness || current.sessionId !== p.sessionId) continue;
       const next: ParticipantState = {
         ...current,
@@ -132,7 +136,7 @@ export class ParticipantMonitor {
       if (isNews || next.livenessCheckedAt !== current.livenessCheckedAt) this.deps.save(next);
       if (isNews) this.deps.publish(next);
     }
-    if (this.stopped) return;
+    if (this.abandoned) return;
     try {
       const cursors = this.deps.observer.exportCursors();
       const serialized = JSON.stringify(cursors);

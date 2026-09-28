@@ -102,3 +102,18 @@ test('Claude provider: no tap â†’ unavailable with the setup hint; a tap file â†
   writeFileSync(claudeTapPath(cfg, dir), '{not json');
   assert.equal((await provider.sample()).status, 'unavailable');
 });
+
+test('TD-0023: stop() abandons a hung provider after the grace period; nothing is published afterwards', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const events: RoomEvent[] = [];
+  const provider: AccountUsageProvider = { harness: 'codex', id: 'codex:s', sample: async () => { await gate; return ok(16); } };
+  const m = new AccountMonitor({ providers: [provider], publish: (e) => events.push(e), intervalMs: 60_000, staleAfterMs: 15 * 60_000, stopGraceMs: 30, now: () => T0 });
+  void m.refresh();
+  const t0 = Date.now();
+  await m.stop();
+  assert.ok(Date.now() - t0 < 1_000, 'shutdown does not wait out a slow daemon read');
+  release();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual([events.length, m.snapshot().length], [0, 0], 'the abandoned pass publishes and records nothing');
+});

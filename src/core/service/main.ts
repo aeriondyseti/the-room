@@ -35,7 +35,9 @@ try {
   const usage=usageObserverOptionsFrom(config);
   const activity=new ActivityReader({claudeProjectsDir:usage.claudeProjectsDir,codexSessionsDir:usage.codexSessionsDir,parsers:[claudeActivityParser,codexActivityParser],
     detailBytes:config.activityDetailBytes,windowItems:config.activityWindowItems,startBytes:config.activityStartBytes,maxLineBytes:config.activityMaxLineBytes,readBytes:config.activityReadBytes});
-  const running=await startServer(canonical,{adapters:defaultAdapters(canonical),
+  // TD-0023: shutdown abandons slow in-flight observations instead of waiting them out; once everything that matters is
+  // closed (ledger, lock, endpoint), end this detached process so abandoned work can't keep it (and its handles) alive.
+  const running=await startServer(canonical,{adapters:defaultAdapters(canonical),onClosed:()=>{process.exit(process.exitCode??0);},
     monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs,workspace:new NativeWorkspaceProvider(workspaceOptionsFrom(config))},
     activity:{reader:activity,intervalMs:config.activityPollMs},
     accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs,config.accountsStaleMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs}});
