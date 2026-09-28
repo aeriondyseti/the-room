@@ -36,7 +36,10 @@ export interface AccountUsage {
      * configured home/profile is known (a profile is not proof of account identity, so it's labelled as such).
      */
     scope: 'account' | 'profile';
-    /** Opaque, stable, non-reversible key. Never shown. */
+    /**
+     * Opaque, stable, non-reversible key. Never shown. `key === sourceKey` means "no identity evidence" (e.g. a read
+     * failure); a different key with scope 'profile' is a source-specific, unverified login identity (6.6b).
+     */
     key: string;
     /** Non-sensitive key for the source/profile (hash of harness + config home), for de-duplicating sources. */
     sourceKey: string;
