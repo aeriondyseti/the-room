@@ -184,3 +184,30 @@ test('6.11: the reset arrow is followed by a space (it renders wider than one ce
   assert.ok(text.includes('↻ 1h53m'));
   assert.doesNotMatch(text, /↻\S/, 'never glued to the time');
 });
+test('6.12 review: every window of a model bucket gets a column — a Codex model limit keeps its 5h reading (nothing dropped)', () => {
+  const spark: AccountUsage = { ...codex, status: 'ok', buckets: [
+    { id: 'codex', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 20, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 18, resetsAt: null }] },
+    { id: 'spark', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 61, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 12, resetsAt: null }] },
+  ] };
+  const text = budgetGrid([claude, spark], { width: 200, now: NOW })!.map(lineText);
+  assert.match(text[0]!, /Fable weekly +Spark 5h +Spark weekly$/, text.join('\n'));
+  assert.ok(text[2]!.includes('61.0%') && text[2]!.includes('12.0%'), 'the Spark 5h reading is shown, not dropped');
+  assert.equal(text[2]!.indexOf('61.0%') - text[0]!.indexOf('Spark 5h') < 12, true, 'under its own header');
+});
+
+test('6.12 review: empty columns take no space; inline caveats are preferred over bigger bars, else the biggest bars with the caveat wrapped', () => {
+  const g = budgetGrid([claude, codex], { width: 200, now: NOW })!.map(lineText);
+  assert.doesNotMatch(g[1]!, /%\s{5,}▓/, `no doubled gap left by an all-empty reset column:\n${g.join('\n')}`);
+  const long: AccountUsage = { ...claude, fallback: true };
+  const widest = (w: number) => budgetGrid([long], { width: w, now: NOW })!.map(lineText);
+  // Find a width where 10-cell bars fit but the long caveat only fits inline with 8-cell bars.
+  let chosen: string[] | null = null;
+  for (let w = 140; w > 60 && !chosen; w--) {
+    const t = widest(w);
+    if (t[1]!.includes('▓▓░░░░░░ ') && t[1]!.endsWith('via statusline, no model limits')) chosen = t;
+  }
+  assert.ok(chosen, 'at some width the 8-cell layout is chosen because it keeps the caveat on the row');
+  const tight = widest(72);
+  assert.ok(tight.some((l) => l.includes('▓')) || tight.every((l) => !l.includes('░')), 'values still shown');
+  assert.ok(tight.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole');
+});
