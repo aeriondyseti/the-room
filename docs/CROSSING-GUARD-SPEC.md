@@ -54,6 +54,10 @@ model considered or understood. It can know which addressed messages the snapsho
 - **Human messages:**
   - They count as addressed messages for agents: a directive must be covered before replying.
   - The human's own sends bypass the guard (`guard: 'human'`).
+- **Own messages:** a sender's own sends never count as uncovered for it, including ones it addressed to itself
+  (it wrote them), and sending never consumes or invalidates its token.
+- **Withdrawn messages** that were never exposed do not count as addressed either: a cancelled message is never
+  delivered by pull, and never blocks the recipient's sends. History keeps the tombstone.
 - **A blocked send is not a sent message.** It is audited separately (attempt id, reason, delta size) and is not shown
   as a room message.
 - **Legacy callers:** if an unguarded compatibility mode is retained, it is explicit and labelled (advisory mode,

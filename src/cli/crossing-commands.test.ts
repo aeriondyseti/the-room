@@ -131,11 +131,11 @@ test('withdraw resolves #N, passes recipients and reports each one', async (t) =
     withdraw: () => ({ messageId: 'm12', recipients: [{ recipient: 'astra', disposition: 'already_submitting' }] }),
   });
   const r = await run('withdraw', ['#12', '--recipients', '@Astra']);
-  assert.equal(r.code, 0, r.err);
+  assert.equal(r.code, 4, 'nothing was cancelled');
   const p = requests.find((x) => x.method === 'withdraw')!.params;
   assert.equal(p['messageId'], 'm12');
   assert.deepEqual(p['recipients'], ['astra']);
-  assert.match(r.out, /^Could not withdraw #12 for any recipient\./);
+  assert.match(r.out, /^Could not withdraw #12 for any remaining recipient\./);
 });
 
 test('withdraw needs exactly one message reference', async (t) => {
@@ -159,5 +159,19 @@ test('inbox --baseline is exclusive and needs a reason', async (t) => {
   assert.equal((await run('inbox', ['--baseline', 'x', '--snapshot', 's'])).code, 2);
   assert.equal((await run('inbox', ['--baseline', 'x', '--cursor', 'c'])).code, 2);
   assert.equal((await run('inbox', ['--baseline', '  '])).code, 2);
+  assert.equal(requests.length, 0);
+});
+test('withdraw --recipients all means every original recipient, and a real cancel exits 0', async (t) => {
+  const { run, requests } = await setup(t, { withdraw: () => ({ messageId: 'm-x', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }) });
+  const r = await run('withdraw', ['m-x', '--recipients', 'all']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal('recipients' in requests[0]!.params, false);
+});
+
+test('an over-long urgent reason is refused before sending (ROOM_URGENT_REASON_MAX_CHARS)', async (t) => {
+  const { run, requests } = await setup(t, {});
+  const r = await run('send', ['--to', 'astra', '--urgent', '--reason', 'x'.repeat(501), 'hi']);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /at most 500 characters/);
   assert.equal(requests.length, 0);
 });

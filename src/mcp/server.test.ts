@@ -333,3 +333,23 @@ test('room_inbox baseline: reason only, exclusive, and the page never calls it r
   assert.match(r.text, /7 earlier message\(s\) .* SKIPPED WITHOUT REVIEW/);
   assert.doesNotMatch(r.text, /\bwere read\b/);
 });
+test('room_withdraw treats "all" as every original recipient', async () => {
+  const f = fakeLink({ withdraw: () => ({ messageId: 'm-x', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }) });
+  const { call } = await connectClient(f.link);
+  await call('room_withdraw', { message_id: 'm-x', recipients: ['astra', 'all'] });
+  assert.equal('recipients' in (f.requests[0]!.params as Record<string, unknown>), false);
+});
+
+test('room_send refuses an over-long urgent reason without sending', async () => {
+  const f = fakeLink({ guarded_send: () => assert.fail('must not send') });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_send', { to: 'astra', text: 'x', urgent: true, reason: 'y'.repeat(501) });
+  assert.equal(r.isError, true);
+  assert.match(r.text, /at most 500 characters/);
+});
+
+test('room_inbox is not advertised as idempotent (each call records coverage)', async () => {
+  const { client } = await connectClient(fakeLink({}).link);
+  const tool = (await client.listTools()).tools.find((t) => t.name === 'room_inbox')!;
+  assert.equal(tool.annotations?.idempotentHint, false);
+});

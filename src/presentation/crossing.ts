@@ -26,11 +26,6 @@ export function inboxItemText(item: InboxReviewItem): string {
   return `${head}\n${note}\n${item.text}`;
 }
 
-/** The line a full-body native envelope carries; its token covers that one message and nothing else. */
-export function envelopeSnapshotLine(token: string): string {
-  return `snapshot: ${token} (covers this message only; pass it as snapshot when you reply)`;
-}
-
 /** Which client the text is for, so every hint names a call the reader can actually make. */
 export type Surface = 'mcp' | 'cli';
 const HINT = {
@@ -61,7 +56,7 @@ export function inboxPageText(page: InboxReviewPage, surface: Surface = 'mcp'): 
   lines.push(
     page.items.length === 0
       ? 'Nothing addressed to you is outside this snapshot.'
-      : `Addressed to you and not covered by your previous snapshot (${page.items.length} item(s), oldest first):`,
+      : `Addressed to you and not covered yet (${page.items.length} item(s), oldest first):`,
   );
   if (page.items.length) lines.push('', page.items.map(inboxItemText).join('\n\n'), '');
   lines.push(`snapshot: ${page.snapshot}`);
@@ -114,20 +109,20 @@ const DISPOSITION: Record<WithdrawDisposition, string> = {
   replied: 'NOT withdrawn: they already replied',
 };
 
-const CANCELLED: ReadonlySet<WithdrawDisposition> = new Set(['withdrawn', 'already_withdrawn']);
-
-/** Per-recipient withdraw results, with a headline that never overstates a partial withdraw. */
+/**
+ * Per-recipient withdraw results. The headline never overstates: it separates what THIS call cancelled from what was
+ * already withdrawn, and never calls a partial withdraw whole.
+ */
 export function withdrawText(outcome: WithdrawOutcome, seq?: number): string {
   const ref = seq === undefined ? outcome.messageId : `#${seq}`;
-  const done = outcome.recipients.filter((r) => CANCELLED.has(r.disposition)).length;
-  const total = outcome.recipients.length;
-  const head =
-    total === 0
-      ? `No recipients of ${ref} were affected.`
-      : done === total
-        ? `Withdrew ${ref} for every recipient.`
-        : done === 0
-          ? `Could not withdraw ${ref} for any recipient.`
-          : `Withdrew ${ref} for ${done} of ${total} recipients only.`;
+  const count = (d: WithdrawDisposition) => outcome.recipients.filter((r) => r.disposition === d).length;
+  const now = count('withdrawn'), before = count('already_withdrawn'), total = outcome.recipients.length;
+  const earlier = before ? ` (${before} already withdrawn earlier)` : '';
+  let head: string;
+  if (total === 0) head = `No recipients of ${ref} were affected.`;
+  else if (now === 0 && before === total) head = `${ref} was already withdrawn for every recipient; nothing changed.`;
+  else if (now + before === total) head = `Withdrew ${ref} for every recipient${earlier}.`;
+  else if (now === 0) head = `Could not withdraw ${ref} for any remaining recipient${earlier}.`;
+  else head = `Withdrew ${ref} for ${now} of ${total} recipients only${earlier}.`;
   return [head, ...outcome.recipients.map((r) => `- ${r.recipient}: ${DISPOSITION[r.disposition]}`)].join('\n');
 }
