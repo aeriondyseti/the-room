@@ -1,7 +1,7 @@
 import{test,type TestContext}from'node:test';import assert from'node:assert/strict';
 import{mkdtemp,readFile,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';import path from'node:path';
 import{spawn,execFile,type ChildProcess}from'node:child_process';import{promisify}from'node:util';import{fileURLToPath}from'node:url';
-import{RoomClient}from'../ipc/client.js';import{joinParticipant,readRegistry}from'../core/registry/registry.js';import{resolveRoomRoot}from'../core/registry/root.js';
+import{RoomClient}from'../ipc/client.js';import{joinParticipant,readRegistry}from'../core/registry/registry.js';import{resolveRoomRoot,roomGitEnvironment}from'../core/registry/root.js';
 import{stringify}from'smol-toml';
 const human={kind:'human' as const};
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -64,8 +64,8 @@ test('four-instance snapshots survive pause, add/remove/rebind and large referen
 
 test('linked worktree clients share one canonical service and ledger',async t=>{
  const {root,launch}=await fixture(t);const exec=promisify(execFile);
- await exec('git',['init','--quiet',root]);await exec('git',['-C',root,'-c','user.name=Fixture','-c','user.email=fixture@invalid','commit','--allow-empty','-m','fixture']);
- const worktree=path.join(root,'linked');await exec('git',['-C',root,'worktree','add','--quiet','-b','fixture-branch',worktree]);
+ await exec('git',['init','--quiet',root],{env:roomGitEnvironment(process.env),windowsHide:true});await exec('git',['-C',root,'-c','user.name=Fixture','-c','user.email=fixture@invalid','commit','--allow-empty','-m','fixture'],{env:roomGitEnvironment(process.env),windowsHide:true});
+ const worktree=path.join(root,'linked');await exec('git',['-C',root,'worktree','add','--quiet','-b','fixture-branch',worktree],{env:roomGitEnvironment(process.env),windowsHide:true});
  assert.equal(await resolveRoomRoot(worktree),await resolveRoomRoot(root));
  const {client}=await launch('offline');const linked=await RoomClient.connect(await resolveRoomRoot(worktree),{client:'cli',autoStart:false});
  try{await client.request('send',{caller:human,to:['human'],body:'shared across worktrees'});assert.equal((await linked.request('read',{})).items[0]!.message.body,'shared across worktrees');}finally{linked.close();}

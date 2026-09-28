@@ -1,3 +1,4 @@
+import { roomGitEnvironment } from '../core/registry/root.js';
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
@@ -16,7 +17,7 @@ const a='00000000-0000-4000-8000-000000000001', b='00000000-0000-4000-8000-00000
 const agent=(id=a,name:string|null=null):Caller=>({kind:'agent',native:{harness:'codex',sessionId:id,source:'codex-env'},declaredName:name});
 async function setup(t:TestContext){
   const root=await mkdtemp(path.join(tmpdir(),'room-cli-'));
-  await promisify(execFile)('git',['init','--quiet',root]);
+  await promisify(execFile)('git',['init','--quiet',root],{env:roomGitEnvironment(process.env),windowsHide:true});
   const adapter:DeliveryAdapter={harness:'codex',maxEnvelopeChars:24000,probe:async()=>({liveness:'unknown',activity:'unknown'}),submit:async()=>({status:'submitted',evidence:{kind:'codex-queue',nativeId:'fixture'}})};
   const server=await startServer(root,{adapters:[adapter]});
   t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});

@@ -1,3 +1,4 @@
+import { roomGitEnvironment } from '../registry/root.js';
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -164,7 +165,7 @@ test('cachedStartTime caches successes for the TTL and never caches failures', a
 // ---- integration: the real service with the monitor enabled -------------------------------------------------
 
 const repo = mkdtempSync(join(tmpdir(), 'vp-monitor-'));
-execFileSync('git', ['init', '-q', repo]);
+execFileSync('git', ['init', '-q', repo], { env: roomGitEnvironment(process.env), windowsHide: true });
 after(() => rmSync(repo, { recursive: true, force: true }));
 
 test('integration: after join, who and live events carry observed liveness, activity and usage', { timeout: 20_000 }, async () => {
@@ -196,7 +197,7 @@ test('integration: after join, who and live events carry observed liveness, acti
 
 test('integration: observer cursors survive a service restart', { timeout: 20_000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'vp-monitor-cursors-'));
-  execFileSync('git', ['init', '-q', root]);
+  execFileSync('git', ['init', '-q', root], { env: roomGitEnvironment(process.env), windowsHide: true });
   try {
     const exported = [{ harness: 'codex' as const, sessionId: 't1', path: 'rollout.jsonl', offset: 42, counters: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 }, context: null, lastAt: null, lastMessageId: null }];
     const first = await startServer(root, { adapters: [], monitor: { observer: { snapshot: async () => usageOk, exportCursors: () => exported, restoreCursors: () => {} }, intervalMs: 60_000 } });

@@ -7,7 +7,8 @@ const exec = promisify(execFile);
 
 // Git hooks and parent tools can export repository-local variables that override `git -C`.
 // Keep user/global configuration and PATH, but bind discovery to this caller's cwd instead.
-// List qualified with `git rev-parse --local-env-vars`; numbered config entries accompany COUNT.
+// List qualified with Git 2.53.0.windows.1 `rev-parse --local-env-vars`; numbered entries accompany COUNT.
+// Keep GIT_CEILING_DIRECTORIES / GIT_DISCOVERY_ACROSS_FILESYSTEM: these are user discovery policy.
 const localGitVariables = new Set([
   'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
   'GIT_OBJECT_DIRECTORY', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE',

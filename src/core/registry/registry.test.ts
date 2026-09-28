@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { resolveRoomRoot } from './root.js';
+import { resolveRoomRoot, roomGitEnvironment } from './root.js';
 import { joinParticipant, readRegistry, parseRegistry, migrateLegacyRegistry } from './registry.js';
 const one = { harness: 'codex', session_id: '00000000-0000-4000-8000-000000000001' } as const;
 const two = { harness: 'claude', session_id: '00000000-0000-4000-8000-000000000002' } as const;
@@ -59,7 +59,7 @@ test('legacy migration preserves both native identities and makes an exact backu
 test('main checkout and linked worktree resolve to the same root', async t => {
   const base = await fixture(t); const repo = path.join(base, 'repo'); const linked = path.join(base, 'linked');
   await mkdir(repo);
-  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', windowsHide: true });
+  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', windowsHide: true, env: roomGitEnvironment(process.env) });
   git('init'); git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '--allow-empty', '-m', 'fixture');
   git('worktree', 'add', '-b', 'linked', linked);
   assert.equal(await resolveRoomRoot(repo), await resolveRoomRoot(linked));
