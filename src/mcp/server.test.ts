@@ -58,7 +58,7 @@ const inboxPage = (over: Record<string, unknown> = {}) => ({ items: [{ kind: 'fu
 test('tools are listed with descriptions', async () => {
   const { client } = await connectClient(fakeLink({}).link);
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-  assert.deepEqual(tools, ['room_inbox', 'room_join', 'room_read', 'room_send', 'room_who', 'room_withdraw']);
+  assert.deepEqual(tools, ['room_inbox', 'room_join', 'room_kick', 'room_read', 'room_rename', 'room_send', 'room_who', 'room_withdraw']);
 });
 
 test('reply_to defaults to the original sender while a missing address still fails',async()=>{
@@ -359,4 +359,32 @@ test('room_withdraw with named recipients never claims the whole message', async
   const r = await call('room_withdraw', { message_id: 'm-x', recipients: 'astra' });
   assert.match(r.text, /^Withdrew m-x for every requested recipient\./);
   assert.match(r.text, /other recipients are unchanged/);
+});
+test('room_rename renames the caller\'s own binding and explains the consequences', async () => {
+  const f = fakeLink({ rename: (p) => ({ oldName: 'astra', registration: { name: (p as Params<'rename'>).newName, harness: 'codex', sessionId: THREAD }, relabeled: 1, noticeId: 'm-n' }) });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_rename', { new_name: ' @Luna ' });
+  assert.equal(r.isError, false, r.text);
+  const p = f.requests[0]!.params as Params<'rename'>;
+  assert.equal(f.requests[0]!.method, 'rename');
+  assert.equal(p.newName, '@luna'.replace('@', ''));
+  assert.equal('oldName' in p, false, 'agents never supply oldName');
+  assert.match(r.text, /You are now "luna" \(was "astra"; same session\)/);
+  assert.match(r.text, /1 queued delivery relabelled/);
+});
+
+test('room_kick is a vote: opens or joins a proposal, or reports an executed removal', async () => {
+  const proposal = { id: 'k1', target: { name: 'ghost', harness: 'codex', sessionId: 'z' }, reason: 'thread gone', openedAt: 'x', expiresAt: new Date(Date.now() + 600_000).toISOString(), voters: [{ name: 'astra', binding: { harness: 'codex', sessionId: THREAD }, votedAt: 'x' }], excluded: [], status: 'open' };
+  const f = fakeLink({ kick: (p) => ((p as Params<'kick'>).reason ? { status: 'open', proposal, vote: 'recorded' } : { status: 'executed', proposal, removed: proposal.target, cancelled: 2, noticeId: 'm-n', vote: 'recorded' }) });
+  const { call } = await connectClient(f.link);
+  const opened = await call('room_kick', { name: '@Ghost', reason: ' thread gone ' });
+  assert.equal(opened.isError, false, opened.text);
+  const p = f.requests[0]!.params as Params<'kick'>;
+  assert.equal(p.name, 'ghost');
+  assert.equal(p.reason, 'thread gone');
+  assert.match(opened.text, /Your vote to remove "ghost" is recorded/);
+  const executed = await call('room_kick', { name: 'ghost' });
+  assert.equal('reason' in (f.requests[1]!.params as Record<string, unknown>), false, 'an omitted reason is not sent');
+  assert.match(executed.text, /^Removed "ghost" from the room \(by unanimous consent\)/);
+  assert.match(executed.text, /2 queued deliveries to it cancelled with a "kicked" tombstone/);
 });

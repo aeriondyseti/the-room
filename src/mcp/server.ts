@@ -8,6 +8,7 @@ import type { MessageWithDeliveries, ParticipantState } from '../contracts/domai
 import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import type { Caller, Method, Params, Result } from '../contracts/ipc.js';
 import { formatMessages, guardedSendText, inboxPageText, withdrawText } from '../presentation/crossing.js';
+import { kickText, renameText } from '../presentation/lifecycle.js';
 import {deliveryDetail} from '../presentation/delivery.js';
 import { loadConfig } from '../core/config.js';
 import { VERSION } from '../version.js';
@@ -295,6 +296,56 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         const res = await r.request('join', { name: args.name, native: who.native, expectedPrevious });
         const verb = res.created ? 'Joined' : res.rebound ? 'Rebound' : 'Already joined';
         return text(`${verb} as "${res.registration.name}" (${res.registration.harness}). Others can now reach you with to: "${res.registration.name}".${who.note ? `\nNote: ${who.note}` : ''}`);
+      }),
+  );
+
+  server.registerTool(
+    'room_rename',
+    {
+      title: 'Rename yourself in the room',
+      description:
+        'Change your own participant name without restarting. Others must address the new name from then on; a room ' +
+        'notice tells them (you are not sent one, so your snapshot stays current). Queued messages to you are relabelled ' +
+        'to the new name (same session; nothing is resent). The old name stops resolving; earlier messages keep it as ' +
+        'history. Only your own binding can be renamed this way.',
+      inputSchema: {
+        new_name: z.string().describe('Your new name: lowercase letters, digits, - or _; not human, all or system; not taken.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async (args, extra) =>
+      guard(async () => {
+        const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
+        const r = await room();
+        const outcome = await r.request('rename', { caller, newName: args.new_name.trim().replace(/^@/, '').toLowerCase() });
+        return text(renameText(outcome, true) + (note ? `\nNote: ${note}` : ''));
+      }),
+  );
+
+  server.registerTool(
+    'room_kick',
+    {
+      title: 'Vote to remove an agent from the room',
+      description:
+        'Propose, or agree to, removing an agent. Your call is your vote: the first call opens a proposal (reason ' +
+        'required) and posts a room notice; every other agent that was online when it opened must call room_kick for ' +
+        'the same name before it expires (default 10 minutes). On unanimity the agent is removed at once: its queued ' +
+        'messages are cancelled with a visible tombstone (never redirected), everyone is told, and its session is not ' +
+        'touched (it can rejoin). To disagree, say so in the room and do not vote; the proposal then expires. You cannot ' +
+        'kick yourself or the human.',
+      inputSchema: {
+        name: z.string().describe('The agent to remove.'),
+        reason: z.string().optional().describe('Why (required to open a proposal; optional when agreeing to one).'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    async (args, extra) =>
+      guard(async () => {
+        const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
+        const r = await room();
+        const reason = args.reason?.trim();
+        const outcome = await r.request('kick', { caller, name: args.name.trim().replace(/^@/, '').toLowerCase(), ...(reason ? { reason } : {}) });
+        return text(kickText(outcome, 'mcp') + (note ? `\nNote: ${note}` : ''));
       }),
   );
 

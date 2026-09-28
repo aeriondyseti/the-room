@@ -13,8 +13,9 @@ import { MAX_FRAME_BYTES, type Caller } from '../contracts/ipc.js';
 import { sanitize } from '../tui/format.js';
 import {formatResult} from './format.js';
 import {guardedSendText, inboxPageText, withdrawText} from '../presentation/crossing.js';
+import {kickText, renameText} from '../presentation/lifecycle.js';
 
-export const COMMANDS = ['send','reply','read','inbox','withdraw','who','join','doctor','pause','resume','retry','shutdown','migrate'];
+export const COMMANDS = ['send','reply','read','inbox','withdraw','rename','kick','who','join','doctor','pause','resume','retry','shutdown','migrate'];
 export const COMMAND_HELP = `room send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
           [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--client-message-id KEY] [--file PATH | --stdin | TEXT...]
@@ -23,6 +24,8 @@ room reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revi
 room read [ID|#N] [--after N] [--limit N]
 room inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
 room withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
+room rename NEW [--as NAME]            (an agent renames itself)   |  room rename OLD NEW   (the human renames anyone)
+room kick NAME [--reason TEXT] [--as NAME]   (an agent's call is its vote; the human's call removes at once)
 room who
 room join --as NAME [--rebind]
 room doctor
@@ -59,7 +62,7 @@ export interface CommandDeps {
 const flags: Record<string, string[]> = {
   send:['as','to','reply-to','client-message-id','file','stdin','snapshot','urgent','reason','revises'],
   reply:['as','to','client-message-id','file','stdin','snapshot','urgent','reason','revises'],
-  read:['after','limit'], inbox:['as','snapshot','cursor','limit','baseline'], withdraw:['as','recipients'], who:[],
+  read:['after','limit'], inbox:['as','snapshot','cursor','limit','baseline'], withdraw:['as','recipients'], rename:['as'], kick:['as','reason'], who:[],
   join:['as','rebind'], doctor:[], pause:['resend-stop'], resume:[], retry:['confirm-uncertain'], shutdown:[], migrate:[],
 };
 const booleans = new Set(['json','stdin','rebind','resend-stop','confirm-uncertain','urgent']);
@@ -105,7 +108,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
   try {
     const {options:o,positional:p}=parse(argv,command); json=!!o.json;
     const text=(key:string)=>typeof o[key]==='string'?o[key] as string:undefined;
-    if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'?2:command==='read'||command==='withdraw'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
+    if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'||command==='rename'?2:command==='read'||command==='withdraw'||command==='kick'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
     const cwd=deps.cwd??process.cwd(), config=loadConfig(deps.env??process.env);
     const root=await resolveRoomRoot(cwd,config.roomRoot??undefined);
     const identify=deps.identify??(name=>cliCaller(name,{
@@ -180,6 +183,26 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       out(json?JSON.stringify(outcome):sanitize(withdrawText(outcome,seq?Number(seq[1]):undefined,selected)));
       // 4 when this call cancelled nothing (too late, in flight, or already withdrawn), as with a refused send.
       return outcome.recipients.some(r=>r.disposition==='withdrawn')?0:4;
+    }
+    if(command==='rename'){
+      // Agents: `rename NEW` (their own binding). The human: `rename OLD NEW`.
+      const names=p.map(n=>n.replace(/^@/,'').toLowerCase());
+      if(caller.kind==='human'){
+        if(names.length!==2)throw new RoomError('bad_request','As the human, name the agent and its new name: room rename OLD NEW.');
+        const outcome=await link.request('rename',{caller,oldName:names[0]!,newName:names[1]!});
+        out(json?JSON.stringify(outcome):sanitize(renameText(outcome,false)));return 0;
+      }
+      if(names.length!==1)throw new RoomError('bad_request','Give your new name: room rename NEW (agents rename only themselves).');
+      const outcome=await link.request('rename',{caller,newName:names[0]!});
+      out(json?JSON.stringify(outcome):sanitize(renameText(outcome,true)));return 0;
+    }
+    if(command==='kick'){
+      if(p.length!==1)throw new RoomError('bad_request','kick requires the agent name: room kick NAME [--reason TEXT].');
+      const reason=text('reason')?.trim();
+      const outcome=await link.request('kick',{caller,name:p[0]!.replace(/^@/,'').toLowerCase(),...(reason?{reason}:{})});
+      out(json?JSON.stringify(outcome):sanitize(kickText(outcome,'cli')));
+      // 4 when this call changed nothing (not a voter, the target, or a repeated vote), as with a refused send.
+      return outcome.status==='executed'||outcome.vote==='recorded'?0:4;
     }
     if(command==='join') {
       const name=text('as');if(!name)throw new RoomError('bad_request','join requires --as NAME.');

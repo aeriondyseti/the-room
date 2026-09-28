@@ -180,7 +180,8 @@ test('Tab completes the highlighted command; ↑/↓ move the highlight; history
   await waitFor(t.frame, /Message everyone/);
   await t.type('/re');
   await waitFor(t.frame, /\/retry #N/);
-  await t.type('\u001B[B'); // down → /resume (catalogue order: restart, resume, retry)
+  await t.type('\u001B[B'); // down → /restart (catalogue order since 8.4: rename, restart, resume, retry)
+  await t.type('\u001B[B'); // down → /resume
   await t.type(K.tab);
   await waitFor(t.frame, /› \/resume/);
   await t.type(K.esc);
