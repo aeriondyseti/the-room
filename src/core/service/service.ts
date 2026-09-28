@@ -128,7 +128,7 @@ export class RoomService {
           let replyDelivery=null;
           if(!result.deduplicated&&result.message.replyTo&&caller.sender.kind==='agent'){
             const prior=this.ledger.deliveries(result.message.replyTo).find(d=>d.recipient===caller.sender.name&&`${d.target.harness}:${d.target.sessionId}`===caller.scope);
-            if(prior)replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
+            if(prior&&prior.state!=='withdrawn')replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
           }
           return{result,replyDelivery,rejected:null};
         });

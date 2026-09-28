@@ -239,7 +239,9 @@ export class Ledger {
       const delivery = this.delivery(messageId, recipient);
       const frozen = JSON.stringify([delivery.messageId, delivery.recipient, delivery.target]);
       const oldAttempts = structuredClone(delivery.attempts);
+      const withdrawn=delivery.state==='withdrawn'?JSON.stringify(delivery):null;
       update(delivery);
+      if(withdrawn!==null&&JSON.stringify(delivery)!==withdrawn)throw new RoomError('invalid_state','Withdrawn deliveries are terminal.');
       if (frozen !== JSON.stringify([delivery.messageId, delivery.recipient, delivery.target])) throw new RoomError('invalid_state', 'Delivery target snapshots are immutable.');
       this.validateAttempts(oldAttempts, delivery.attempts);
       delivery.updatedAt = new Date().toISOString();
