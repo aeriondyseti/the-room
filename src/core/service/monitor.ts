@@ -52,12 +52,22 @@ export class ParticipantMonitor {
     await this.running;
   }
 
-  /** Refresh everyone (or one participant). Overlapping calls share the in-flight refresh. */
+  /** Last background error (contained; the next tick retries). */
+  lastError: Error | null = null;
+
+  /**
+   * Refresh everyone (or one participant). Overlapping calls share the in-flight refresh. Never rejects: it runs from
+   * timers and fire-and-forget calls, so a transient DB/registry error must not become an unhandled rejection.
+   */
   refresh(only?: string): Promise<void> {
     if (this.running) return this.running;
-    this.running = this.run(only).finally(() => {
-      this.running = null;
-    });
+    this.running = this.run(only)
+      .catch((err: unknown) => {
+        this.lastError = err instanceof Error ? err : new Error(String(err));
+      })
+      .finally(() => {
+        this.running = null;
+      });
     return this.running;
   }
 
@@ -71,8 +81,19 @@ export class ParticipantMonitor {
     for (const p of participants) {
       if (this.stopped) return;
       if (only && p.name !== only) continue;
-      const next = await this.observe(p);
-      if (changed(p, next)) {
+      const observed = await this.observe(p);
+      // Probes and transcript reads are slow: re-read the participant and apply only the observed fields to its
+      // CURRENT state, and skip it if it was removed or rebound meanwhile (never overwrite a newer binding/pending).
+      const current = (await this.deps.participants()).find((c) => c.name === p.name);
+      if (!current || current.harness !== p.harness || current.sessionId !== p.sessionId) continue;
+      const next: ParticipantState = {
+        ...current,
+        liveness: observed.liveness,
+        activity: observed.activity,
+        usage: observed.usage,
+        livenessCheckedAt: observed.livenessCheckedAt,
+      };
+      if (changed(current, next)) {
         this.deps.save(next);
         this.deps.publish(next);
       }

@@ -65,6 +65,48 @@ test('failures degrade honestly: probe error → unknown, usage error → unavai
   assert.equal(s.usage?.context, null, 'never a fabricated zero');
 });
 
+test('a rebind or pending change during a slow probe is never overwritten by the stale snapshot', async () => {
+  let state = base({ pending: 0 });
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const published: ParticipantState[] = [];
+  const m = new ParticipantMonitor({
+    ...harness().deps,
+    participants: async () => [state],
+    adapters: [adapter(async () => { await gate; return { liveness: 'online', activity: 'busy' }; })],
+    save: (s) => { state = s; },
+    publish: (s) => published.push(s),
+  });
+  const run = m.refresh();
+  state = { ...state, pending: 3 }; // a delivery was queued while the probe was running
+  release();
+  await run;
+  assert.equal(published[0]?.pending, 3, 'observed fields merged onto the CURRENT state');
+  assert.equal(published[0]?.liveness, 'online');
+
+  let rebound = base();
+  let release2!: () => void;
+  const gate2 = new Promise<void>((r) => { release2 = r; });
+  const published2: ParticipantState[] = [];
+  const m2 = new ParticipantMonitor({
+    ...harness().deps,
+    participants: async () => [rebound],
+    adapters: [adapter(async () => { await gate2; return { liveness: 'offline', activity: 'unknown' }; })],
+    publish: (s) => published2.push(s),
+  });
+  const run2 = m2.refresh();
+  rebound = base({ sessionId: 'new-thread' }); // rejoined under a new session meanwhile
+  release2();
+  await run2;
+  assert.equal(published2.length, 0, 'the old binding\'s observation is dropped');
+});
+
+test('background errors are contained (refresh never rejects)', async () => {
+  const m = new ParticipantMonitor({ ...harness().deps, save: () => { throw new Error('database is locked'); } });
+  await assert.doesNotReject(m.refresh());
+  assert.match(m.lastError?.message ?? '', /database is locked/);
+});
+
 test('cursors are restored on construction; corrupt cursors never block', () => {
   let restored: unknown = null;
   const h = harness({ loadCursors: () => [{ x: 1 }] as never, observer: { snapshot: async () => usageOk, exportCursors: () => [], restoreCursors: (c) => { restored = c; } } });
