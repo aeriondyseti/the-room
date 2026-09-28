@@ -29,11 +29,11 @@ export class RoomService {
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   /** With a workspace provider, every participant reports workspace (null = not observed yet), so /who can say so. */
   private workspaceEnabled=false;
-  enableMonitor(observer:MonitorDeps['observer'],intervalMs:number,workspace?:MonitorDeps['workspace']):void{
+  enableMonitor(observer:MonitorDeps['observer'],intervalMs:number,workspace?:MonitorDeps['workspace'],stopGraceMs?:number):void{
     this.workspaceEnabled=!!workspace;
     this.monitor=new ParticipantMonitor({participants:()=>this.participants(),adapters:this.adapters,observer,...(workspace?{workspace}:{}),
       save:state=>this.ledger.putParticipant(state),publish:participant=>this.publish({type:'participant.updated',participant}),
-      loadCursors:()=>this.ledger.cursor<ObserverCursor[]>(OBSERVER_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(OBSERVER_CURSORS,cursors),intervalMs});
+      loadCursors:()=>this.ledger.cursor<ObserverCursor[]>(OBSERVER_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(OBSERVER_CURSORS,cursors),intervalMs,...(stopGraceMs!==undefined?{stopGraceMs}:{})});
   }
   /** Observe each participant's transcript activity (6.1; presentation only, never feeds delivery or state). */
   enableActivity(reader:ActivityReader,intervalMs:number):void{
@@ -41,8 +41,8 @@ export class RoomService {
       loadCursors:()=>this.ledger.cursor<ActivityCursorState[]>(ACTIVITY_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(ACTIVITY_CURSORS,cursors),intervalMs});
   }
   /** Subscription usage once per account (6.6; presentation only, read-only providers). */
-  enableAccounts(providers:AccountUsageProvider[],intervalMs:number,staleAfterMs:number):void{
-    this.accounts=new AccountMonitor({providers,publish:event=>this.publish(event),intervalMs,staleAfterMs});
+  enableAccounts(providers:AccountUsageProvider[],intervalMs:number,staleAfterMs:number,stopGraceMs?:number):void{
+    this.accounts=new AccountMonitor({providers,publish:event=>this.publish(event),intervalMs,staleAfterMs,...(stopGraceMs!==undefined?{stopGraceMs}:{})});
   }
   start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
   async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}

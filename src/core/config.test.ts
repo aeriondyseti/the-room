@@ -42,3 +42,9 @@ test('invalid numeric overrides throw instead of being ignored', () => {
   assert.equal(c.registryLockTimeoutMs, 250);
   assert.equal(c.registryLockPollMs, 5);
 });
+
+test('TD-0023: the shutdown grace is a tunable (ROOM_MONITOR_STOP_GRACE_MS)', () => {
+  assert.equal(loadConfig({}).monitorStopGraceMs, 500);
+  assert.equal(loadConfig({ ROOM_MONITOR_STOP_GRACE_MS: '5000' }).monitorStopGraceMs, 5000);
+  assert.throws(() => loadConfig({ ROOM_MONITOR_STOP_GRACE_MS: 'soon' }), /ROOM_MONITOR_STOP_GRACE_MS/);
+});

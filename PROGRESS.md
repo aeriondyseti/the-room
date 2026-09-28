@@ -71,6 +71,7 @@ their own rows**.
 | 6.6 | Subscription usage + top bar | Claude (+ Astra: Codex source) | ✅ | **v0.3.0** · review: reviews/6.6.md, reviews/6.6-codex.md · top bar (participant chips) replaces the sidebar; per-account 5h + weekly (+ Claude Fable weekly) with resets; Codex via read-only daemon; Claude via statusline tap or opt-in usage endpoint (ROOM_CLAUDE_USAGE_API=on) |
 | 6.7 | Workspace in the top bar (model, cwd, git) | Claude (+ Astra: workspace provider) | ✅ | **v0.4.0** · review: reviews/6.7.md · chip shows model + branch*dirty; /who shows cwd (source), worktree, branch, staged/modified/untracked, ahead/behind and observation age; read-only, bounded git sampling |
 | 6.8 | Layout toggle (top ⇄ left) + usage bars and group colours | Claude (+ Astra: ccstatusline research/spec) | ✅ | **v0.5.0** · review: reviews/6.8.md · ADR-0009 · /layout, Ctrl+B, remembered in .room/tui.json; ccstatusline 10-cell slider bars; fixed group colours; honest n/a/stale/! in both layouts |
+| 6.9 | Bounded shutdown (TD-0023) | Claude | ✅ | **v0.5.1** · review: reviews/6.9.md · observers get a short grace (ROOM_MONITOR_STOP_GRACE_MS), abandoned passes never write, detached service exits once closed; fixes the recurring shutdown test flake |
 | 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
 | 6.3 | Tech-debt triage | both | ⬜ | |
 

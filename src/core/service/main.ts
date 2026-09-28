@@ -37,10 +37,10 @@ try {
     detailBytes:config.activityDetailBytes,windowItems:config.activityWindowItems,startBytes:config.activityStartBytes,maxLineBytes:config.activityMaxLineBytes,readBytes:config.activityReadBytes});
   // TD-0023: shutdown abandons slow in-flight observations instead of waiting them out; once everything that matters is
   // closed (ledger, lock, endpoint), end this detached process so abandoned work can't keep it (and its handles) alive.
-  const running=await startServer(canonical,{adapters:defaultAdapters(canonical),onClosed:()=>{process.exit(process.exitCode??0);},
-    monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs,workspace:new NativeWorkspaceProvider(workspaceOptionsFrom(config))},
+  const running=await startServer(canonical,{adapters:defaultAdapters(canonical),onClosed:(cleanupError)=>{if(cleanupError)console.error(`room service: shutdown cleanup failed: ${(cleanupError as Error).message??String(cleanupError)}`);process.exit(cleanupError?1:process.exitCode??0);},
+    monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs,workspace:new NativeWorkspaceProvider(workspaceOptionsFrom(config)),stopGraceMs:config.monitorStopGraceMs},
     activity:{reader:activity,intervalMs:config.activityPollMs},
-    accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs,config.accountsStaleMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs}});
+    accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs,config.accountsStaleMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs,stopGraceMs:config.monitorStopGraceMs}});
   for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>{void running.close().then(()=>{process.exitCode=0;});});
 }catch(error){
   // A competing auto-start won the OS bind. Its clients will find that service during readiness probes.
