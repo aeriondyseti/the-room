@@ -76,3 +76,37 @@ test('retry after recipient removal returns the original snapshotted delivery',a
  assert.equal(retry.message.id,first.message.id);assert.equal(retry.deduplicated,true);
  assert.equal(retry.deliveries[0]!.target.sessionId,id);
 });
+
+test('large replay drains without dropping the connection or losing live catch-up events',async t=>{
+ const {root,server,client}=await setup(t);await client.request('join',{name:'astra',native});
+ for(let i=0;i<12;i++)await client.request('send',{...send,body:`${i}:`+'x'.repeat(1_000_000)});
+ const subscriber=await RoomClient.connect(root,{client:'tui',autoStart:false});t.after(()=>subscriber.close());
+ const seen:number[]=[];subscriber.onEvent(e=>{if(e.type==='message.created')seen.push(e.message.seq);});
+ const replaying=subscriber.request('subscribe',{afterSeq:0});
+ await client.request('send',{...send,body:'live during replay'});
+ await replaying;await subscriber.request('who',{});
+ assert.deepEqual(seen,Array.from({length:13},(_,i)=>i+1));
+});
+test('hello waits until initialization and event forwarding are complete',async t=>{
+ const root=await fixture(t);let release!:()=>void;let entered!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;});const bound=new Promise<void>(resolve=>{entered=resolve;});
+ const starting=startServer(root,{beforeReady:async()=>{entered();await gate;}});await bound;
+ const connecting=RoomClient.connect(root,{client:'cli',autoStart:false});
+ const premature=await Promise.race([connecting.then(()=>true),new Promise<boolean>(resolve=>setTimeout(()=>resolve(false),20))]);
+ assert.equal(premature,false);release();const server=await starting;const client=await connecting;
+ t.after(async()=>{client.close();await server.close();await rm(root,{recursive:true,force:true});});
+ const events:RoomEvent[]=[];client.onEvent(e=>events.push(e));await client.request('subscribe',{});
+ await client.request('join',{name:'astra',native});await client.request('send',send);
+ assert.ok(events.some(e=>e.type==='message.created'));
+});
+test('shutdown retains exclusive ownership until active work has drained and ledger is closed',async t=>{
+ const {root,server,client}=await setup(t);let release!:()=>void;let entered!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{entered=resolve;});
+ const original=server.service.handle.bind(server.service);
+ server.service.handle=async(req,kind)=>{if(req.method==='who'){entered();await gate;}return original(req,kind);};
+ const inFlight=client.request('who',{}).catch(()=>null);await waiting;
+ const closing=server.close();await new Promise(resolve=>setImmediate(resolve));
+ await assert.rejects(startServer(root),{code:'EADDRINUSE'});
+ release();await inFlight;await closing;
+ const successor=await startServer(root);await successor.close();
+});

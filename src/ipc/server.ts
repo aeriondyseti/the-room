@@ -11,10 +11,10 @@ import { VERSION } from '../version.js';
 import { endpointFor } from './endpoint.js';
 
 export interface RunningServer { service:RoomService; pid:number; close():Promise<void> }
-export async function startServer(root:string):Promise<RunningServer> {
+export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>} = {}):Promise<RunningServer> {
   await mkdir(path.join(root,'.room'),{recursive:true});
   const endpoint=endpointFor(root);const nonce=randomUUID();const lock=path.join(root,'.room','service.lock');
-  const sockets=new Set<Socket>();const active=new Set<Promise<unknown>>();const subscribed=new Set<Socket>();let service:RoomService;let closing:Promise<void>|null=null;
+  const sockets=new Set<Socket>();const active=new Set<Promise<unknown>>();const subscribed=new Set<Socket>();const replaying=new Map<Socket,RoomEvent[]>();let service:RoomService;let closing:Promise<void>|null=null;let stopping=false;let startupError:unknown;let signalReady!:()=>void;const ready=new Promise<void>(resolve=>{signalReady=resolve;});
   const send=(socket:Socket,frame:Frame)=>{
     if(socket.destroyed)return;
     const data=encodeFrame(frame);
@@ -25,11 +25,12 @@ export async function startServer(root:string):Promise<RunningServer> {
   const event=(socket:Socket,value:RoomEvent)=>{try{send(socket,{v:1,type:'event',event:value});}catch{socket.destroy();}};
   const server=createServer(socket=>{
     sockets.add(socket);socket.setEncoding('utf8');const decoder=new FrameDecoder();let client:ClientKind|null=null;let serial=Promise.resolve();
-    socket.on('error',()=>{});socket.on('close',()=>{sockets.delete(socket);subscribed.delete(socket);});
+    socket.on('error',()=>{});socket.on('close',()=>{sockets.delete(socket);subscribed.delete(socket);replaying.delete(socket);});
     const process=async(frame:Frame)=>{
       if(frame.type!=='request'){socket.destroy();return;}
       try {
-        if(closing)throw new RoomError('service_unavailable','Room service is shutting down.');
+        await ready;if(startupError)throw startupError;
+        if(stopping)throw new RoomError('service_unavailable','Room service is shutting down.');
         const p=record(frame.params);let result:unknown;
         if(frame.method==='hello') {
           if(client!==null)throw new RoomError('invalid_state','Connection already initialized.');
@@ -40,10 +41,27 @@ export async function startServer(root:string):Promise<RunningServer> {
           if(client===null)throw new RoomError('invalid_state','Send hello before room requests.');
           if(frame.method==='subscribe') {
             if(subscribed.has(socket))throw new RoomError('invalid_state','Connection is already subscribed.');
-            let cursor=integer(p.afterSeq,'afterSeq',0);let page;
-            // Synchronous replay and subscribe registration have no event-loop gap.
-            do {page=service.ledger.list(cursor,loadConfig().readPageSize);for(const item of page.items){event(socket,{type:'message.created',...item});cursor=item.message.seq;}} while(page.hasMore&&!socket.destroyed);
-            subscribed.add(socket);result={subscribed:true,lastSeq:cursor};
+            let cursor=integer(p.afterSeq,'afterSeq',0);
+            const cutoff=service.ledger.list(null,1).lastSeq;
+            const buffered:RoomEvent[]=[];replaying.set(socket,buffered);
+            const replay=async(value:RoomEvent)=>{
+              event(socket,value);
+              if(socket.destroyed)throw new RoomError('service_unavailable','Subscriber disconnected during replay.');
+              if(socket.writableNeedDrain)await new Promise<void>((resolve,reject)=>{
+                const closed=()=>{socket.removeListener('drain',drained);reject(new RoomError('service_unavailable','Subscriber closed during replay.'));};
+                const drained=()=>{socket.removeListener('close',closed);resolve();};
+                socket.once('close',closed);socket.once('drain',drained);
+              });
+            };
+            try {
+              while(cursor<cutoff&&!socket.destroyed){
+                const page=service.ledger.list(cursor,loadConfig().readPageSize);
+                if(!page.items.length)break;
+                for(const item of page.items){if(item.message.seq>cutoff)break;await replay({type:'message.created',...item});cursor=item.message.seq;}
+              }
+              while(buffered.length&&!socket.destroyed){const next=buffered.shift()!;await replay(next);if(next.type==='message.created')cursor=Math.max(cursor,next.message.seq);}
+              subscribed.add(socket);result={subscribed:true,lastSeq:Math.max(cursor,cutoff)};
+            }finally{replaying.delete(socket);}
           } else {const operation=service.handle(frame as RequestFrame,client);active.add(operation);try{result=await operation;}finally{active.delete(operation);}}
         }
         send(socket,{v:1,type:'response',id:frame.id,ok:true,result} as Frame);
@@ -70,20 +88,32 @@ export async function startServer(root:string):Promise<RunningServer> {
   await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(endpoint,()=>{server.removeListener('error',reject);resolve();});});
   const close=():Promise<void>=>{
     if(closing)return closing;
+    stopping=true;
     closing=(async()=>{
       for(const socket of subscribed)event(socket,{type:'service.stopping',reason:'shutdown'});
-      for(const socket of sockets)socket.end();
-      await new Promise<void>(resolve=>{server.close(()=>resolve());for(const socket of sockets)socket.destroySoon();});
+      for(const socket of sockets)socket.destroySoon();
+      // Keep the endpoint bound while old operations/storage still exist. New hello calls are refused.
       await Promise.allSettled(active);
       service?.close();
-      try {const owner=JSON.parse(await readFile(lock,'utf8')) as {nonce?:string};if(owner.nonce===nonce)await unlink(lock);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+      let cleanupError:unknown;
+      try {const owner=JSON.parse(await readFile(lock,'utf8')) as {nonce?:string};if(owner.nonce===nonce)await unlink(lock);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')cleanupError=error;}
+      await new Promise<void>(resolve=>{server.close(()=>resolve());for(const socket of sockets)socket.destroy();});
+      if(cleanupError)throw cleanupError;
     })();return closing;
   };
   try {
     service=new RoomService(root);
+    await options.beforeReady?.();
     await writeFile(lock,JSON.stringify({pid:process.pid,nonce,endpoint,startedAt:new Date().toISOString()}));
-    service.onEvent(value=>{for(const socket of subscribed)event(socket,value);});
-  }catch(error){for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));service!?.close();throw error;}
+    service.onEvent(value=>{
+      for(const [socket,buffer] of replaying){
+        buffer.push(value);
+        if(Buffer.byteLength(JSON.stringify(buffer))>MAX_FRAME_BYTES*2)socket.destroy();
+      }
+      for(const socket of subscribed)event(socket,value);
+    });
+    signalReady();
+  }catch(error){startupError=error;signalReady();for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));service!?.close();throw error;}
   server.on('error',()=>{void close();});
   return {service,pid:process.pid,close};
 }

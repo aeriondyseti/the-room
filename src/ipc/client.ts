@@ -12,6 +12,8 @@ import { endpointFor } from './endpoint.js';
 export interface ConnectOptions {client:ClientKind;autoStart?:boolean;timeoutMs?:number}
 export class RoomClient {
   private pending=new Map<string,{resolve:(value:unknown)=>void;reject:(error:Error)=>void;timer:NodeJS.Timeout}>();
+  private disconnected=false;
+  private disconnectListeners=new Set<(reason:Error)=>void>();
   private listeners=new Set<(event:RoomEvent)=>void>();
   private constructor(private socket:Socket,private timeoutMs:number) {
     socket.setEncoding('utf8');const decoder=new FrameDecoder();
@@ -23,11 +25,12 @@ export class RoomClient {
           clearTimeout(waiter.timer);this.pending.delete(frame.id);
           if(frame.ok)waiter.resolve(frame.result);else waiter.reject(fromErrorInfo(frame.error));
         } else throw new Error('Unexpected server request.');
-      }}catch(error){this.fail(new RoomError('service_unavailable',`Invalid service response: ${(error as Error).message}`));socket.destroy();}
+      }}catch(error){this.disconnect(new RoomError('service_unavailable',`Invalid service response: ${(error as Error).message}`));socket.destroy();}
     });
-    socket.on('error',()=>this.fail(new RoomError('service_unavailable','Connection to room service failed.')));
-    socket.on('close',()=>this.fail(new RoomError('service_unavailable','Connection to room service closed.')));
+    socket.on('error',()=>this.disconnect(new RoomError('service_unavailable','Connection to room service failed.')));
+    socket.on('close',()=>this.disconnect(new RoomError('service_unavailable','Connection to room service closed.')));
   }
+  private disconnect(error:Error):void{this.fail(error);if(!this.disconnected){this.disconnected=true;for(const listener of this.disconnectListeners)listener(error);}}
   private fail(error:Error):void{for(const waiter of this.pending.values()){clearTimeout(waiter.timer);waiter.reject(error);}this.pending.clear();}
   static async connect(root:string,options:ConnectOptions):Promise<RoomClient>{
     root=await realpath(root);
@@ -55,7 +58,8 @@ export class RoomClient {
     });
   }
   onEvent(listener:(event:RoomEvent)=>void):()=>void{this.listeners.add(listener);return()=>this.listeners.delete(listener);}
-  close():void{this.fail(new RoomError('service_unavailable','Room client closed.'));this.socket.destroy();}
+  onDisconnect(listener:(reason:Error)=>void):()=>void{this.disconnectListeners.add(listener);return()=>this.disconnectListeners.delete(listener);}
+  close():void{this.disconnect(new RoomError('service_unavailable','Room client closed.'));this.socket.destroy();}
 }
 
 const starting=new Map<string,Promise<void>>();
@@ -64,12 +68,17 @@ export async function ensureService(root:string):Promise<void>{
   const task=(async()=>{
     const deadline=Date.now()+loadConfig().serviceStartTimeoutMs;
     const probe=async()=>{const client=await RoomClient.connect(root,{client:'cli',autoStart:false,timeoutMs:Math.max(1,deadline-Date.now())});client.close();};
-    try{await probe();return;}catch(error){if(error instanceof RoomError && error.code==='unsupported_version')throw error;}
-    const child=spawn(process.execPath,[fileURLToPath(new URL('../core/service/main.js',import.meta.url)),root],{detached:true,windowsHide:true,stdio:'ignore'});
-    let spawnError:Error|undefined;child.on('error',error=>{spawnError=error;});child.unref();
+    let childRunning=false;let spawnError:Error|undefined;
     do {
       if(spawnError)throw new RoomError('service_unavailable',`Could not start room service: ${spawnError.message}`);
-      try{await probe();return;}catch(error){if(error instanceof RoomError && error.code==='unsupported_version')throw error;}
+      try{await probe();return;}catch(error){
+        if(error instanceof RoomError && error.code==='unsupported_version')throw error;
+        const code=(error as NodeJS.ErrnoException).code;
+        if(!childRunning && (code==='ENOENT'||code==='ECONNREFUSED')){
+          const child=spawn(process.execPath,[fileURLToPath(new URL('../core/service/main.js',import.meta.url)),root],{detached:true,windowsHide:true,stdio:'ignore'});
+          childRunning=true;child.on('error',error=>{spawnError=error;childRunning=false;});child.on('exit',()=>{childRunning=false;});child.unref();
+        }
+      }
       await new Promise(resolve=>setTimeout(resolve,loadConfig().servicePollMs));
     }while(Date.now()<deadline);
     throw new RoomError('service_unavailable','Room service did not become ready before the startup deadline.');
