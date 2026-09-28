@@ -14,6 +14,7 @@ import type {
   TargetSnapshot,
 } from './domain.js';
 import type { ActivityItem, ActivityPage, ActivityRequest, ActivityStreamId } from './activity.js';
+import type { AccountUsage } from './account.js';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -84,7 +85,8 @@ export interface RequestMap {
   };
   who: {
     params: Record<string, never>;
-    result: { participants: ParticipantState[]; room: RoomState };
+    /** `accounts` (6.6): subscription usage once per account; absent from older services. */
+    result: { participants: ParticipantState[]; room: RoomState; accounts?: AccountUsage[] };
   };
   join: {
     params: {
@@ -180,7 +182,9 @@ export type RoomEvent =
   | { type: 'room.updated'; room: RoomState }
   | { type: 'service.stopping'; reason: string }
   /** New observed activity (6.1). `reset` means the stream changed (rebind/rotation): drop that participant's view. */
-  | { type: 'activity.appended'; stream: ActivityStreamId; items: ActivityItem[]; reset: boolean };
+  | { type: 'activity.appended'; stream: ActivityStreamId; items: ActivityItem[]; reset: boolean }
+  /** Subscription usage for one account changed (6.6). */
+  | { type: 'account.updated'; account: AccountUsage };
 
 export interface EventFrame {
   v: typeof PROTOCOL_VERSION;
