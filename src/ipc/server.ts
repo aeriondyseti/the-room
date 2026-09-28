@@ -91,9 +91,9 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
     stopping=true;
     closing=(async()=>{
       for(const socket of subscribed)event(socket,{type:'service.stopping',reason:'shutdown'});
-      for(const socket of sockets)socket.destroySoon();
       // Keep the endpoint bound while old operations/storage still exist. New hello calls are refused.
       await Promise.allSettled(active);
+      for(const socket of sockets)socket.destroySoon();
       service?.close();
       let cleanupError:unknown;
       try {const owner=JSON.parse(await readFile(lock,'utf8')) as {nonce?:string};if(owner.nonce===nonce)await unlink(lock);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')cleanupError=error;}

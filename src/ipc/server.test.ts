@@ -107,6 +107,6 @@ test('shutdown retains exclusive ownership until active work has drained and led
  const inFlight=client.request('who',{}).catch(()=>null);await waiting;
  const closing=server.close();await new Promise(resolve=>setImmediate(resolve));
  await assert.rejects(startServer(root),{code:'EADDRINUSE'});
- release();await inFlight;await closing;
+ release();assert.notEqual(await inFlight,null);await closing;
  const successor=await startServer(root);await successor.close();
 });
