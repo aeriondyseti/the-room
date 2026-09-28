@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MessageCrossingInfo } from '../contracts/crossing.js';
 import type { MessageWithDeliveries, ParticipantState } from '../contracts/domain.js';
-import { lineText, messageLines } from './format.js';
+import { DELIVERY_LEGEND, lineText, messageLines } from './format.js';
 import { FakeRoomSource } from './fake-source.js';
 import { sidePanelLines } from './sidepanel.js';
 import { inboxCell, participantChip } from './topbar.js';
@@ -92,4 +92,35 @@ test('the side panel names the snapshot time, and says covered when it is', () =
   assert.ok(lines(agent('astra', { inbox: inbox(4) })).some((l) => /4 not covered · as of 10:02/.test(l)));
   assert.ok(lines(agent('astra', { inbox: inbox(0) })).some((l) => /inbox covered · as of 10:02/.test(l)));
   assert.ok(!lines(agent('astra')).some((l) => /inbox|not covered/.test(l)), 'no inbox info → nothing, not "covered"');
+});
+
+const delivered = (states: Array<[string, 'queued' | 'submitted' | 'withdrawn']>): MessageWithDeliveries => {
+  const m = src.post('astra', states.map(([n]) => n), 'please hold');
+  return { ...m, deliveries: states.map(([recipient, state]) => ({ recipient, state, held: false, waiting: null, ...(state === 'withdrawn' ? { withdrawnAt: '2026-09-28T11:05:00' } : {}) })) } as unknown as MessageWithDeliveries;
+};
+
+test('a fully withdrawn message says so, dims its body, and strikes each recipient with the time', () => {
+  const lines = messageLines(delivered([['claude', 'withdrawn']]), ctx(100));
+  assert.match(lineText(lines[0]!), /astra ⊘ withdrawn → claude/);
+  const body = lines.find((l) => lineText(l).includes('please hold'))!;
+  assert.ok(body.some((s) => s.text.includes('please hold') && s.dim));
+  const marks = lines.at(-1)!;
+  assert.match(lineText(marks), /⊘ claude withdrawn 11:05/);
+  assert.ok(marks.some((s) => s.text === 'claude' && s.strikethrough));
+});
+
+test('a partial withdraw is never shown as whole', () => {
+  const lines = messageLines(delivered([['claude', 'withdrawn'], ['bob', 'submitted']]), ctx(100));
+  const head = lineText(lines[0]!);
+  assert.doesNotMatch(head, /astra ⊘ withdrawn/);
+  assert.match(head, /⊘ withdrawn for 1 of 2/);
+  const body = lines.find((l) => lineText(l).includes('please hold'))!;
+  assert.ok(!body.some((s) => s.dim), 'body stays normal while some recipient still got it');
+  const marks = lines.at(-1)!;
+  assert.ok(marks.some((s) => s.text === 'claude' && s.strikethrough));
+  assert.ok(marks.some((s) => s.text === 'bob' && !s.strikethrough));
+});
+
+test('the legend explains the withdrawn mark', () => {
+  assert.ok(DELIVERY_LEGEND.some((m) => m.label === 'withdrawn' && m.glyph === '⊘'));
 });

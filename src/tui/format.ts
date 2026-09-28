@@ -12,6 +12,8 @@ export interface Segment {
   dim?: boolean;
   italic?: boolean;
   inverse?: boolean;
+  /** Struck through (M7: a withdrawn delivery's recipient). */
+  strikethrough?: boolean;
   /**
    * A bar cell's flat surface (6.15): 'fill' (solid bright background in color, the state colour) or 'track' (solid dim
    * background). Text on it has no background of its own. See bars.ts surfaceStyle for how themes render it.
@@ -82,6 +84,7 @@ export const DELIVERY_LEGEND: readonly DeliveryMark[] = [
   deliveryMark({ state: 'queued', held: false, waiting: 'offline' }),
   deliveryMark({ state: 'failed', held: false, waiting: null }),
   deliveryMark({ state: 'uncertain', held: false, waiting: null }),
+  deliveryMark({ state: 'withdrawn', held: false, waiting: null }),
 ];
 
 // ---- text -----------------------------------------------------------------------------------------------
@@ -210,6 +213,11 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   }
   if (crossing?.guard === 'legacy') detail.push({ text: '  unguarded', dim: true, italic: true });
   if (crossing?.revisesAttemptId) detail.push({ text: '  revised after a blocked send', dim: true });
+  // M7 withdraw: "withdrawn" only when every delivery was; a partial withdraw is never shown as whole.
+  const withdrawn = item.deliveries.filter((d) => d.state === 'withdrawn').length;
+  const allWithdrawn = withdrawn > 0 && withdrawn === item.deliveries.length;
+  if (allWithdrawn) core.push({ text: ' ⊘ withdrawn', color: 'gray', italic: true });
+  else if (withdrawn > 0) detail.unshift({ text: `  ⊘ withdrawn for ${withdrawn} of ${item.deliveries.length}`, color: 'gray', italic: true });
   const recipients: Line = [{ text: ' → ', dim: true }];
   if (message.addressing === 'broadcast') {
     recipients.push({ text: message.from.name === HUMAN ? 'everyone' : 'all', dim: true });
@@ -236,15 +244,16 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   // The urgent reason is the sender's stated justification: shown whole (wrapped), never truncated.
   if (crossing?.urgent) lines.push(...bodyLines(`why urgent: ${crossing.urgent.reason}`, ctx.width, { text: '', color: 'yellow', italic: true }));
 
-  const bodyStyle: Segment = message.kind === 'system' ? { text: '', dim: true, italic: true } : { text: '' };
+  const bodyStyle: Segment = message.kind === 'system' || allWithdrawn ? { text: '', dim: true, italic: message.kind === 'system' } : { text: '' };
   lines.push(...bodyLines(message.body, ctx.width, bodyStyle));
 
   // Delivery marks wrap onto more lines rather than hiding a state behind an ellipsis (invariant 3).
   let marks: Line = [{ text: INDENT }];
   item.deliveries.forEach((d, i) => {
     const mark = deliveryMark(d);
-    const chunk: Line = [{ text: `${mark.glyph} `, color: mark.color }, { text: name(d.recipient), color: mark.color, dim: mark.label === 'queued' }];
+    const chunk: Line = [{ text: `${mark.glyph} `, color: mark.color }, { text: name(d.recipient), color: mark.color, dim: mark.label === 'queued', strikethrough: d.state === 'withdrawn' }];
     if (mark.label !== 'sent' && mark.label !== 'replied' && mark.label !== 'queued') chunk.push({ text: ` ${mark.label}`, color: mark.color, dim: true });
+    if (d.state === 'withdrawn' && d.withdrawnAt) chunk.push({ text: ` ${formatTime(d.withdrawnAt)}`, color: mark.color, dim: true });
     if (d.referenced) chunk.push({ text: ' (preview + reference)', dim: true });
     const sep: Line = i > 0 ? [{ text: '  ' }] : [];
     if (i > 0 && lineCols(marks) + lineCols(sep) + lineCols(chunk) > ctx.width) {

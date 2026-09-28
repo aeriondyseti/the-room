@@ -1132,7 +1132,7 @@ function SegmentText({ seg }: { seg: Line[number] }) {
   const t = useTheme();
   const s = surfaceStyle(seg, t.mono);
   return (
-    <Text color={t.color(s.color)} backgroundColor={t.color(s.backgroundColor)} bold={seg.bold} dimColor={s.dim} italic={seg.italic} inverse={s.inverse}>
+    <Text color={t.color(s.color)} backgroundColor={t.color(s.backgroundColor)} bold={seg.bold} dimColor={s.dim} italic={seg.italic} inverse={s.inverse} strikethrough={seg.strikethrough}>
       {s.blank ? seg.text.replace(/ /g, s.blank) : seg.text}
     </Text>
   );
