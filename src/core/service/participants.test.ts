@@ -149,3 +149,24 @@ test('relabelQueued moves only queued rows: a withdrawn row keeps its old label 
   await rename();assert.equal(await room.reconcile(),0);
   assert.equal(room.ledger.delivery(sent.result.message.id,'claude').state,'withdrawn');
 });
+test('reconcile reports a primary-key collision once instead of claiming a full repair, and leaves the row queued',async t=>{
+  const {root,room}=await fixture(t);
+  // One message to both names while they were distinct bindings, then astra's binding departs and claude's binding
+  // takes over the name astra: claude's queued row cannot move under "astra" (a row exists), so it stays stranded.
+  const sent=await call(room,'send',{caller:{kind:'human'},to:['claude','astra'],body:'to both'});
+  await writeFile(join(root,'session.toml'),`[participants.astra]\nharness = "codex"\nsession_id = "${a}"\n`);
+  const errors:string[]=[];const spy=t.mock.method(console,'error',(...args:unknown[])=>{errors.push(args.map(String).join(' '));});
+  try{assert.equal(await room.reconcile(),0);}finally{spy.mock.restore();}
+  assert.equal(errors.filter(e=>e.includes('could not be relabelled')).length,1,'reported exactly once');
+  assert.match(errors[0]!,new RegExp(`departed name "claude".*"astra".*${sent.message.id}`));
+  assert.equal(room.ledger.delivery(sent.message.id,'claude').state,'queued');
+  assert.equal(room.ledger.delivery(sent.message.id,'astra').state,'queued');
+});
+
+test('a reconcile that cannot read the registry is reported and never stops the service from starting',async t=>{
+  const {root,room}=await fixture(t);
+  await writeFile(join(root,'session.toml'),'this is not toml = = [');
+  const errors:string[]=[];const spy=t.mock.method(console,'error',(...args:unknown[])=>{errors.push(args.map(String).join(' '));});
+  try{await room.start();}finally{spy.mock.restore();}
+  assert.ok(errors.some(e=>e.includes('startup delivery repair skipped')),errors.join('\n'));
+});

@@ -6,7 +6,7 @@ import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import { Ledger } from '../ledger/ledger.js';
 import { joinParticipant, readRegistry, type Registry } from '../registry/registry.js';
-import { HUMAN, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
+import { type Delivery, HUMAN, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
 import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } from '../../contracts/ipc.js';
 import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
@@ -58,16 +58,26 @@ export class RoomService {
   async reconcile():Promise<number>{
     const registry=await readRegistry(this.root);const paused=this.ledger.roomState().paused;let moved=0;
     const byBinding=new Map(Object.entries(registry).map(([name,b])=>[`${b.harness}:${b.session_id}`,name] as const));
+    // One pass per (departed name, binding) pair, so a repair is attempted and reported once, not once per row.
+    const pairs=new Map<string,{from:string;target:Delivery['target'];to:string}>();
     for(const d of this.ledger.queued()){
       if(Object.hasOwn(registry,d.recipient))continue;
-      const name=byBinding.get(`${d.target.harness}:${d.target.sessionId}`);if(!name)continue;
-      for(const delivery of this.ledger.relabelQueued(d.recipient,name,d.target,paused)){this.publish({type:'delivery.updated',delivery});moved++;}
+      const to=byBinding.get(`${d.target.harness}:${d.target.sessionId}`);if(!to)continue;
+      pairs.set(`${d.recipient}|${d.target.harness}:${d.target.sessionId}`,{from:d.recipient,target:d.target,to});
+    }
+    for(const {from,target,to} of pairs.values()){
+      for(const delivery of this.ledger.relabelQueued(from,to,target,paused)){this.publish({type:'delivery.updated',delivery});moved++;}
       // A row the relabel had to skip (the same message already has a delivery under the new name) stays stranded
       // under the departed name; say so rather than claim a full repair (8.2's explicit rename refuses such a case).
-      const stranded=this.ledger.queued(d.recipient).filter(q=>q.target.harness===d.target.harness&&q.target.sessionId===d.target.sessionId);
-      if(stranded.length)console.error(`room: ${stranded.length} queued deliver${stranded.length===1?'y':'ies'} to departed name "${d.recipient}" could not be relabelled to "${name}" (the message already has a delivery under that name): ${stranded.map(q=>q.messageId).join(', ')}`);
+      // Rows with an in-flight attempt are not collisions: the dispatcher's recovery settles them as uncertain.
+      const stranded=this.ledger.queued(from).filter(q=>q.target.harness===target.harness&&q.target.sessionId===target.sessionId&&q.attempts.at(-1)?.outcome!=='in_flight');
+      if(stranded.length)console.error(`room: ${stranded.length} queued deliver${stranded.length===1?'y':'ies'} to departed name "${from}" could not be relabelled to "${to}" (the message already has a delivery under that name): ${stranded.map(q=>q.messageId).join(', ')}`);
     }
     return moved;
+  }
+  /** The display refresh after a committed request: never an error for the caller, and never a blocked ack. */
+  private async refreshDisplay(fields:{pending:boolean}):Promise<void>{
+    try{await this.syncDisplay(fields);}catch(error){console.error(`room: participant display refresh skipped: ${error instanceof Error?error.message:String(error)}`);}
   }
   async start():Promise<void>{
     // A repair that can't run (registry unreadable right now) must not stop the room: the dispatcher's own registry
@@ -90,8 +100,8 @@ export class RoomService {
         const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
         for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
         // Pending counts (withdraw is the one request that recomputes them here) and inbox coverage, for CURRENT
-        // participants only (8.1).
-        await this.syncDisplay({pending:true});
+        // participants only (8.1); best effort, after the outcome is committed and announced.
+        await this.refreshDisplay({pending:true});
         return result;
       }
       case 'inbox': {
@@ -102,7 +112,7 @@ export class RoomService {
         if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
         if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
         if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
-        const page=this.inbox.review(caller.scope,options);await this.syncDisplay({pending:false});return page;
+        const page=this.inbox.review(caller.scope,options);await this.refreshDisplay({pending:false});return page;
       }
       case 'guarded_send':
       case 'send': {
@@ -159,14 +169,16 @@ export class RoomService {
           }
           return{result,replyDelivery,rejected:null};
         });
-        if(saved.rejected){await this.syncDisplay({pending:false});return saved.rejected;}
+        if(saved.rejected){await this.refreshDisplay({pending:false});return saved.rejected;}
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
-          await this.syncDisplay({pending:false});
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           for(const delivery of result.updatedDeliveries??[])this.publish({type:'delivery.updated',delivery});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
+          // After the commit is announced and delivery is under way: the display refresh is best effort (Astra's
+          // cross-review), so a failed registry read can never turn a persisted send into an error.
+          await this.refreshDisplay({pending:false});
         }
         const {updatedDeliveries:_,...publicResult}=result;
         return guarded?{status:'sent',result:publicResult,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:publicResult;
@@ -250,10 +262,13 @@ export class RoomService {
    * as a ghost after a TUI restart. New or rebound rows are introduced by the monitor, not here.
    */
   private async syncDisplay(fields:{pending:boolean}):Promise<void> {
-    const saved=new Map(this.ledger.participants().map(p=>[p.name,p] as const));
     // Always a FRESH registry read: a request's own snapshot may predate a join that completed meanwhile, and
     // pruning from it would delete and "remove" a participant that is registered (review finding).
-    for(const participant of await this.participants()){
+    const current=await this.participants();
+    // The ledger snapshot is taken AFTER that await, so the read-modify-write below is synchronous and cannot clobber
+    // liveness, usage or pending that the monitor or dispatcher persisted during the registry read (review finding).
+    const saved=new Map(this.ledger.participants().map(p=>[p.name,p] as const));
+    for(const participant of current){
       const prev=saved.get(participant.name);
       if(!prev||prev.harness!==participant.harness||prev.sessionId!==participant.sessionId)continue;
       // Pending is otherwise the dispatcher's to publish (as it claims and settles), so only withdraw recomputes it here.

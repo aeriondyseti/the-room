@@ -274,6 +274,10 @@ export class Ledger {
    * 8.1/8.2: move QUEUED deliveries addressed to `from` whose target is `target` under the name `to`. The target
    * snapshot never changes (invariant 5): only the label does. A stale rebind wait is cleared, because the binding is
    * registered again under the new name. Submitted, uncertain, in-flight and terminal rows stay as history.
+   *
+   * Run it only while the dispatcher is stopped or the old name's worker is quiesced (8.1 calls it before the
+   * dispatcher starts): a worker that has selected a queued row but not yet claimed it would find the row gone
+   * (TD-0041; 8.2's live rename must drain the old name's worker first or make that path tolerant).
    */
   relabelQueued(from:string,to:string,target:Delivery['target'],paused:boolean):Delivery[] {
     return this.transaction(()=>{
