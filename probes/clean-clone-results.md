@@ -16,3 +16,5 @@ Commands and results:
 - `node dist/cli/main.js tui --help`: exit0 and expected startup instructions.
 
 This checks install/build, empty-room service setup and automated TUI startup/rendering coverage. It is not a manual visual review in a physical terminal, a global npm-link test, or full harness qualification. The4.1 wake/soak and Codex approval gates remain separate. No global harness configuration was modified.
+
+Cleanup: the service was stopped, but automatic approval review rejected recursive deletion of the explicitly owned clone as "blocked by policy". The directory remains at the fixture path above; no alternative deletion route was attempted.
