@@ -99,3 +99,8 @@ their own rows**.
 - Ownership moved from Claude to Astra by agreement (room m-muljy8gl); Claude provides independent cross-review.
 - Implementation and full suite ready: cyan full-cell bottom row in effective sidebar layout, right column in effective top layout. Monochrome uses inverse spaces. Content geometry reserves the cell before layout; help and narrow fallback covered.
 - Validation: 340/340 tests. Independent correctness and Claude contracts reviews complete with no actionable findings; physical terminal appearance not yet verified. Release v0.7.4.
+
+### Divider removal (Astra, v0.7.5)
+Kevin's visual testing reversed the outer divider request. Both colored edges and their reserved cell
+are removed; existing internal rules remain. Restored full content dimensions. 340/340 tests pass.
+Claude independently approved aebf47f; composer6.18 follows this release and adjusts its status-row test.

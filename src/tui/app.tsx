@@ -148,8 +148,8 @@ function Room({
   const clientId = useRef<{ text: string; id: string } | null>(null);
 
   const window = useWindowSize();
-  const terminalCols = Math.max(20, width ?? window.columns);
-  const terminalRows = Math.max(12, height ?? window.rows);
+  const colsTotal = Math.max(20, width ?? window.columns);
+  const rows = Math.max(12, height ?? window.rows);
   // A slow clock so reset countdowns ("↻ 2h12m") stay current between events.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -161,11 +161,8 @@ function Room({
   // information stacked in a column). The left panel yields to the top bar, with a notice, when the terminal is too
   // narrow for a readable conversation beside it; the preference itself is kept.
   const [layout, setLayout] = useState<TuiLayout>(initialLayout);
-  const leftFits = leftPanelFits(terminalCols, panelWidth, panelBreakpoint);
+  const leftFits = leftPanelFits(colsTotal, panelWidth, panelBreakpoint);
   const showLeft = layout === 'left' && leftFits;
-  // Reserve the outside separator before sizing every piece of content.
-  const colsTotal = terminalCols - (showLeft ? 0 : 1);
-  const rows = terminalRows - (showLeft ? 1 : 0);
   const stale = view.connection.state !== 'connected';
   // Command discovery: typing "/" (plus a partial name) lists matching commands above the composer.
   const suggestions = useMemo(() => (overlay ? [] : commandSuggestions(draft.text)), [draft.text, overlay]);
@@ -579,7 +576,6 @@ function Room({
   const to = addressee(draft.text, names);
 
   return (
-    <Box flexDirection={showLeft ? "column" : "row"} width={terminalCols} height={terminalRows}>
     <Box flexDirection="column" width={colsTotal} height={rows} overflow="hidden" flexShrink={0}>
       <Header view={view} width={colsTotal} />
       {banner && <Banner view={view} width={colsTotal} />}
@@ -643,12 +639,6 @@ function Room({
         suggestIdx={suggestIdx}
       />
       <StatusBar offset={scroll.offset} unseen={scroll.unseen} width={colsTotal} />
-    </Box>
-    <Box flexDirection="column" width={showLeft ? terminalCols : 1} height={showLeft ? 1 : terminalRows} flexShrink={0}>
-      {Array.from({length: showLeft ? 1 : terminalRows}, (_, i) => (
-        <Text key={i} backgroundColor={t.color('cyan')} inverse={t.mono}>{' '.repeat(showLeft ? terminalCols : 1)}</Text>
-      ))}
-    </Box>
     </Box>
   );
 }
