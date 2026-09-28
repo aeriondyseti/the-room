@@ -143,3 +143,21 @@ test('withdraw needs exactly one message reference', async (t) => {
   assert.equal((await run('withdraw', [])).code, 2);
   assert.equal((await run('withdraw', ['#1', '#2'])).code, 2);
 });
+
+test('inbox --baseline sends the reason alone and says the skipped messages were not read', async (t) => {
+  const { run, requests } = await setup(t, { inbox: () => page({ items: [], baseline: { attemptId: 'b1', exemptedCount: 312, reason: 'joining late' } }) });
+  const r = await run('inbox', ['--baseline', ' joining late ']);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(requests[0]!.params['baseline'], { reason: 'joining late' });
+  assert.equal('snapshot' in requests[0]!.params, false);
+  assert.match(r.out, /312 earlier message\(s\) addressed to you were SKIPPED WITHOUT REVIEW \(reason: joining late\)/);
+  assert.match(r.out, /marked skipped, not read/);
+});
+
+test('inbox --baseline is exclusive and needs a reason', async (t) => {
+  const { run, requests } = await setup(t, {});
+  assert.equal((await run('inbox', ['--baseline', 'x', '--snapshot', 's'])).code, 2);
+  assert.equal((await run('inbox', ['--baseline', 'x', '--cursor', 'c'])).code, 2);
+  assert.equal((await run('inbox', ['--baseline', '  '])).code, 2);
+  assert.equal(requests.length, 0);
+});

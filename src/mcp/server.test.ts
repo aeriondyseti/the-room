@@ -320,3 +320,16 @@ test('room_withdraw without recipients leaves the choice to the service (all ori
   assert.match(r.text, /^Withdrew m-x for every recipient\./);
   assert.equal('recipients' in (f.requests[0]!.params as Record<string, unknown>), false);
 });
+test('room_inbox baseline: reason only, exclusive, and the page never calls it read', async () => {
+  const f = fakeLink({ inbox: () => inboxPage({ items: [], baseline: { attemptId: 'b1', exemptedCount: 7, reason: 'new binding' } }) });
+  const { call } = await connectClient(f.link);
+  const bad = await call('room_inbox', { baseline: 'x', snapshot: 's' });
+  assert.equal(bad.isError, true);
+  assert.match(bad.text, /cannot be combined/);
+  assert.equal(f.requests.length, 0);
+  const r = await call('room_inbox', { baseline: 'new binding' });
+  assert.equal(r.isError, false, r.text);
+  assert.deepEqual((f.requests[0]!.params as Params<'inbox'>).baseline, { reason: 'new binding' });
+  assert.match(r.text, /7 earlier message\(s\) .* SKIPPED WITHOUT REVIEW/);
+  assert.doesNotMatch(r.text, /\bwere read\b/);
+});

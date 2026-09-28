@@ -51,6 +51,13 @@ const HINT = {
 /** An inbox review page, with the exact call that continues it when it is incomplete. */
 export function inboxPageText(page: InboxReviewPage, surface: Surface = 'mcp'): string {
   const lines: string[] = [];
+  if (page.baseline) {
+    const b = page.baseline;
+    lines.push(
+      `Baseline recorded: ${b.exemptedCount} earlier message(s) addressed to you were SKIPPED WITHOUT REVIEW (reason: ${b.reason}). ` +
+        'They are marked skipped, not read. Anything addressed to you from now on is guarded normally.',
+    );
+  }
   lines.push(
     page.items.length === 0
       ? 'Nothing addressed to you is outside this snapshot.'
