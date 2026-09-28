@@ -50,14 +50,14 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 4.1 | Room end to end on live agents | Claude + Astra | ⬜ | |
+| 4.1 | Room end to end on live agents | Claude + Astra | 🟡 | Dogfood on the real room ✅ (probes/4.1-dogfood.md). Claude: 20/20 idle-wake trials + Done-when scenarios ✅, 2h soak running (sprint/4.1). Codex fixture trials blocked: room MCP tools need approval in disposable fixtures — awaiting Kevin |
 | 4.2 | Failure and recovery qualification | Astra | ✅ | v0.0.16; 187 tests; bounded live checklist in probes/failure-recovery-results.md. |
 
 ## Milestone 5 — Ergonomics polish, then v0.1.0
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 5.1 | TUI polish | Claude | ⬜ | |
+| 5.1 | TUI polish | Claude | ✅ | v0.0.18 · review: reviews/5.1.md · UX pass: docs/ux/5.1-ux-pass.md · colour/mono theme, code blocks, first-run states, runtime context in /detail, ROOM_TUI_* tunables |
 | 5.2 | Agent ergonomics | Astra | ✅ | v0.0.17; review: reviews/5.2.md; 193 tests; peer-approved envelope. |
 | 5.3 | Human ergonomics and release | Claude + Astra | 🟡 | README + clean-clone checks ready; final release blocked on 4.1 gates. |
 
@@ -71,4 +71,4 @@ their own rows**.
 
 ---
 
-**Summary:** 13 / 20 features complete (+2.5b follow-up) · **current version: v0.0.15** · last tag: v0.0.15
+**Summary:** 17 / 22 features complete (+2.5b follow-up) · **current version: v0.0.18** · last tag: v0.0.18
