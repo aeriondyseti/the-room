@@ -3,7 +3,7 @@
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import type { GitInfo, WorkspaceInfo } from '../contracts/workspace.js';
-import { colorFor, cols, fitLine, lineCols, sanitize, usageLabel, type Line, type Segment } from './format.js';
+import { colorFor, cols, fitLine, lineCols, relativeTime, sanitize, usageLabel, type Line, type Segment } from './format.js';
 
 export function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
   switch (l) {
@@ -81,7 +81,10 @@ export function workspaceDetail(ws: WorkspaceInfo | null | undefined): string {
     const counts = [n(g.staged, 'staged'), n(g.modified, 'modified'), n(g.untracked, 'untracked')].filter(Boolean);
     parts.push(counts.length ? counts.join(', ') : 'status unknown');
     if (g.ahead !== null || g.behind !== null) parts.push(`↑${g.ahead ?? '?'} ↓${g.behind ?? '?'}`);
+    if (g.checkedAt && g.checkedAt !== ws.observedAt) parts.push(`git checked ${relativeTime(g.checkedAt)}`);
   }
+  // A kept last-known snapshot must not look fresh: always say how old the observation is.
+  parts.push(ws.observedAt ? `observed ${relativeTime(ws.observedAt)}` : 'not observed yet');
   return parts.join(' · ');
 }
 

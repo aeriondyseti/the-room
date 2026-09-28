@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GitInfo, WorkspaceInfo } from '../contracts/workspace.js';
 import type { ParticipantState } from '../contracts/domain.js';
-import { lineText } from './format.js';
+import { lineText, relativeTime } from './format.js';
 import { gitLabel, participantChip, shortModel, workspaceDetail } from './topbar.js';
 
 const git = (over: Partial<GitInfo> = {}): GitInfo => ({ status: 'ok', root: 'X:/repo', worktree: null, branch: 'sprint/6.7', detached: false, head: 'a1b2c3d4e5f6',
@@ -23,10 +23,13 @@ test('chip adds model and branch*dirty (unique count, never the overlapping sum)
 });
 
 test('/who detail says the cwd and its source, worktree, branch and counts in words; unknowns are stated', () => {
+  const d0 = ws().observedAt ?? '';
   const d = workspaceDetail(ws({ git: git({ worktree: 'X:/repo/.claude/worktrees/sprint-6.7' }) }));
-  assert.equal(d, 'cwd X:/repo/.claude/worktrees/sprint-6.7 (claude-transcript) · worktree X:/repo/.claude/worktrees/sprint-6.7 · branch sprint/6.7 · 2 staged, 2 modified, 1 untracked · ↑1 ↓0');
+  assert.equal(d, 'cwd X:/repo/.claude/worktrees/sprint-6.7 (claude-transcript) · worktree X:/repo/.claude/worktrees/sprint-6.7 · branch sprint/6.7 · 2 staged, 2 modified, 1 untracked · ↑1 ↓0 · observed ' + relativeTime(d0));
   assert.equal(workspaceDetail(null), 'workspace not observed');
-  assert.match(workspaceDetail(ws({ cwd: null, git: null })), /^cwd unknown · git not sampled$/);
+  assert.match(workspaceDetail(ws({ cwd: null, git: null })), /^cwd unknown · git not sampled · observed /);
   assert.match(workspaceDetail(ws({ git: git({ status: 'unavailable', reason: 'timed out' }) })), /git unavailable \(timed out\)/);
-  assert.match(workspaceDetail(ws({ git: git({ ahead: null, behind: null }) })), /untracked$/, 'no upstream: no ahead/behind');
+  assert.match(workspaceDetail(ws({ observedAt: null })), /not observed yet$/);
+  assert.match(workspaceDetail(ws({ observedAt: '2026-09-28T16:05:00Z' })), /git checked .* · observed /, 'a kept (older) git sample says its own age');
+  assert.match(workspaceDetail(ws({ git: git({ ahead: null, behind: null }) })), /untracked · observed /, 'no upstream: no ahead/behind');
 });

@@ -156,6 +156,42 @@ test('workspace (6.7): merged into state; timestamp-only changes are not news; a
   assert.deepEqual(published(), ['main', 'feature']);
 });
 
+test('workspace (6.7): a failed git sample for the same cwd keeps the last good git; a new cwd does not', async () => {
+  const good = { status: 'ok' as const, root: 'X:/r', worktree: null, branch: 'main', detached: false, head: 'abc', dirty: 1, staged: 0, modified: 1, untracked: 0, ahead: null, behind: null, checkedAt: '2026-09-28T10:00:00Z' };
+  const bad = { ...good, status: 'unavailable' as const, reason: 'timed out', branch: null, dirty: null, checkedAt: '2026-09-28T10:05:00Z' };
+  const results = [
+    { model: 'm', cwd: 'X:/r', cwdSource: 'codex-transcript', git: good, observedAt: '2026-09-28T10:00:00Z' },
+    { model: 'm', cwd: 'X:/r', cwdSource: 'codex-transcript', git: bad, observedAt: '2026-09-28T10:05:00Z' },
+    { model: 'm', cwd: 'X:/other', cwdSource: 'codex-transcript', git: bad, observedAt: '2026-09-28T10:10:00Z' },
+  ];
+  let i = 0;
+  let t = 0;
+  const h = harness({ workspace: { observe: async () => results[i++]! }, now: () => new Date(Date.UTC(2026, 8, 28, 11, 0, t++)) });
+  const m = new ParticipantMonitor(h.deps);
+  await m.refresh();
+  await m.refresh();
+  const kept = h.saved.at(-1)?.workspace;
+  assert.deepEqual([kept?.git?.status, kept?.git?.branch, kept?.git?.checkedAt, kept?.observedAt], ['ok', 'main', '2026-09-28T10:00:00Z', '2026-09-28T10:05:00Z'], 'git kept with its own (older) age');
+  await m.refresh();
+  assert.equal(h.saved.at(-1)?.workspace?.git?.status, 'unavailable', 'a different cwd never inherits old git data');
+});
+
+test('workspace (6.7): sampled concurrently with the liveness probe, not after it', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let workspaceStarted = false;
+  const h = harness({
+    adapters: [adapter(async () => { await gate; return { liveness: 'online', activity: 'idle' }; })],
+    workspace: { observe: async () => { workspaceStarted = true; return { model: null, cwd: null, cwdSource: null, git: null, observedAt: null }; } },
+  });
+  const run = new ParticipantMonitor(h.deps).refresh();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(workspaceStarted, true, 'workspace observation started while the probe is still pending');
+  release();
+  await run;
+  assert.equal(h.published[0]?.workspace?.observedAt, null, 'first-ever no-observation result is still recorded (shown as not observed yet)');
+});
+
 test('cursors are restored on construction; corrupt cursors never block', () => {
   let restored: unknown = null;
   const h = harness({ loadCursors: () => [{ x: 1 }] as never, observer: { snapshot: async () => usageOk, exportCursors: () => [], restoreCursors: (c) => { restored = c; } } });

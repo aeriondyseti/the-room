@@ -136,6 +136,11 @@ export class ParticipantMonitor {
 
   private async observe(p: ParticipantState): Promise<ParticipantState> {
     const target = { harness: p.harness, sessionId: p.sessionId };
+    // Workspace sampling (bounded by its own timeout) runs alongside the liveness probe and usage read, never after
+    // them, so a slow git/share can't push back liveness updates.
+    const workspaceSeen = this.deps.workspace
+      ? this.deps.workspace.observe({ participant: p.name, harness: p.harness, sessionId: p.sessionId }).catch(() => null)
+      : null;
     const adapter = this.deps.adapters.find((a) => a.harness === p.harness);
     let liveness = p.liveness;
     let activity = p.activity;
@@ -163,15 +168,14 @@ export class ParticipantMonitor {
       };
     }
     let workspace = p.workspace ?? null;
-    if (this.deps.workspace) {
-      try {
-        const seen = await this.deps.workspace.observe({ participant: p.name, harness: p.harness, sessionId: p.sessionId });
-        // A result with no observation time (provider timeout / nothing found) is "no news": keep the last known
-        // workspace rather than blanking a branch or model that was already observed.
-        if (seen.observedAt !== null || workspace === null) workspace = seen;
-      } catch {
-        // Providers must not throw; if one does, keep the last known workspace rather than inventing one.
-      }
+    const seen = workspaceSeen ? await workspaceSeen : null;
+    // A result with no observation time (provider timeout / nothing found) — or a thrown provider — is "no news":
+    // keep the last known workspace rather than blanking a branch or model that was already observed.
+    if (seen && (seen.observedAt !== null || workspace === null)) {
+      const prevGit = workspace?.git ?? null;
+      // A git sample that failed for the SAME cwd keeps the last good git data (its checkedAt shows its age).
+      const keepGit = seen.git?.status === 'unavailable' && prevGit?.status === 'ok' && workspace?.cwd === seen.cwd;
+      workspace = keepGit ? { ...seen, git: prevGit } : seen;
     }
     return { ...p, liveness, activity, usage, workspace, livenessCheckedAt: adapter ? this.now().toISOString() : p.livenessCheckedAt };
   }
