@@ -141,6 +141,18 @@ test('while disconnected the participant panel is marked stale', async () => {
   assert.match(frame, /last known: busy/);
 });
 
+test('after a reconnect, delivery states of messages already on screen are refreshed', async () => {
+  const src = room(0);
+  const m = src.post(HUMAN, ['astra'], 'deploy the fix', { states: { astra: 'queued' } });
+  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
+  await waitFor(() => plain(ui.lastFrame()), /◌ astra/);
+  src.setStatus({ state: 'reconnecting', detail: 'service restarted' });
+  src.setDelivery(m.message.id, 'astra', { state: 'failed' }, { silent: true }); // missed while away
+  src.setStatus({ state: 'connected' });
+  const frame = await waitFor(() => plain(ui.lastFrame()), /✗ astra failed/);
+  assert.doesNotMatch(frame, /◌ astra/);
+});
+
 test('narrow terminals hide the participant panel instead of squeezing it', async () => {
   const ui = render(<App source={room(2)} humanName="Kevin" width={60} height={14} />);
   await tick();

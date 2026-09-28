@@ -42,7 +42,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 3.1 | TUI shell and conversation | Claude | ✅ | v0.0.6 · review: reviews/3.1.md · try: room tui --demo |
-| 3.2 | Composer and commands | Claude | ⬜ | |
+| 3.2 | Composer and commands | Claude | ✅ | v0.0.8 · review: reviews/3.2.md · `room tui` opens the real room |
 | 3.3 | Participants, usage, and delivery detail | Claude | ⬜ | |
 
 ## Milestone 4 — MVP acceptance
@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 7 / 20 features complete · **current version: v0.0.7** · last tag: v0.0.7
+**Summary:** 8 / 20 features complete · **current version: v0.0.8** · last tag: v0.0.8

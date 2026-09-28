@@ -43,6 +43,10 @@ export interface AppProps {
 const PANEL_WIDTH = 26;
 const WIDE_ENOUGH_FOR_PANEL = 90;
 const MAX_DRAFT_ROWS = 5;
+const CATCH_UP_MAX_PAGES = 50;
+
+/** Errors that prove a send never reached the service (so "Not sent" is true). Anything else is an unknown outcome. */
+const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
 
 type Feedback = { tone: 'ok' | 'info' | 'error'; text: string } | null;
 type Overlay = 'help' | 'who' | null;
@@ -52,7 +56,9 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
   const [view, dispatch] = useReducer(reduceView, INITIAL_VIEW, (v): RoomView => ({ ...v, connection: source.status() }));
   const lastSeqRef = useRef(0);
   lastSeqRef.current = view.lastSeq;
-  const reload = useRoomSync(source, dispatch, historyLimit, lastSeqRef);
+  const firstSeqRef = useRef(0);
+  firstSeqRef.current = view.items[0]?.message.seq ?? 0;
+  const reload = useRoomSync(source, dispatch, historyLimit, lastSeqRef, firstSeqRef);
 
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [history, setHistory] = useState<History>(EMPTY_HISTORY);
@@ -118,22 +124,36 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
       const text = draft.text;
       if (!clientId.current || clientId.current.text !== text) clientId.current = { text, id: randomUUID() };
       const id = clientId.current.id;
-      void run('Not sent', async () => {
-        const result = await source.request('send', { caller: { kind: 'human' }, to: parsed.to, body: parsed.body, clientMessageId: id });
-        clientId.current = null;
-        setHistory((h) => historyPush(h, text));
-        setDraft(EMPTY_DRAFT);
-        scroll.toLive();
-        if (result.deduplicated) return { tone: 'info', text: 'Already sent — the room recognised this as a retry.' };
-        if (view.room.paused) return { tone: 'info', text: 'Sent. The room is paused, so delivery is held until /resume.' };
-        return null;
-      });
+      void (async () => {
+        setBusy(true);
+        try {
+          const result = await source.request('send', { caller: { kind: 'human' }, to: parsed.to, body: parsed.body, clientMessageId: id });
+          clientId.current = null;
+          setHistory((h) => historyPush(h, text));
+          // Keep anything typed while the send was in flight.
+          setDraft((d) => (d.text === text ? EMPTY_DRAFT : d));
+          scroll.toLive();
+          if (result.deduplicated) setFeedback({ tone: 'info', text: 'Already sent — the room recognised this as a retry.' });
+          else if (view.room.paused) setFeedback({ tone: 'info', text: 'Sent. The room is paused, so delivery is held until /resume.' });
+        } catch (e) {
+          const info = toErrorInfo(e);
+          const notSent = DEFINITELY_NOT_SENT.has(info.code) || /^Not connected/.test(info.message);
+          setFeedback(
+            notSent
+              ? { tone: 'error', text: `Not sent: ${info.message}${info.hint ? ` — ${info.hint}` : ''}` }
+              : { tone: 'error', text: `Send outcome unknown (${info.message}). Press Enter to resend safely — the room drops duplicates; editing the text makes it a new message.` },
+          );
+        } finally {
+          setBusy(false);
+        }
+      })();
       return;
     }
     const { command, args } = parsed;
+    const submitted = draft.text;
     const finish = (fb: Feedback) => {
-      setHistory((h) => historyPush(h, draft.text));
-      setDraft(EMPTY_DRAFT);
+      setHistory((h) => historyPush(h, submitted));
+      setDraft((d) => (d.text === submitted ? EMPTY_DRAFT : d)); // keep text typed while the command ran
       return fb;
     };
     switch (command) {
@@ -328,6 +348,7 @@ function useRoomSync(
   dispatch: React.Dispatch<ViewAction>,
   historyLimit: number,
   lastSeqRef: React.RefObject<number>,
+  firstSeqRef: React.RefObject<number>,
 ): () => void {
   const reloadRef = useRef<() => void>(() => {});
   useEffect(() => {
@@ -349,12 +370,20 @@ function useRoomSync(
       buffer = [];
       try {
         const since = lastSeqRef.current ?? 0;
+        const firstShown = firstSeqRef.current ?? 0;
         await source.request('subscribe', { afterSeq: since > 0 ? since : null });
         const who = await source.request('who', {});
         const items: MessageWithDeliveries[] = [];
+        let truncated = false;
         if (since > 0) {
-          let after = since;
-          for (let page = 0; page < 50; page++) {
+          // Re-read everything already on screen (its delivery states may have changed while we were away —
+          // subscribe doesn't replay those) plus everything new, page by page.
+          let after = Math.max(0, firstShown - 1);
+          for (let page = 0; ; page++) {
+            if (page >= CATCH_UP_MAX_PAGES) {
+              truncated = true;
+              break;
+            }
             const r = await source.request('read', { afterSeq: after, limit: historyLimit, includeDeliveries: true });
             items.push(...r.items);
             after = r.items.at(-1)?.message.seq ?? after;
@@ -365,7 +394,7 @@ function useRoomSync(
         }
         if (alive) {
           dispatch({ type: 'snapshot', items, participants: who.participants, room: who.room });
-          dispatch({ type: 'notice', notice: null });
+          dispatch({ type: 'notice', notice: truncated ? 'Reconnected, but the catch-up was too long to load fully; newest messages may be missing — restart the TUI to reload.' : null });
         }
       } catch (err) {
         if (alive) dispatch({ type: 'notice', notice: `Couldn't load the room: ${toErrorInfo(err).message}` });
@@ -396,7 +425,7 @@ function useRoomSync(
       offEvent();
       offStatus();
     };
-  }, [source, dispatch, historyLimit, lastSeqRef]);
+  }, [source, dispatch, historyLimit, lastSeqRef, firstSeqRef]);
   return () => reloadRef.current();
 }
 

@@ -97,12 +97,23 @@ test('a failed send shows the error, keeps the draft, and a resend reuses the sa
   }) as typeof t.src.request;
   await t.type('important');
   await t.type(K.enter);
-  assert.match(t.frame(), /Not sent: Request timed out/);
+  assert.match(t.frame(), /Send outcome unknown \(Request timed out\)\. Press Enter to resend safely/);
   assert.match(t.frame(), /› important/);
   fail = false;
   await t.type(K.enter);
   assert.equal(attempts.length, 2);
   assert.equal(attempts[0], attempts[1], 'same id → the room can deduplicate an ambiguous first attempt');
+});
+
+test('a send refused before it left says "Not sent"', async () => {
+  const t = await setup();
+  t.src.request = (async (method: string) => {
+    if (method === 'send') throw new RoomError('service_unavailable', 'Not connected to the room service yet; try again in a moment.');
+    throw new Error('unexpected');
+  }) as typeof t.src.request;
+  await t.type('hello');
+  await t.type(K.enter);
+  assert.match(t.frame(), /Not sent: Not connected/);
 });
 
 test('/pause and /resume call the service and explain what happened', async () => {
