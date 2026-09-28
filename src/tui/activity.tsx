@@ -11,6 +11,10 @@ import { useTheme } from './theme.js';
 export type ActivityFilter = 'all' | 'tools' | 'errors';
 const FILTERS: ActivityFilter[] = ['all', 'tools', 'errors'];
 const PAGE = 200;
+/** Client-side cap: the pane holds at most this many items (older ones are dropped and labelled). */
+const MAX_ITEMS = 1000;
+/** How often the header's coverage/backlog is re-read while the pane is open. */
+const META_REFRESH_MS = 3000;
 
 /** Glyph + colour per item kind (every state has a glyph, so monochrome loses nothing). */
 function mark(item: ActivityItem): { glyph: string; color?: string } {
@@ -88,23 +92,61 @@ export function ActivityPane(props: { source: RoomSource; participant: string; w
   const [selected, setSelected] = useState(-1); // -1 = follow the newest item
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const stream = useRef<ActivityStreamId | null>(null);
+  // Load bookkeeping: only the latest load's response applies; events during a load are buffered and replayed.
+  const loadToken = useRef(0);
+  const buffered = useRef<ActivityItem[] | null>(null);
+  const locallyDropped = useRef(false); // read during render; every change coincides with an items update
+
+  const append = (incoming: readonly ActivityItem[]) =>
+    setItems((prev) => {
+      const last = prev.at(-1)?.seq ?? 0;
+      const merged = [...prev, ...incoming.filter((i) => i.seq > last)];
+      if (merged.length <= MAX_ITEMS) return merged;
+      locallyDropped.current = true;
+      return merged.slice(merged.length - MAX_ITEMS);
+    });
 
   const load = async () => {
+    const token = ++loadToken.current;
+    buffered.current = [];
     try {
       const p = await props.source.request('activity', { participant: props.participant, limit: PAGE });
+      if (token !== loadToken.current) return; // superseded by a newer load
       stream.current = p.stream;
       setPage(p);
       setItems(p.items);
+      locallyDropped.current = false;
       setError(null);
+      const pending = buffered.current ?? [];
+      buffered.current = null;
+      if (pending.length) append(pending.filter((i) => p.stream && i.stream.generation === p.stream.generation));
     } catch (e) {
+      if (token !== loadToken.current) return;
+      buffered.current = null;
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** Refresh coverage/backlog/reason without reloading items (the header must show observed state, not the state at open). */
+  const refreshMeta = async () => {
+    try {
+      const p = await props.source.request('activity', { participant: props.participant, limit: 1, ...(stream.current ? { stream: stream.current } : {}) });
+      if (p.reset) return void load();
+      setPage((old) => (old ? { ...old, coverage: p.coverage, reason: p.reason, backlog: p.backlog, checkedAt: p.checkedAt, ...(p.olderEvicted ? { olderEvicted: true } : {}) } : p));
+    } catch {
+      // transient; the next refresh retries
     }
   };
 
   useEffect(() => {
     void load();
-    return props.source.onEvent((e) => {
+    const off = props.source.onEvent((e) => {
       if (e.type !== 'activity.appended' || e.stream.participant !== props.participant) return;
+      if (buffered.current) {
+        if (e.reset) void load();
+        else buffered.current.push(...e.items);
+        return;
+      }
       const same = stream.current && stream.current.sessionId === e.stream.sessionId && stream.current.generation === e.stream.generation;
       if (e.reset || !same) {
         setExpanded(new Set());
@@ -112,11 +154,15 @@ export function ActivityPane(props: { source: RoomSource; participant: string; w
         void load(); // new binding or rotated transcript: start over rather than mixing streams
         return;
       }
-      setItems((prev) => {
-        const last = prev.at(-1)?.seq ?? 0;
-        return [...prev, ...e.items.filter((i) => i.seq > last)];
-      });
+      append(e.items);
+      void refreshMeta();
     });
+    const timer = setInterval(() => void refreshMeta(), META_REFRESH_MS);
+    return () => {
+      off();
+      clearInterval(timer);
+      loadToken.current++; // drop any in-flight load response after unmount
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.source, props.participant]);
 
@@ -185,7 +231,7 @@ export function ActivityPane(props: { source: RoomSource; participant: string; w
         <Text color={t.color(covColor)} wrap="wrap">{cov === 'partial' ? 'Partial coverage: ' : 'Unavailable: '}{sanitize(page.reason)}</Text>
       )}
       {error && <Text color={t.color('red')} wrap="truncate">✗ {sanitize(error)}</Text>}
-      {page?.olderEvicted && (visible.length === 0 || starts[0] === 0) && <Text dimColor wrap="truncate">… earlier activity isn't retained</Text>}
+      {(page?.olderEvicted || locallyDropped.current) && (visible.length === 0 || starts[0] === 0) && <Text dimColor wrap="truncate">… earlier activity isn't retained</Text>}
       {page && shown.length === 0 && !error && (
         <Text dimColor wrap="truncate">{cov === 'unavailable' ? 'No activity to show (see above).' : filter === 'all' ? 'No activity observed yet.' : `Nothing matches the "${filter}" filter.`}</Text>
       )}

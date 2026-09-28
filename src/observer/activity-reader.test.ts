@@ -88,6 +88,31 @@ test('persisted cursors resume exactly: no repeats and no gaps after a restart',
   assert.equal(b.page({ participant: 'fxa', limit: 10 }).olderEvicted, true, 'pre-restart items are unavailable, not missing silently');
 });
 
+test('concurrent polls of one participant never parse the same bytes twice (serialized)', async () => {
+  const { reader, file } = setup();
+  writeFileSync(file('s1'), call('a') + call('b') + call('c'));
+  const [x, y, z] = await Promise.all([reader.poll(target()), reader.poll(target()), reader.poll(target())]);
+  const all = [...x.items, ...y.items, ...z.items];
+  assert.deepEqual(all.map((i) => i.callId), ['a', 'b', 'c'], 'each record exactly once');
+  assert.deepEqual(all.map((i) => i.seq), [1, 2, 3]);
+});
+
+test('a transient locate miss keeps the stream and cursor (no re-read of the tail as duplicates)', async () => {
+  const { reader, file } = setup();
+  writeFileSync(file('s1'), call('a'));
+  await reader.poll(target());
+  const hidden = file('s1') + '.hidden';
+  renameSync(file('s1'), hidden);
+  const miss = await reader.poll(target());
+  assert.equal(miss.items.length, 0);
+  assert.equal(reader.page({ participant: 'fxa' }).coverage, 'unavailable', 'honestly unreadable right now');
+  renameSync(hidden, file('s1'));
+  appendFileSync(file('s1'), call('b'));
+  const back = await reader.poll(target());
+  assert.deepEqual(back.items.map((i) => [i.seq, i.callId]), [[2, 'b']], 'resumes; "a" is not repeated');
+  assert.equal(back.stream.generation, miss.stream.generation, 'same stream');
+});
+
 test('a harness without a parser is unavailable ("not supported yet"), never an empty full stream', async () => {
   const { reader } = setup();
   await reader.poll({ participant: 'astra', harness: 'codex', sessionId: '01a0e605-0000' });

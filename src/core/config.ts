@@ -83,6 +83,8 @@ export interface RoomConfig {
   activityMaxLineBytes: number;
   /** Upper bound read from one transcript per poll (the rest is read later; the view shows "catching up"). */
   activityReadBytes: number;
+  /** How often the service polls participants' transcripts for new activity. */
+  activityPollMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -126,6 +128,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   activityStartBytes: 512 * 1024,
   activityMaxLineBytes: 1024 * 1024,
   activityReadBytes: 4 * 1024 * 1024,
+  activityPollMs: 2_000,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -168,6 +171,7 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   activityStartBytes: 'ROOM_ACTIVITY_START_BYTES',
   activityMaxLineBytes: 'ROOM_ACTIVITY_MAX_LINE_BYTES',
   activityReadBytes: 'ROOM_ACTIVITY_READ_BYTES',
+  activityPollMs: 'ROOM_ACTIVITY_POLL_MS',
 };
 
 /** Doubling reconnect schedule from min to max (inclusive), e.g. 250, 500, 1000, 2000, 4000, 5000. */

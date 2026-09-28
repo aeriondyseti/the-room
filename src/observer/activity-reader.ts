@@ -86,8 +86,24 @@ export class ActivityReader {
     for (const name of [...this.streams.keys()]) if (!participants.includes(name)) this.streams.delete(name);
   }
 
-  /** Read anything new for this participant's current binding; returns the newly observed items (possibly none). */
-  async poll(target: ActivityTarget): Promise<{ stream: ActivityStreamId; items: ActivityItem[]; reset: boolean }> {
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+
+  /**
+   * Read anything new for this participant's current binding; returns the newly observed items (possibly none).
+   * Polls are serialized per participant: a concurrent caller (e.g. an `activity` request during a timer pass) waits
+   * for the one in flight, so the same bytes are never parsed twice under different seqs.
+   */
+  poll(target: ActivityTarget): Promise<{ stream: ActivityStreamId; items: ActivityItem[]; reset: boolean }> {
+    const prev = this.inFlight.get(target.participant) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(() => this.pollNow(target));
+    this.inFlight.set(target.participant, next);
+    void next.finally(() => {
+      if (this.inFlight.get(target.participant) === next) this.inFlight.delete(target.participant);
+    }).catch(() => {});
+    return next;
+  }
+
+  private async pollNow(target: ActivityTarget): Promise<{ stream: ActivityStreamId; items: ActivityItem[]; reset: boolean }> {
     const stream = await this.streamFor(target);
     const reset = stream.nextSeq === 1 && stream.items.length === 0 && stream.cursor === null;
     const parser = this.options.parsers.find((p) => p.harness === target.harness);
@@ -99,18 +115,20 @@ export class ActivityReader {
       return { stream: stream.id, items: [], reset: false };
     }
     if (!stream.cursor) {
-      stream.cursor = newCursor(stream.path);
+      let size: number;
       try {
-        const size = (await stat(stream.path)).size;
-        if (size > this.options.startBytes) {
-          stream.cursor.offset = size - this.options.startBytes;
-          stream.cursor.skipping = true; // start at the next line boundary
-          stream.olderUnavailable = true;
-        }
+        size = (await stat(stream.path)).size;
       } catch {
-        stream.exists = false;
+        stream.exists = false; // no cursor yet: the next poll starts from the tail again, never from offset 0
         return { stream: stream.id, items: [], reset };
       }
+      const cursor = newCursor(stream.path);
+      if (size > this.options.startBytes) {
+        cursor.offset = size - this.options.startBytes;
+        cursor.skipping = true; // start at the next line boundary
+        stream.olderUnavailable = true;
+      }
+      stream.cursor = cursor;
     }
     const read = await readRecords(stream.cursor, { maxBytes: this.options.readBytes, maxLineBytes: this.options.maxLineBytes });
     stream.exists = read.exists;
@@ -201,6 +219,11 @@ export class ActivityReader {
       this.streams.set(target.participant, s);
     }
     const path = await this.locate(target);
+    if (path === null && s.path !== null) {
+      // A transient miss (locked/busy directory): keep the known source and cursor; it's just unreadable right now.
+      s.exists = false;
+      return s;
+    }
     if (path !== s.path) {
       if (s.path !== null && path !== null) {
         // A different source file for the same session: new generation.

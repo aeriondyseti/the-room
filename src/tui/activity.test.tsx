@@ -85,6 +85,20 @@ test('honest coverage: unavailable and partial are labelled; evicted history say
   assert.match(await waitFor(c.frame, /No participant named "nobody"/), /\/who lists them/);
 });
 
+test('the header follows observed coverage after open (never frozen at the first load)', async () => {
+  seq = 0;
+  const src = new FakeRoomSource({ participants: [agent('astra')] });
+  src.setActivity('astra', [], { coverage: 'unavailable', reason: 'no transcript found for this session' });
+  const t = await open(src);
+  await waitFor(t.frame, /Unavailable: no transcript found/);
+  src.setActivity('astra', [], { coverage: 'full' });
+  src.appendActivity('astra', [item({ tool: 'Bash', summary: 'now visible' })]);
+  const f = await waitFor(t.frame, /▸ Bash now visible/);
+  const later = await waitFor(t.frame, /· live/);
+  assert.doesNotMatch(later, /Unavailable:/, 'stale "unavailable" is gone once coverage is full');
+  void f;
+});
+
 test('result status: explicit success ✓, explicit error ✗, unknown stays a neutral ◂ (never implied success)', () => {
   seq = 0;
   const rows = activityLines([

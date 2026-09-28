@@ -16,7 +16,7 @@ try {
     detailBytes:config.activityDetailBytes,windowItems:config.activityWindowItems,startBytes:config.activityStartBytes,maxLineBytes:config.activityMaxLineBytes,readBytes:config.activityReadBytes});
   const running=await startServer(canonical,{adapters:defaultAdapters(canonical),
     monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs},
-    activity:{reader:activity,intervalMs:config.participantRefreshMs}});
+    activity:{reader:activity,intervalMs:config.activityPollMs}});
   for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>{void running.close().then(()=>{process.exitCode=0;});});
 }catch(error){
   // A competing auto-start won the OS bind. Its clients will find that service during readiness probes.
