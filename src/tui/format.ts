@@ -2,7 +2,7 @@
 // viewport scroll precisely without measuring Ink boxes. Widths are terminal columns (string-width), not UTF-16
 // units, and every peer-supplied string is sanitized so it can't drive the terminal (invariants 5, 9).
 import stringWidth from 'string-width';
-import type { Delivery, MessageWithDeliveries } from '../contracts/domain.js';
+import type { Delivery, MessageWithDeliveries, ParticipantState, UsageSnapshot } from '../contracts/domain.js';
 import { HUMAN, SYSTEM } from '../contracts/domain.js';
 
 export interface Segment {
@@ -236,6 +236,52 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   });
   if (item.deliveries.length > 0) lines.push(fitLine(marks, ctx.width));
   return lines;
+}
+
+// ---- participants & usage ----------------------------------------------------------------------------------
+
+/** "42s ago" / "5m ago" / "3h ago" / "2d ago"; honest about bad input. */
+export function relativeTime(iso: string | null, now: number = Date.now()): string {
+  if (!iso) return 'never';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 'unknown time';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86_400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86_400)}d ago`;
+}
+
+export function compactTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
+}
+
+/**
+ * Compact context-usage label for the participant panel. Never shows a number that wasn't observed: no snapshot
+ * or `unavailable` → "usage n/a"; no known limit → absolute tokens, not a guessed percentage (invariant 3).
+ * A stale reading keeps its value but is marked with "?".
+ */
+export function usageLabel(usage: UsageSnapshot | null): { text: string; color?: string; dim: boolean } {
+  if (!usage || usage.status === 'unavailable' || !usage.context) return { text: 'usage n/a', dim: true };
+  const pct = usage.context.percent;
+  const text = pct !== null ? `ctx ${Math.round(pct)}%` : `ctx ${compactTokens(usage.context.usedTokens)}`;
+  if (usage.status === 'stale') return { text: `${text}?`, dim: true };
+  const color = pct === null ? undefined : pct >= 85 ? 'red' : pct >= 65 ? 'yellow' : undefined;
+  return color ? { text, color, dim: false } : { text, dim: true };
+}
+
+/** Header summary: how many agents, and anything that needs the human's attention. */
+export function participantsSummary(participants: readonly ParticipantState[]): Array<{ text: string; color?: string }> {
+  const parts: Array<{ text: string; color?: string }> = [{ text: participants.length === 1 ? '1 agent' : `${participants.length} agents` }];
+  if (participants.length === 0) return parts;
+  parts.push({ text: `${participants.filter((p) => p.liveness === 'online').length} online` });
+  const approval = participants.filter((p) => p.activity === 'waiting_permission').length;
+  if (approval) parts.push({ text: `${approval} need${approval === 1 ? 's' : ''} approval`, color: 'yellow' });
+  const rebind = participants.filter((p) => p.liveness === 'rebind_needed').length;
+  if (rebind) parts.push({ text: `${rebind} rebind needed`, color: 'yellow' });
+  return parts;
 }
 
 /** All conversation lines, with a blank separator between messages. */

@@ -106,7 +106,7 @@ Milestone 6+ only after the v0.1.0 tag.
     identity detection, mismatch refusal, and the declared fallback are labelled; `room join` writes
     only harness and session_id.
 
-- [ ] **2.4 MCP front end** *(Claude)*
+- [x] **2.4 MCP front end** *(Claude)*
   - **Scope:** official MCP SDK stdio server exposing `room_send`, `room_read` (paginated, with message
     fetch), `room_who`, and `room_join`; per-call identity; `client_message_id`; clear tool descriptions.
   - **Identity rules:**
@@ -148,7 +148,7 @@ Milestone 6+ only after the v0.1.0 tag.
   - **Done-when:** tests cover addressing parsing, completion, multi-line, each command dispatching the
     right IPC request, and errors shown inline.
 
-- [ ] **3.3 Participants, usage, and delivery detail** *(Claude)*
+- [x] **3.3 Participants, usage, and delivery detail** *(Claude)*
   - **Scope:**
     - participant strip or panel (state, pending, usage with freshness, "rebind needed" or "offline");
     - delivery detail view per message (attempts, evidence, errors);

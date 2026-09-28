@@ -33,7 +33,7 @@ their own rows**.
 | 2.1 | Codex adapter | Astra | 🟡 | Native argv transport, qualified Windows budget and receipt evidence. |
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ⬜ | |
-| 2.4 | MCP front end | Claude | ⬜ | |
+| 2.4 | MCP front end | Claude | ✅ | v0.0.11 · review: reviews/2.4.md · `room mcp` |
 | 2.5 | Usage observer | Claude | ✅ | v0.0.5 · review: reviews/2.5.md |
 | 2.6 | Onboarding | Claude | ⬜ | |
 
@@ -43,7 +43,7 @@ their own rows**.
 |---|---|---|---|---|
 | 3.1 | TUI shell and conversation | Claude | ✅ | v0.0.6 · review: reviews/3.1.md · try: room tui --demo |
 | 3.2 | Composer and commands | Claude | ✅ | v0.0.8 · review: reviews/3.2.md · `room tui` opens the real room |
-| 3.3 | Participants, usage, and delivery detail | Claude | ⬜ | |
+| 3.3 | Participants, usage, and delivery detail | Claude | ✅ | v0.0.10 · review: reviews/3.3.md · /detail, usage in panel + /who |
 
 ## Milestone 4 — MVP acceptance
 
@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 9 / 20 features complete · **current version: v0.0.9** · last tag: v0.0.9
+**Summary:** 11 / 20 features complete · **current version: v0.0.11** · last tag: v0.0.11
