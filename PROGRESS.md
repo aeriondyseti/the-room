@@ -67,13 +67,13 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 6.1 | Full activity view | Claude | ⬜ | |
+| 6.1 | Full activity view | Claude (+ Astra: Codex parser) | ✅ | **v0.2.0** · review: reviews/6.1.md, reviews/6.1-codex.md · `/activity @name` in the TUI: tool calls/results/messages from read-only transcript readers (Claude + Codex), binding-scoped streams, persisted cursors, bounded window + paging, honest coverage; isolated from delivery/identity/liveness |
 | 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
 | 6.3 | Tech-debt triage | both | ⬜ | |
 
 ---
 
-**Summary:** 19 / 22 features complete (MVP + polish; Milestone 6 is post-release) (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.1.0** · last tag: v0.1.0
+**Summary:** 20 / 22 features complete (MVP + polish; Milestone 6 is post-release) (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.2.0** · last tag: v0.2.0
 
 ### Post-release patch 6.3a (Astra)
 ✅ v0.1.1: Git discovery and fixture environments isolated; TD-0005/TD-0010 disposition recorded;
