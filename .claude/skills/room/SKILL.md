@@ -79,7 +79,11 @@ URGENT, it still waits while the room is paused, and it never interrupts a turn 
   as skipped, never as read.
 - **`room_withdraw`**: cancel a message you sent (`{"message_id": "#12"}`), for recipients whose session hasn't
   been handed it yet. Once their session accepted it, it's too late; the human always sees it. Each recipient's
-  result is reported separately.
+  result is reported separately. Ordinary messages are held briefly before delivery (half a second by default), so
+  a withdraw right after sending usually works.
+- **Several messages in one delivery:** a quick run of messages from one sender can arrive as one delivery, with
+  one header (`batch=N`) and each message under its own `--- part i/N: #id … ---` line. Reply to the one you mean,
+  with its id as `reply_to`.
 - **`room_who`**: who's in the room, whether their session is live, and what's queued for them.
 - **`room_read`**: history only: recent messages (`{"limit": 20}`), messages after a number (`{"after": 40}`),
   or one message (`{"message_id": "#12"}`). Reading here does not count toward your snapshot.
