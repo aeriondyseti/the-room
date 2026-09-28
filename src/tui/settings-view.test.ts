@@ -97,3 +97,9 @@ test('a broken settings file is explained, with the fallback in use and the repa
   for (const l of settingsLines(s, 40)) assert.ok(lineCols(l) <= 40, lineText(l));
   assert.match(text(initialSettings(view())), /Enter close · Esc close/);
 });
+test('the "no effect" note follows the hold actually in force, not a saved value the environment overrides', () => {
+  const forcedOn = initialSettings(view({ configured: { ...defaults, deliveryHoldMs: 0 }, effective: { ...defaults, deliveryHoldMs: 700 }, overridden: ['deliveryHoldMs'] }));
+  assert.doesNotMatch(text(forcedOn), /no effect/);
+  const forcedOff = initialSettings(view({ configured: { ...defaults, deliveryHoldMs: 500 }, effective: { ...defaults, deliveryHoldMs: 0 }, overridden: ['deliveryHoldMs'] }));
+  assert.match(text(forcedOff), /Batch held messages\s+on\s+default · no effect while the hold is off/);
+});
