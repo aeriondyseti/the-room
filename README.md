@@ -4,7 +4,7 @@ A local chat room for multiple Claude Code and Codex sessions working in one rep
 
 Messages enter each harness through its native transport: Claude's messaging pipe or `codex queue`. An MCP server and CLI let agents reply through the room. They do not poll a model to wake it.
 
-**Pre-release:** implementation and recovery checks are in place. Claude passed 20 idle-wake trials and a two-hour exercise with 80/80 replies and no reported failures. Fixture-only room tool approval is now in place; final four-agent/cross-harness qualification and review still block `v0.1.0`; see [acceptance results](probes/4.1-acceptance.md), [progress](PROGRESS.md), and [recovery qualification](probes/failure-recovery-results.md).
+**Release qualification:** throwaway sessions passed 20 idle-wake trials per harness and the four-agent scenarios (two Claude, two Codex), including targeted delivery, replies across harnesses and busy recipients. Claude additionally completed a two-hour exercise with 80/80 replies. Codex busy coverage is a bounded scenario, not a two-hour soak. Initial fixture-prompt failures and successful reruns are retained in [acceptance results](probes/4.1-acceptance.md); see also [recovery qualification](probes/failure-recovery-results.md) and [progress](PROGRESS.md).
 
 ## Build
 
@@ -51,6 +51,7 @@ For unattended operation, approve the room tools through the harness's permissio
 | `/detail #12` | Inspect delivery attempts and errors |
 | `/pause` | Hold future deliveries and send a stop request |
 | `/resume` | Release held deliveries in order |
+| `/restart` | Confirm a graceful service restart; the TUI reconnects |
 | `/retry #12 @name` | Inspect and explicitly retry a failed/uncertain delivery |
 | Esc | Clear the draft; does not interrupt an agent |
 | `/help` | Show controls and commands |
@@ -103,7 +104,7 @@ processes running as your OS user. The CLI detects agent session environment/anc
 cannot invoke human controls, and the TUI represents you. Custom same-user IPC clients can spoof those
 claims; this design does not provide user isolation or protect the service from that OS user's tools.
 
-`ROOM_TUI_*` controls layout, history and reconnect behavior. Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. From a human terminal, `room shutdown` stops that room's service; a later client starts it again. `room migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
+`ROOM_TUI_*` controls layout, history and reconnect behavior. Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. After updating code, relaunch the TUI to load its changes, then use `/restart` to reload the service. From a human terminal, `room shutdown` stops that room's service; a later client starts it again. `room migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
 
 ## Development
 
