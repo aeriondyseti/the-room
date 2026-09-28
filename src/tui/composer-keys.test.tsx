@@ -12,6 +12,7 @@ import { FakeRoomSource } from './fake-source.js';
 import { cols } from './format.js';
 import { deleteWordBackward, visualRows, wordLeft, wordRight, type Draft } from './composer.js';
 import { bsIsCtrlBackspaceIn, classifyRawKey } from './raw-keys.js';
+import { sidePanelLines } from './sidepanel.js';
 
 afterEach(() => cleanup());
 const tick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
@@ -209,4 +210,103 @@ test('cross-review: a key release (CSI-u event type 3) never acts — one press 
   assert.equal(t.sends().length, 0, 'a release never submits');
   await t.type('\r');
   assert.equal(t.sends()[0]?.body, 'one \nx', 'exactly one deletion and one newline');
+});
+test('TD-0034: at every height and in both layouts the frame holds — header, the To:/command row and the status bar survive suggestions, feedback and a long draft', async () => {
+  for (const layout of ['top', 'left'] as const) {
+    for (const height of [12, 13, 14, 16, 20]) {
+      for (const typed of ['/', '@nobody hi\r', 'a\nb\nc\nd\ne\nf\ng\nh', 'a\nb\nc\nd\ne\nf\ng\nh\u0017']) {
+        const src = new FakeRoomSource({ participants: [agent('astra')] });
+        const ui = render(<App source={src} humanName="Kevin" width={100} height={height} layout={layout} windowsTerminal={true} />);
+        await tick();
+        for (const ch of typed) { ui.stdin.write(ch); await tick(5); }
+        await tick();
+        const rows = plain(ui.lastFrame()).split('\n');
+        const where = `${layout} h=${height} typed ${JSON.stringify(typed)}:\n${rows.join('\n')}`;
+        assert.equal(rows.length, height, `frame height — ${where}`);
+        assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where}`);
+        assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where}`);
+        const statusAt = rows.findIndex((r) => r.startsWith('● live'));
+        assert.equal(statusAt, height - 1, `status bar on the last row (no outer divider since its removal) — ${where}`);
+        cleanup();
+      }
+    }
+  }
+});
+test('TD-0034 review: the worst case still fits — banner + error line + "/" + a multi-line top bar at 12 rows; the highlighted command is always on screen', async () => {
+  const many = Array.from({ length: 10 }, (_, i) => agent(`agent_${i}`));
+  const account = { account: { harness: 'claude' as const, scope: 'profile' as const, key: 'k', sourceKey: 'k' }, status: 'ok' as const, source: 's', checkedAt: null, observedAt: null,
+    buckets: [{ id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: null }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: null }] }] };
+  for (const [layout, width] of [['top', 100], ['top', 30], ['top', 20], ['left', 60], ['left', 120]] as const) {
+    for (const height of [12, 13, 14]) {
+      const src = new FakeRoomSource({ participants: many });
+      src.setAccounts([account]);
+      const ui = render(<App source={src} humanName="Kevin" width={width} height={height} layout={layout} windowsTerminal={true} />);
+      await tick();
+      src.setStatus({ state: 'reconnecting', attempt: 2 } as never); // a connection banner
+      await tick();
+      for (const ch of '/xyz\r') { ui.stdin.write(ch); await tick(5); } // an error feedback line that stays while typing
+      for (let i = 0; i < 3; i++) { ui.stdin.write('\x7f'); await tick(5); } // back to "/": suggestions open, feedback kept
+      await tick();
+      let rows = plain(ui.lastFrame()).split('\n');
+      const where = () => `${layout} w=${width} h=${height}:\n${rows.join('\n')}`;
+      assert.equal(rows.length, height, `frame height — ${where()}`);
+      assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where()}`);
+      assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where()}`);
+      assert.ok(rows.some((r) => /(^|\s)▸ \//.test(r)), `the highlighted command is visible — ${where()}`);
+      assert.ok(rows.some((r) => /\+\d+ (more|↑\/↓)/.test(r)), `hidden suggestions are announced — ${where()}`);
+      ui.stdin.write('\u001B[B'); await tick(5); ui.stdin.write('\u001B[B'); await tick(); // ↓↓
+      rows = plain(ui.lastFrame()).split('\n');
+      assert.ok(rows.some((r) => /(^|\s)▸ \//.test(r)), `still visible after ↓↓ — ${where()}`);
+      assert.equal(rows.length, height, `frame height after ↓↓ — ${where()}`);
+      cleanup();
+    }
+  }
+});
+
+test('TD-0034 review: tall terminals behave exactly as before — 6 suggestions + "+N more"; a long draft grows to the configured max; the conversation keeps 3 rows', async () => {
+  const t = await setup(30);
+  await t.type('/');
+  let rows = t.frame().split('\n');
+  assert.equal(rows.filter((r) => /^[▸ ] \/\w/.test(r)).length, 6, rows.join('\n'));
+  assert.ok(rows.some((r) => /^ {2}\+\d+ more · ↑\/↓ to see them\s*$/.test(r)));
+  await t.type('\u001B'); // Esc clears the draft
+  for (let i = 1; i <= 16; i++) { await t.type(`line ${i}`); if (i < 16) await t.type('\n'); }
+  rows = t.frame().split('\n');
+  const draftRows = rows.filter((r) => /^(›|↑|↓| ) ?line \d+\s*$|^ {2}line \d+\s*$/.test(r)).length;
+  assert.equal(draftRows, 12, `the draft grows to composerMaxRows (12):\n${rows.join('\n')}`);
+});
+test('6.18 review: the smallest viewport still announces — the help pager keeps "↓ N more", the side panel shows summary lines, and the folded count leads its row', async () => {
+  const many = Array.from({ length: 10 }, (_, i) => agent(`agent_${i}`));
+  const account = { account: { harness: 'claude' as const, scope: 'profile' as const, key: 'k', sourceKey: 'k' }, status: 'ok' as const, source: 's', checkedAt: null, observedAt: null,
+    buckets: [{ id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: null }] }] };
+  for (const layout of ['top', 'left'] as const) {
+    const src = new FakeRoomSource({ participants: many });
+    src.setAccounts([account]);
+    const ui = render(<App source={src} humanName="Kevin" width={120} height={12} layout={layout} windowsTerminal={true} />);
+    await tick();
+    src.setStatus({ state: 'reconnecting', attempt: 2 } as never);
+    await tick();
+    ui.stdin.write('?');
+    await tick();
+    const rows = plain(ui.lastFrame()).split('\n');
+    assert.equal(rows.length, 12);
+    assert.ok(rows.some((r) => /↓ \d+ more lines? · PgDn/.test(r)), `${layout}: the pager's marker survives the smallest viewport:\n${rows.join('\n')}`);
+    cleanup();
+  }
+  const tiny = sidePanelLines(many, [account], { width: 32, height: 2, stale: false, mono: false, now: Date.now(), humanName: 'Kevin' }).map((l) => l.map((s) => s.text).join(''));
+  assert.deepEqual(tiny, ['AGENTS · 10 · /who', '+ budgets · /layout top'], 'a 2-row panel says what it cannot show');
+  const asking = sidePanelLines([...many.slice(0, 9), { ...agent('asks'), activity: 'waiting_permission' as const }], [account], { width: 40, height: 2, stale: false, mono: false, now: Date.now(), humanName: 'Kevin' }).map((l) => l.map((s) => s.text).join(''));
+  assert.equal(asking[0], 'AGENTS · 10 · 1 need attention · /who', 'the attention count survives the tiny summary');
+  // Cramped enough to fold: 12 rows, 30 columns, a banner and an error line.
+  const src = new FakeRoomSource({ participants: [agent('astra')] });
+  const ui = render(<App source={src} humanName="Kevin" width={30} height={12} windowsTerminal={true} />);
+  await tick();
+  src.setStatus({ state: 'reconnecting', attempt: 2 } as never);
+  for (const ch of '/xyz\r') { ui.stdin.write(ch); await tick(5); }
+  for (let i = 0; i < 3; i++) { ui.stdin.write('\x7f'); await tick(5); }
+  await tick();
+  const frameRows = plain(ui.lastFrame()).split('\n');
+  assert.equal(frameRows.length, 12, frameRows.join('\n'));
+  const folded = frameRows.find((r) => /▸ \//.test(r)) ?? '';
+  assert.match(folded, /^\+\d+ ↑\/↓ ▸ \//, `the count leads the folded row: "${folded}"`);
 });
