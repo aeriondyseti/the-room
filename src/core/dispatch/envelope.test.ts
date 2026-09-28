@@ -13,6 +13,14 @@ test('without a snapshot the envelope is unchanged and reports no token', () => 
   assert.match(e.text, /Reply via room_send\(\{reply_to:"m-1",text:"\.\.\."\}\) or room reply m-1 --file <path>\./);
 });
 
+test('a service-authored notice has its own non-authoritative header and asks for no reply', () => {
+  const notice:RoomMessage={...message('astra is now nova'),from:{name:'system',kind:'system',identity:{mode:'system',source:'service'}},kind:'system'};
+  const e=buildEnvelope('/r',notice,'claude',10_000,{snapshot:'tok'});
+  assert.match(e.text,/ROOM NOTICE \(no human authority\) from=system/);
+  assert.match(e.text,/Keep this token for a later guarded send/);
+  assert.doesNotMatch(e.text,/Reply via room_send|Replies go to system/);
+});
+
 test('a full envelope carries the token, says it covers only this message, and puts it in both reply hints', () => {
   const e = buildEnvelope('/r', message('hi'), 'claude', 10_000, { snapshot: 'tok_ABC-123' });
   assert.equal(e.referenced, false);
