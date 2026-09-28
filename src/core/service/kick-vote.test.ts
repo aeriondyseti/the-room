@@ -26,6 +26,8 @@ test('online electorate is frozen by binding; unknown and stale are shown as exc
   assert.equal(voteKickProposal(excluded,{harness:'claude',sessionId:fable.session_id},now).vote,'not_a_voter');
   const stale=openKickProposal(registry,[observed('fable','online',new Date(now.getTime()-31_000).toISOString())], 'target',{harness:'codex',sessionId:astra.session_id},'reason',now,15_000,600_000);
   assert.deepEqual(stale.excluded,[{name:'fable',reason:'stale'}]);
+  const missing=openKickProposal(registry,[], 'target',{harness:'codex',sessionId:astra.session_id},'reason',now,15_000,600_000);
+  assert.deepEqual(missing.excluded,[{name:'fable',reason:'unknown'}]);
 });
 
 test('kick rejects self-target, vanished proposer, nonvoters and expired proposals',()=>{

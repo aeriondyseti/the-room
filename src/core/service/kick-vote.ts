@@ -24,6 +24,7 @@ export function openKickProposal(registry:Registry,observed:readonly Participant
       voters.push({name,binding:native,votedAt:now.toISOString()});proposerFound=true;continue;
     }
     const participant=observed.find(p=>p.name===name&&p.harness===native.harness&&p.sessionId===native.sessionId);
+    if(!participant){excluded.push({name,reason:'unknown'});continue;}
     const checked=Date.parse(participant?.livenessCheckedAt??'');
     const fresh=Number.isFinite(checked)&&checked<=now.getTime()&&now.getTime()-checked<=2*refreshMs;
     if(!fresh){excluded.push({name,reason:'stale'});continue;}
