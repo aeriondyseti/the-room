@@ -49,6 +49,7 @@ test('legacy migration preserves both native identities and makes an exact backu
   await writeFile(path.join(root, 'session.toml'), legacy);
   const result = await migrateLegacyRegistry(root);
   assert.deepEqual(result.astra, one); assert.deepEqual(result.claude, two);
+  assert.deepEqual(parseRegistry(await readFile(path.join(root, 'session.toml'), 'utf8')), result);
   assert.equal(Object.keys(result).length, 2);
   const backups = await readdir(path.join(root, '.room'));
   const backup = backups.find(n => n.startsWith('registry-backup-')); assert.ok(backup);
@@ -85,4 +86,20 @@ test('two independent processes serialize registry writes', async t => {
   });
   await Promise.all([run('astra', one), run('claude', two)]);
   assert.equal(Object.keys(await readRegistry(root)).length, 2);
+});
+
+test('rename retries only transient sharing errors without deleting original', async t => {
+  const root = await fixture(t); const source = path.join(root, 'temp');const target = path.join(root,'session.toml');
+  await writeFile(source,'new');await writeFile(target,'old');
+  const {renameWithRetry} = await import('./registry.js');const {rename} = await import('node:fs/promises');
+  let attempts = 0;
+  await renameWithRetry(source,target,async(a,b)=>{if(++attempts===1){assert.equal(await readFile(target,'utf8'),'old');throw Object.assign(new Error('sharing'),{code:'EBUSY'});}await rename(a,b);});
+  assert.equal(attempts,2);assert.equal(await readFile(target,'utf8'),'new');
+});
+test('registry errors expose recovery codes and reject a file as room root', async t => {
+  const root=await fixture(t);await joinParticipant(root,'astra',one);
+  await assert.rejects(joinParticipant(root,'astra',two),{code:'rebind_conflict'});
+  await assert.rejects(joinParticipant(root,'second',one),{code:'duplicate_binding'});
+  await assert.rejects(joinParticipant(root,'missing',two,{expectedPrevious:one}),{code:'rebind_conflict'});
+  await assert.rejects(resolveRoomRoot(root,path.join(root,'session.toml')),{code:'bad_request'});
 });

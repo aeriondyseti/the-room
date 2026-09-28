@@ -1,6 +1,8 @@
 // Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
 
 export interface RoomConfig {
+  /** Poll interval for detached service readiness. */
+  servicePollMs: number;
   /** Bounded SQLite lock-contention wait. */
   sqliteBusyTimeoutMs: number;
   /** Max envelope characters for `codex queue --message` (Windows command-line budget; proposal "Message envelope"). */
@@ -30,6 +32,7 @@ export interface RoomConfig {
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
+  servicePollMs: 50,
   sqliteBusyTimeoutMs: 5000,
   codexMaxEnvelopeChars: 24_000,
   claudeMaxEnvelopeChars: 900_000,
@@ -46,6 +49,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
+  servicePollMs: 'ROOM_SERVICE_POLL_MS',
   sqliteBusyTimeoutMs: 'ROOM_SQLITE_BUSY_TIMEOUT_MS',
   codexMaxEnvelopeChars: 'ROOM_CODEX_MAX_ENVELOPE_CHARS',
   claudeMaxEnvelopeChars: 'ROOM_CLAUDE_MAX_ENVELOPE_CHARS',

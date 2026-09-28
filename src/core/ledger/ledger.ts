@@ -87,11 +87,7 @@ export class Ledger {
     if (!input.senderScope || !input.body.trim()) throw new RoomError('bad_request', 'Sender scope and message body are required.');
     const key = input.clientMessageId ?? null;
     if (key !== null && !key.trim()) throw new RoomError('bad_request', 'client_message_id cannot be empty.');
-    const fingerprint = JSON.stringify({
-      senderKind: input.sender.kind, body: input.body,
-      requestedRecipients: input.requestedRecipients === null ? null : [...new Set(input.requestedRecipients)].sort(),
-      addressing: input.addressing, replyTo: input.replyTo ?? null, kind: input.kind ?? 'chat',
-    });
+    const fingerprint = this.fingerprint(input);
     return this.transaction(() => {
       if (key !== null) {
         const previous = this.db.prepare('SELECT seq,id,payload,fingerprint FROM messages WHERE sender_scope=? AND client_key=?').get(input.senderScope, key) as unknown as MessageRow | undefined;
@@ -125,6 +121,20 @@ export class Ledger {
       }
       return { ...this.read(message.id), deduplicated: false };
     });
+  }
+
+  private fingerprint(input: Pick<EnqueueInput, 'sender' | 'body' | 'requestedRecipients' | 'addressing' | 'replyTo' | 'kind'>): string {
+    return JSON.stringify({ senderKind:input.sender.kind, body:input.body,
+      requestedRecipients:input.requestedRecipients===null?null:[...new Set(input.requestedRecipients)].sort(),
+      addressing:input.addressing,replyTo:input.replyTo??null,kind:input.kind??'chat' });
+  }
+  /** Check a retry before resolving current recipients, which may have left since the original send. */
+  findRetry(input: Pick<EnqueueInput, 'sender' | 'senderScope' | 'body' | 'requestedRecipients' | 'addressing' | 'replyTo' | 'kind' | 'clientMessageId'>): (MessageWithDeliveries & {deduplicated:true}) | null {
+    if(input.clientMessageId===null||input.clientMessageId===undefined)return null;
+    const previous=this.db.prepare('SELECT id,fingerprint FROM messages WHERE sender_scope=? AND client_key=?').get(input.senderScope,input.clientMessageId) as {id:string;fingerprint:string}|undefined;
+    if(!previous)return null;
+    if(previous.fingerprint!==this.fingerprint(input))throw new RoomError('dedup_conflict','client_message_id was already used with different content.');
+    return {...this.read(previous.id),deduplicated:true};
   }
 
   read(id: string): MessageWithDeliveries {
