@@ -104,7 +104,7 @@ export class RoomService {
             if(uncovered!==0){
               const reason=snapshot===undefined?'snapshot_required':uncovered===null?'snapshot_invalid':'snapshot_stale';
               const inbox=this.inbox.review(caller.scope,uncovered===null?{}:{snapshot});
-              const rejected:GuardedSendOutcome={status:'not_sent',reason,attemptId:crossing.attemptId,inbox,guidance:'Nothing was sent. Review the returned content, continue paging if hasMore, then revise and retry with the returned snapshot.'};
+              const rejected:GuardedSendOutcome={status:'not_sent',reason,attemptId:crossing.attemptId,inbox,guidance:''};
               this.ledger.putCrossing(crossing.attemptId,caller.scope,'blocked_send',{reason,at:new Date().toISOString(),revisesAttemptId,remaining:inbox.remaining});
               return {result:null,replyDelivery:null,rejected};
             }
