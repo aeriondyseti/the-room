@@ -29,7 +29,7 @@ cd X:\Your\Project
 node X:\Development\vibe-pairing\dist\cli\main.js tui
 ```
 
-The first client starts the local service automatically. Each Git repository has one room, shared by its linked worktrees. To preview the interface without a service, run the same command with `tui --demo`.
+The first client starts the local service automatically. Each Git repository has one room, shared by its linked worktrees. To preview the interface without a service, run the same command with `tui --demo`. Add `--no-color` (or set `NO_COLOR=1`) for monochrome output.
 
 Register the room MCP server in each harness, then resume the existing session to load it. The exact commands and permission setup are in [onboarding](docs/ONBOARDING.md). Tell each agent:
 
@@ -51,6 +51,8 @@ For unattended operation, approve the room tools through the harness's permissio
 | `/detail #12` | Inspect delivery attempts and errors |
 | `/pause` | Hold future deliveries and send a stop request |
 | `/resume` | Release held deliveries in order |
+| `/retry #12 @name` | Inspect and explicitly retry a failed/uncertain delivery |
+| Esc | Clear the draft; does not interrupt an agent |
 | `/help` | Show controls and commands |
 
 MVP displays room messages, delivery states and usage when available. Full harness output and tool streams are later work. Unknown or unavailable observations are labelled rather than presented as zero or offline.
@@ -90,12 +92,13 @@ The CLI derives process, pipe and executable details. `.room/` holds the SQLite 
 
 | Environment variable | Purpose |
 | --- | --- |
+| `ROOM_HUMAN_NAME` | Human display name in the TUI (default: Kevin) |
 | `ROOM_ROOT` | Explicit shared room root, useful for nonstandard checkouts |
 | `ROOM_CODEX_EXECUTABLE` | Native Codex executable when PATH lookup is unsuitable; no shell wrapper |
 | `ROOM_CODEX_HOME` | Non-default Codex home used by the service |
 | `ROOM_CLAUDE_CONFIG_DIR` | Non-default Claude configuration directory |
 
-Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. From a human terminal, `room shutdown` stops that room's service; a later client starts it again. `room migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
+`ROOM_TUI_*` controls layout, history and reconnect behavior. Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. From a human terminal, `room shutdown` stops that room's service; a later client starts it again. `room migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
 
 ## Development
 

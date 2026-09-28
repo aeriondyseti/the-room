@@ -18,3 +18,5 @@ Commands and results:
 This checks install/build, empty-room service setup and automated TUI startup/rendering coverage. It is not a manual visual review in a physical terminal, a global npm-link test, or full harness qualification. The4.1 wake/soak and Codex approval gates remain separate. No global harness configuration was modified.
 
 Cleanup: the service was stopped, but automatic approval review rejected recursive deletion of the explicitly owned clone as "blocked by policy". The directory remains at the fixture path above; no alternative deletion route was attempted.
+
+After integrating v0.0.18 TUI polish into sprint/5.3: build passed and `node scripts/preview-tui.mjs 80x24 --mono --empty` rendered the full first-run instructions, composer and keyboard hints. This was an Ink preview, not a physical-terminal visual check.
