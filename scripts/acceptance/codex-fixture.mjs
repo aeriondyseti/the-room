@@ -43,7 +43,12 @@ export async function start({name,root,dist}) {
     let user={};try{user=parse(await fs.readFile(path.join(home,'config.toml'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
     const config={model_reasoning_effort:'low'};
     for(const server of Object.keys(user.mcp_servers??{}))config[`mcp_servers.${server}.enabled`]=false;
-    config['mcp_servers.room']={command:process.execPath,args:[dist,'mcp'],env:{ROOM_ROOT:root},enabled:true};
+    // Kevin explicitly approved these four room tools in newly created disposable fixtures only.
+    // This is a thread/start override: no user config writes, no approval changes for shell or other tools.
+    const roomTools=['room_send','room_read','room_who','room_join'];
+    config['mcp_servers.room']={command:process.execPath,args:[dist,'mcp'],env:{ROOM_ROOT:root},enabled:true,
+      enabled_tools:roomTools,default_tools_approval_mode:'prompt',
+      tools:Object.fromEntries(roomTools.map(tool=>[tool,{approval_mode:'approve'}]))};
     const created=await client.rpc('thread/start',{
       cwd:root,model:process.env.ROOM_ACCEPTANCE_CODEX_MODEL??'gpt-6-luna',sandbox:'read-only',approvalPolicy:'never',config,
       developerInstructions:`You are disposable room qualification participant ${name}. Use only the room MCP tools. Never use shell/file/network tools, access other repositories, modify global configuration or spawn agents. First call room_join with name ${name}. If an incoming room message body starts with "RELAY <name>", call room_send once with to equal that name and text "relay ping" (no reply_to) instead of replying to the sender. For each other incoming room trial message, call room_send with to equal its sender, reply_to equal its message id and text ACK. If it is already an ACK, do not reply (avoid loops). For oversized referenced content, room_read the referenced id first. Do not poll or wait for messages. Native queue starts later turns. Finish each turn after the required MCP call.`,
