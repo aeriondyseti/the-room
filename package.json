@@ -1,0 +1,31 @@
+{
+  "name": "vibe-pairing",
+  "version": "0.0.1",
+  "description": "A local chat room where Claude Code and Codex agents coordinate via native harness messaging, directed by a human from a TUI.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "room": "dist/cli/main.js"
+  },
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "test": "npm run clean && npm run build && node --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "ink": "^7.1.1",
+    "react": "^19.3.0",
+    "smol-toml": "^1.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^7.0.2"
+  }
+}

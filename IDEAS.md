@@ -76,3 +76,19 @@ today):
 **Design guidance meanwhile (no commitment):** keep the MVP delivery
 adapters independent of how the agent is hosted — don't assume a TUI is
 attached — so this remains possible later.
+
+## Weekly subscription usage per harness
+
+*Raised 2026-09-28 by Kevin. Status: parked, not scoped.*
+
+**Idea:** show how much of each harness's weekly subscription allowance (Claude plan limits, Codex/ChatGPT
+plan limits) has been used — room-wide and per agent — in the TUI (e.g. a header meter with reset time),
+alongside the per-agent token/context usage the MVP already shows.
+
+**Open questions / checks before scoping:**
+- Where the numbers come from: whether each harness exposes plan-usage data locally (CLI status/usage
+  commands, local state files, or a documented API) versus only in its own UI. Read-only sources only —
+  invariant 8 (never write harness state) applies.
+- Whether it's per account (shared by all agents of that harness) or attributable per session; the TUI must
+  label which (invariant 3: honest state — unavailable is shown as unavailable, never as zero).
+- Freshness and polling cost; the reset-window semantics (rolling vs fixed weekly).
