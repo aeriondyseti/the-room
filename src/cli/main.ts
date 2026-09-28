@@ -47,4 +47,12 @@ function canonical(path: string): string {
   return process.platform === 'win32' ? href.toLowerCase() : href;
 }
 
-if (isEntryPoint(process.argv[1], import.meta.url)) process.exitCode = run(process.argv.slice(2));
+if (isEntryPoint(process.argv[1], import.meta.url)) {
+  const argv = process.argv.slice(2);
+  if (argv[0] === 'tui') {
+    const { runTuiCommand } = await import('./tui-command.js');
+    process.exitCode = await runTuiCommand(argv.slice(1));
+  } else {
+    process.exitCode = run(argv);
+  }
+}
