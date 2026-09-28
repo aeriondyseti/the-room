@@ -18,7 +18,8 @@ function mark(item: ActivityItem): { glyph: string; color?: string } {
     case 'tool_call':
       return { glyph: '▸', color: 'cyan' };
     case 'tool_result':
-      return item.isError ? { glyph: '✗', color: 'red' } : { glyph: '◂', color: 'green' };
+      // Only an explicit isError:false is shown as success; unknown (undefined) stays neutral (invariant 3).
+      return item.isError === true ? { glyph: '✗', color: 'red' } : item.isError === false ? { glyph: '✓', color: 'green' } : { glyph: '◂' };
     case 'message':
       return item.role === 'user' ? { glyph: '›', color: 'yellow' } : { glyph: '‹', color: 'magenta' };
     case 'turn_start':

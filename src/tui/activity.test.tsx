@@ -85,6 +85,18 @@ test('honest coverage: unavailable and partial are labelled; evicted history say
   assert.match(await waitFor(c.frame, /No participant named "nobody"/), /\/who lists them/);
 });
 
+test('result status: explicit success ✓, explicit error ✗, unknown stays a neutral ◂ (never implied success)', () => {
+  seq = 0;
+  const rows = activityLines([
+    item({ kind: 'tool_result', isError: false, summary: 'ok' }),
+    item({ kind: 'tool_result', isError: true, summary: 'bad' }),
+    item({ kind: 'tool_result', summary: 'unknown' }),
+  ], { width: 80, selected: -1, expanded: new Set() }).lines;
+  const glyph = (i: number) => rows[i]!.find((s) => /^[✓✗◂]$/.test(s.text));
+  assert.deepEqual([glyph(0)?.text, glyph(1)?.text, glyph(2)?.text], ['✓', '✗', '◂']);
+  assert.equal(glyph(2)?.color, undefined, 'no success colour for an unknown outcome');
+});
+
 test('large histories stay responsive: 1000 items build a bounded line model quickly', () => {
   seq = 0;
   const many = Array.from({ length: 1000 }, (_, i) => item({ summary: `step ${i}`, detail: 'x'.repeat(4000) }));
