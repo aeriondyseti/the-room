@@ -152,3 +152,23 @@ test('? opens help; Esc closes it', async () => {
   await waitFor(t.frame, /Message everyone/);
   assert.doesNotMatch(t.frame(), /Commands/);
 });
+
+test('/restart asks for confirmation, then gracefully shuts the service down as the human (reconnect starts the new one)', async () => {
+  const t = await setup();
+  const shutdowns = () => t.src.requests.filter((r) => r.method === 'shutdown');
+  await t.type('/restart');
+  await t.type(K.enter);
+  assert.equal(shutdowns().length, 0, 'the first Enter only asks');
+  assert.match(t.frame(), /Restart the room service\?/);
+  await t.type(K.enter);
+  await waitFor(t.frame, /Room service stopped; reconnecting/);
+  assert.equal(shutdowns().length, 1);
+  assert.deepEqual(shutdowns()[0]!.params, { caller: { kind: 'human' } });
+
+  // Editing the draft cancels a pending confirmation.
+  await t.type('/restart');
+  await t.type(K.enter);
+  await t.type(' ');
+  await t.type(K.enter);
+  assert.equal(shutdowns().length, 1, 'an edited draft needs a fresh confirmation');
+});

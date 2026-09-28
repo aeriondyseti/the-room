@@ -149,6 +149,8 @@ export class FakeRoomSource implements RoomSource {
         const d = this.items.find((i) => i.message.id === p.messageId)!.deliveries.find((x) => x.recipient === p.recipient)!;
         return { delivery: { ...d } };
       }
+      case 'shutdown':
+        return { stopping: true };
       case 'deliveries': {
         const p = params as Params<'deliveries'>;
         return { deliveries: structuredClone(this.items.find((i) => i.message.id === p.messageId)?.deliveries ?? []) };

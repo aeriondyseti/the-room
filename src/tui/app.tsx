@@ -243,6 +243,22 @@ function Room({
           return finish({ tone: 'ok', text: `Resumed. ${r.released} held deliver${r.released === 1 ? 'y' : 'ies'} released in order.` });
         });
         return;
+      case 'restart': {
+        // Graceful service restart (e.g. to load a new version): the service finishes in-flight requests, keeps every
+        // queued delivery in the ledger, and never interrupts an agent; our reconnect then starts the new service.
+        // Human-only by construction (the TUI connection is the human), and confirmed with a second Enter.
+        if (pendingConfirm.current !== 'restart') {
+          pendingConfirm.current = 'restart';
+          setFeedback({ tone: 'info', text: 'Restart the room service? Queued messages are kept and no agent is interrupted. Press Enter again to confirm.' });
+          return;
+        }
+        pendingConfirm.current = null;
+        void run('Restart failed', async () => {
+          await source.request('shutdown', { caller: { kind: 'human' } });
+          return finish({ tone: 'ok', text: 'Room service stopped; reconnecting will start the new one.' });
+        });
+        return;
+      }
       case 'retry': {
         const target = resolveRetry(args, view.items);
         if ('error' in target) {
@@ -807,6 +823,7 @@ function HelpOverlay() {
     ['/retry #N [@agent]', 're-send a failed or uncertain delivery'],
     ['/detail [#N]', 'delivery detail: attempts, evidence, errors'],
     ['/who', 'participants and their status'],
+    ['/restart', 'restart the room service (e.g. after an upgrade); keeps queued messages'],
     ['/help or ?', 'this help'],
   ];
   return (
