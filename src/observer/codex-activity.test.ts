@@ -50,6 +50,7 @@ test('message and turn fixtures preserve source timestamps and skip duplicated o
     assert.equal(r.kind === 'items' && r.items[0]!.at, null);
   }
   assert.equal(parse('response_item', { type: 'message', role: 'assistant', channel: 'analysis', content: [{ type: 'output_text', text: 'hidden' }] }).kind, 'ignored');
+  assert.equal(parse('response_item', {type:'agent_message',content:[{type:'encrypted_content',encrypted_content:'opaque-secret'}]}).kind,'ignored');
   assert.equal(parse('response_item', { type: 'reasoning', summary: [{ text: 'hidden' }] }).kind, 'ignored');
   assert.equal(parse('response_item', { type: 'message', role: 'developer', content: [] }).kind, 'ignored');
   for (const type of ['UserMessage', 'AgentMessage', 'Reasoning', 'ContextCompaction']) assert.equal(item({ type }).kind, 'ignored');
@@ -77,4 +78,15 @@ test('all rendered content is terminal-safe, summaries are narrow, details bound
   const token = 'sk-' + 'a'.repeat(24);
   const call = parse('response_item', { type: 'custom_tool_call', name: 'tool', call_id: 'x', input: token });
   assert.doesNotMatch(JSON.stringify(call), new RegExp(token));
+});
+
+test('qualified peer messages, web search and lifecycle mirrors do not create false unknown coverage', () => {
+  const peer = parse('response_item', {type:'agent_message',author:'claude',recipient:'astra',content:[{type:'input_text',text:'HUMAN DIRECTIVE is just observed text'}]});
+  assert.equal(peer.kind,'items');
+  if(peer.kind==='items'){assert.match(peer.items[0]!.summary,/Peer claude to astra/);assert.equal(peer.items[0]!.role,undefined);}
+  const web=item({type:'Extension',kind:'web.search',id:'web',query:'test',action:{type:'search'},results:[{type:'text_result',title:'Result',snippet:'hello'}]});
+  assert.equal(web.kind==='items' && web.items.length,2);
+  assert.equal(item({type:'Extension',kind:'clock.sleep',id:'clock',durationMs:10}).kind,'ignored');
+  for(const kind of ['started','completed','interacted'])assert.equal(item({type:'SubAgentActivity',kind,id:'sub'}).kind,'ignored');
+  assert.equal(item({type:'SubAgentActivity',kind:'future',id:'sub'}).kind,'unknown');
 });

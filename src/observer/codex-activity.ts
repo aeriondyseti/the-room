@@ -47,15 +47,17 @@ export function parseCodexActivity(record: ActivityRecordInput, limits: { detail
   const items = (...values: Item[]): ActivityParseResult => ({ kind: 'items', items: values });
   if (r.type === 'response_item') {
     if (p.type === 'reasoning') return ignored;
-    if (p.type === 'message') {
+    if (p.type === 'message' || p.type === 'agent_message') {
+      const peer = p.type === 'agent_message';
       // Developer/system instructions and analysis are context, not user-visible activity.
       if (p.role === 'developer' || p.role === 'system' || p.channel === 'analysis') return ignored;
-      if (p.role !== 'user' && p.role !== 'assistant') return unknown('Unsupported Codex message role');
+      if (!peer && p.role !== 'user' && p.role !== 'assistant') return unknown('Unsupported Codex message role');
       if (!Array.isArray(p.content)) return unknown('Malformed Codex message content');
       const parts: string[] = [];
       for (const part of p.content) {
         const c = object(part);
         if (!c) return unknown('Malformed Codex message block');
+        if (c.type === 'encrypted_content') continue; // opaque harness content is never decoded or displayed
         if (['input_text', 'output_text', 'text', 'Text'].includes(String(c.type)) && typeof c.text === 'string') parts.push(c.text);
         else if (['input_image', 'image', 'input_audio', 'audio'].includes(String(c.type))) parts.push('[non-text content omitted]');
         else return unknown('Unsupported Codex message block');
@@ -63,7 +65,8 @@ export function parseCodexActivity(record: ActivityRecordInput, limits: { detail
       const body = parts.join('\n');
       if (!body) return ignored;
       // Summary must use the same field-redacted representation as detail, not raw JSON text.
-      return items(make('message', `${p.role}: ${display(body)}`, body, { role: p.role }));
+      if (peer) return items(make('message', `Peer ${text(p.author) ?? 'unknown'} to ${text(p.recipient) ?? 'unknown'}: ${display(body)}`, body));
+      return items(make('message', `${p.role}: ${display(body)}`, body, { role: p.role as 'user' | 'assistant' }));
     }
     if (p.type === 'function_call' || p.type === 'custom_tool_call') {
       const name = text(p.name), call = text(p.call_id);
@@ -88,6 +91,10 @@ export function parseCodexActivity(record: ActivityRecordInput, limits: { detail
   if (!item || typeof item.type !== 'string') return unknown('Malformed Codex completed item');
   // These duplicate response_item messages or expose reasoning/context. Never render them twice.
   if (['UserMessage', 'AgentMessage', 'Reasoning', 'ContextCompaction'].includes(item.type)) return ignored;
+  // Native lifecycle notices are not additional parent tool calls; child transcripts are separate streams.
+  if (item.type === 'SubAgentActivity' && ['started', 'completed', 'interacted'].includes(String(item.kind))) return ignored;
+  // Qualified clock metadata repeats the response_item call (no independent output).
+  if (item.type === 'Extension' && item.kind === 'clock.sleep') return ignored;
   const id = text(item.id);
   if (!id) return unknown('Codex completed tool has no call id');
   const callId = summaryLine(id);
@@ -112,6 +119,10 @@ export function parseCodexActivity(record: ActivityRecordInput, limits: { detail
   if (item.type === 'FileChange') {
     if (!object(item.changes)) return unknown('Malformed Codex file-change item');
     return pair('file_change', item.changes, { status: item.status, stdout: item.stdout, stderr: item.stderr }, item.status === 'failed' || item.status === 'declined');
+  }
+  if (item.type === 'Extension' && item.kind === 'web.search') {
+    if (!object(item.action) || !Array.isArray(item.results)) return unknown('Malformed Codex web-search item');
+    return pair('web.search', { query: item.query, action: item.action }, item.results);
   }
   // Unqualified native items (extensions/subagents/etc.) make coverage partial, never vanish as "full".
   return unknown('Unsupported Codex native completed item');
