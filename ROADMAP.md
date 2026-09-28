@@ -62,7 +62,7 @@ Milestone 6+ only after the v0.1.0 tag.
     a client auto-spawns the service and succeeds; subscribers receive message and delivery events in
     order; shutdown is clean; a stale lock from a dead owner is recovered.
 
-- [ ] **1.3 Dispatcher, states, and pause** *(Astra)* *(§4.3, §4.6)*
+- [x] **1.3 Dispatcher, states, and pause** *(Astra)* *(§4.3, §4.6)*
   - **Scope:**
     - per-recipient serialized dispatch through the `Adapter` interface;
     - states `queued/submitted/replied/failed/uncertain` plus `held`, with `replied` set via `reply_to`;
