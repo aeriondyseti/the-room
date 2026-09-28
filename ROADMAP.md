@@ -243,3 +243,5 @@ Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint bef
 - [x] **6.3c MCP text-field remediation** *(Astra)* — missing, non-string and empty room_send text
   identifies the required field; canonical schema and delivery behavior unchanged; SDK regression
   proves invalid requests never dispatch.
+
+- [ ] **6.17 Outer pane separator** *(Astra)* — one full-cell cyan bottom row in sidebar mode or right column in top mode; effective narrow fallback follows top mode; no extra terminal row/column, overlays retain the edge, monochrome remains visible.
