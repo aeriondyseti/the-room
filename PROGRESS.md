@@ -31,7 +31,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 2.1 | Codex adapter | Astra | ⬜ | |
-| 2.2 | Claude adapter | Claude | ⬜ | |
+| 2.2 | Claude adapter | Claude | ✅ | review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ⬜ | |
 | 2.4 | MCP front end | Claude | ⬜ | |
 | 2.5 | Usage observer | Claude | ⬜ | |

@@ -224,8 +224,15 @@ test('registry ignores records that are not addressable sessions', async () => {
     { ...record({ pid: 13, parkedJobId: 'job' }) },
   ]);
   writeFileSync(join(f.dir, '14.json'), JSON.stringify(record({ pid: 99 }))); // pid/file-name mismatch
-  writeFileSync(join(f.dir, '15.json'), '{"torn":'); // torn write
+  writeFileSync(join(f.dir, '15.json'), '{"torn":'); // torn write from a dead process: not evidence either way
   assert.equal((await lookupSession('sess-1', f.deps)).status, 'absent');
+});
+
+test('a torn record from a LIVE process makes the lookup an error (unknown), not "offline"', async () => {
+  const f = fixture([], { alive: [77] });
+  writeFileSync(join(f.dir, '77.json'), '{"pid":77,"sessionId":"sess-1","mess'); // mid-rewrite
+  assert.equal((await lookupSession('sess-1', f.deps)).status, 'error');
+  assert.equal((await adapter(f.deps).probe({ harness: 'claude', sessionId: 'sess-1' })).liveness, 'unknown');
 });
 
 test('no secret appears in any result, error, or hint', () => {

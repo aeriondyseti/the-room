@@ -83,7 +83,7 @@ Milestone 6+ only after the v0.1.0 tag.
   Unicode, id capture, failure mapping, and the oversize fallback. A documented live smoke test against
   a real thread passes.
 
-- [ ] **2.2 Claude adapter** *(Claude)* — look up the live registry entry by `session_id`, validating
+- [x] **2.2 Claude adapter** *(Claude)* — look up the live registry entry by `session_id`, validating
   that the pid is alive and `procStart` matches; derive the key from the pipe path; write the auth frame
   then the user frame (`priority: next`); stale binding means "rebind needed"; tokens are never logged.
   **Outcome mapping:**

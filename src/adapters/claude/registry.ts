@@ -41,11 +41,11 @@ export function resolveClaudeConfigDir(explicit: string | null, env: NodeJS.Proc
   return explicit ?? env['CLAUDE_CONFIG_DIR'] ?? join(homedir(), '.claude');
 }
 
-export function defaultRegistryDeps(claudeConfigDir: string): ClaudeRegistryDeps {
+export function defaultRegistryDeps(claudeConfigDir: string, procStartTimeoutMs: number): ClaudeRegistryDeps {
   return {
     sessionsDir: join(claudeConfigDir, 'sessions'),
     isPidAlive,
-    processStartTime: windowsProcessStartTime,
+    processStartTime: (pid) => windowsProcessStartTime(pid, procStartTimeoutMs),
     pidDomain: `${process.platform}:${hostname().toLowerCase()}`,
   };
 }
@@ -60,11 +60,11 @@ export function isPidAlive(pid: number): boolean {
 }
 
 /** FILETIME start time via PowerShell (Windows only). Returns null on any failure: callers treat it as unknown. */
-export function windowsProcessStartTime(pid: number): Promise<string | null> {
+export function windowsProcessStartTime(pid: number, timeoutMs: number): Promise<string | null> {
   if (process.platform !== 'win32' || !Number.isInteger(pid) || pid <= 0) return Promise.resolve(null);
   const script = `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToFileTimeUtc()`;
   return new Promise((resolve) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 10_000 }, (err, stdout) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: timeoutMs }, (err, stdout) => {
       const value = stdout.trim();
       resolve(!err && /^\d+$/.test(value) ? value : null);
     });
@@ -97,13 +97,24 @@ export async function lookupSession(sessionId: string, deps: ClaudeRegistryDeps)
     return { status: 'error', detail: `cannot read the Claude session registry (${code ?? 'unknown error'})` };
   }
   const candidates: ClaudeSessionRecord[] = [];
+  // A live process whose record we can't read right now (torn rewrite, sharing violation) might be this session.
+  let unreadableLive = false;
   for (const file of files) {
     const m = /^(\d+)\.json$/.exec(file);
     if (!m) continue;
-    const record = parseRecord(await readFile(join(deps.sessionsDir, file), 'utf8').catch(() => null), Number(m[1]), deps.pidDomain);
-    if (record && record.sessionId === sessionId) candidates.push(record);
+    const pid = Number(m[1]);
+    const raw = await readFile(join(deps.sessionsDir, file), 'utf8').catch(() => null);
+    const parsed = parseRecord(raw, pid, deps.pidDomain);
+    if (parsed === 'unreadable') {
+      if (deps.isPidAlive(pid)) unreadableLive = true;
+      continue;
+    }
+    if (parsed && parsed.sessionId === sessionId) candidates.push(parsed);
   }
   const live = candidates.filter((r) => deps.isPidAlive(r.pid));
+  if (live.length === 0 && unreadableLive) {
+    return { status: 'error', detail: 'a live session record could not be read (it may be mid-update); try again' };
+  }
   if (live.length === 0) {
     return { status: 'absent', detail: candidates.length ? 'the session process has exited' : 'no running Claude session has this id' };
   }
@@ -131,15 +142,16 @@ export async function readPeerToken(record: ClaudeSessionRecord, deps: ClaudeReg
   }
 }
 
-function parseRecord(raw: string | null, filePid: number, pidDomain: string): ClaudeSessionRecord | null {
-  if (raw === null) return null;
+/** `null` = readable but not an addressable session; `'unreadable'` = couldn't read/parse it (not evidence of absence). */
+function parseRecord(raw: string | null, filePid: number, pidDomain: string): ClaudeSessionRecord | null | 'unreadable' {
+  if (raw === null) return 'unreadable';
   let r: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return null;
+    if (typeof parsed !== 'object' || parsed === null) return 'unreadable';
     r = parsed as Record<string, unknown>;
   } catch {
-    return null; // torn write in progress; the next lookup will see the complete record
+    return 'unreadable'; // torn write in progress; the next lookup will see the complete record
   }
   if (r['pid'] !== filePid || typeof r['sessionId'] !== 'string') return null;
   const pipe = r['messagingSocketPath'];

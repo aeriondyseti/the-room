@@ -76,6 +76,7 @@ export function sendToPipe(opts: PipeSendOptions): Promise<PipeSendOutcome> {
         socket!.write(buildUserFrame(opts.content, opts.from, opts.priority, opts.msgId), (err2) => {
           if (err2 || phase !== 'message') return;
           phase = 'settling';
+          clearTimeout(overall); // the settle window bounds this phase; a long settle must not read as a timeout
           settleTimer = setTimeout(() => {
             socket!.removeAllListeners('close');
             socket!.end();

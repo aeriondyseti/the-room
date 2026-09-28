@@ -11,7 +11,7 @@ if (!sessionId) {
   process.exit(2);
 }
 const config = loadConfig();
-const adapter = new ClaudeAdapter(claudeAdapterOptionsFrom(config, defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir))));
+const adapter = new ClaudeAdapter(claudeAdapterOptionsFrom(config, defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir), config.claudeProcStartTimeoutMs)));
 const target = { harness: 'claude', sessionId };
 const tag = `SMOKE-${Date.now().toString(36).toUpperCase()}`;
 console.log('probe:', JSON.stringify(await adapter.probe(target)));
