@@ -1,6 +1,6 @@
 // Model-facing text for the crossing guard, urgent sends and withdraw (M7, docs/CROSSING-GUARD-SPEC.md §7).
 // Pure formatting over the contract shapes; MCP and CLI share it so both surfaces say the same thing.
-import type { GuardedSendOutcome, InboxReviewPage, WithdrawDisposition, WithdrawOutcome } from '../contracts/crossing.js';
+import type { GuardedSendOutcome, InboxReviewItem, InboxReviewPage, WithdrawDisposition, WithdrawOutcome } from '../contracts/crossing.js';
 import type { MessageWithDeliveries } from '../contracts/domain.js';
 import { deliveryDetail } from './delivery.js';
 
@@ -14,6 +14,18 @@ export function formatMessages(items: MessageWithDeliveries[], full: boolean): s
     .join('\n\n');
 }
 
+/** One inbox item: a whole message, or one server-sized part of an oversized one. */
+export function inboxItemText(item: InboxReviewItem): string {
+  if (item.kind === 'full_message') return formatMessages([item.value], true);
+  const m = item.message;
+  const head = `#${m.seq} ${m.createdAt} ${m.from.name}${m.from.identity.mode === 'declared' ? ' (declared)' : ''} → ${m.addressing === 'broadcast' ? 'all' : m.to.join(', ')}${m.replyTo ? ` (reply to ${m.replyTo})` : ''}\nid: ${m.id}`;
+  const note =
+    item.partIndex === item.partCount
+      ? `[part ${item.partIndex}/${item.partCount}; last part]`
+      : `[part ${item.partIndex}/${item.partCount}; the rest follows on the next page, and the message is not covered until every part is read]`;
+  return `${head}\n${note}\n${item.text}`;
+}
+
 /** The line a full-body native envelope carries; its token covers that one message and nothing else. */
 export function envelopeSnapshotLine(token: string): string {
   return `snapshot: ${token} (covers this message only; pass it as snapshot when you reply)`;
@@ -25,9 +37,9 @@ export function inboxPageText(page: InboxReviewPage): string {
   lines.push(
     page.items.length === 0
       ? 'Nothing addressed to you is outside this snapshot.'
-      : `${page.items.length} message(s) addressed to you not covered by your previous snapshot:`,
+      : `Addressed to you and not covered by your previous snapshot (${page.items.length} item(s), oldest first):`,
   );
-  if (page.items.length) lines.push('', formatMessages(page.items, true), '');
+  if (page.items.length) lines.push('', page.items.map(inboxItemText).join('\n\n'), '');
   lines.push(`snapshot: ${page.snapshot}`);
   if (page.hasMore) {
     lines.push(

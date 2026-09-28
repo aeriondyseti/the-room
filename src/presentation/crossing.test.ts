@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GuardedSendOutcome, InboxReviewPage } from '../contracts/crossing.js';
 import type { MessageWithDeliveries } from '../contracts/domain.js';
-import { envelopeSnapshotLine, guardedSendText, inboxPageText, withdrawText } from './crossing.js';
+import { envelopeSnapshotLine, guardedSendText, inboxItemText, inboxPageText, withdrawText } from './crossing.js';
 
 const msg = (seq: number): MessageWithDeliveries =>
   ({
@@ -10,7 +10,7 @@ const msg = (seq: number): MessageWithDeliveries =>
     deliveries: [],
   }) as unknown as MessageWithDeliveries;
 
-const page = (over: Partial<InboxReviewPage> = {}): InboxReviewPage => ({ items: [msg(7)], snapshot: 'snap-1', hasMore: false, nextCursor: null, remaining: 0, ...over });
+const page = (over: Partial<InboxReviewPage> = {}): InboxReviewPage => ({ items: [{ kind: 'full_message', value: msg(7) }], snapshot: 'snap-1', hasMore: false, nextCursor: null, remaining: 0, ...over });
 
 const sent = (over: Partial<Extract<GuardedSendOutcome, { status: 'sent' }>>): GuardedSendOutcome => ({
   status: 'sent',
@@ -29,7 +29,7 @@ test('envelope line carries the token and says it covers only that message', () 
 
 test('inbox page lists uncovered messages with ids and the snapshot', () => {
   const t = inboxPageText(page());
-  assert.match(t, /1 message\(s\) addressed to you not covered/);
+  assert.match(t, /not covered by your previous snapshot \(1 item\(s\), oldest first\)/);
   assert.match(t, /#7 .*astra → claude/);
   assert.match(t, /id: m7/);
   assert.match(t, /snapshot: snap-1/);
@@ -104,4 +104,11 @@ test('withdraw: nothing cancelled, including the human and in-flight cases', () 
 
 test('withdraw: no recipients is stated, not called a success', () => {
   assert.match(withdrawText({ messageId: 'm9', recipients: [] }), /No recipients of m9 were affected/);
+});
+
+test('a message part is labelled and never presented as the whole message', () => {
+  const { body: _body, ...meta } = msg(8).message;
+  const part = (i: number) => inboxItemText({ kind: 'message_part', message: meta, bodyDigest: 'd', text: `chunk ${i}`, partIndex: i, partCount: 3 });
+  assert.match(part(1), /#8 .*\nid: m8\n\[part 1\/3; the rest follows on the next page, and the message is not covered until every part is read\]\nchunk 1$/);
+  assert.match(part(3), /\[part 3\/3; last part\]\nchunk 3$/);
 });

@@ -51,18 +51,22 @@ const msg = (seq: number, over: Record<string, unknown> = {}) => ({
   deliveries: [],
 });
 
+/** A `sent` guarded-send outcome around a legacy send result. */
+const sentOutcome = (result: unknown, over: Record<string, unknown> = {}) => ({ status: 'sent', result, attemptId: 'att-1', guard: 'current', newSinceSnapshot: 0, ...over });
+const inboxPage = (over: Record<string, unknown> = {}) => ({ items: [{ kind: 'full_message', value: msg(20) }], snapshot: 'snap-9', hasMore: false, nextCursor: null, remaining: 0, ...over });
+
 test('tools are listed with descriptions', async () => {
   const { client } = await connectClient(fakeLink({}).link);
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-  assert.deepEqual(tools, ['room_join', 'room_read', 'room_send', 'room_who']);
+  assert.deepEqual(tools, ['room_inbox', 'room_join', 'room_read', 'room_send', 'room_who', 'room_withdraw']);
 });
 
 test('reply_to defaults to the original sender while a missing address still fails',async()=>{
-  const f=fakeLink({read:()=>({items:[msg(12,{from:{name:'claude',kind:'agent',identity:{mode:'verified',source:'claude-ancestry'}}})],lastSeq:12,hasMore:false}),send:p=>({...msg(13,{to:(p as Params<'send'>).to}),deduplicated:false})});
+  const f=fakeLink({read:()=>({items:[msg(12,{from:{name:'claude',kind:'agent',identity:{mode:'verified',source:'claude-ancestry'}}})],lastSeq:12,hasMore:false}),guarded_send:p=>sentOutcome({...msg(13,{to:(p as Params<'guarded_send'>).to}),deduplicated:false})});
   const{client,call}=await connectClient(f.link);
   try{
     const reply=await call('room_send',{reply_to:'m12',text:'ack'});assert.equal(reply.isError,false);
-    assert.deepEqual((f.requests.find(r=>r.method==='send')!.params as Params<'send'>).to,['claude']);
+    assert.deepEqual((f.requests.find(r=>r.method==='guarded_send')!.params as Params<'guarded_send'>).to,['claude']);
     const missing=await call('room_send',{text:'unaddressed'});assert.equal(missing.isError,true);assert.match(missing.text,/Provide to|reply_to/);
   }finally{await client.close();}
 });
@@ -76,15 +80,15 @@ test('room_read exposes uncertain delivery diagnostics and reconciliation guidan
 test('room_send resolves identity per call, parses recipients, resolves #N replies, and always sends a client_message_id', async () => {
   const f = fakeLink({
     read: () => ({ items: [msg(12)], lastSeq: 12, hasMore: false }),
-    send: (p) => {
-      const params = p as Params<'send'>;
-      return { ...msg(13, { to: params.to, body: params.body }), deliveries: [{ recipient: 'claude', state: 'queued', held: false, waiting: null }], deduplicated: false };
+    guarded_send: (p) => {
+      const params = p as Params<'guarded_send'>;
+      return sentOutcome({ ...msg(13, { to: params.to, body: params.body }), deliveries: [{ recipient: 'claude', state: 'queued', held: false, waiting: null }], deduplicated: false });
     },
   });
   const { call } = await connectClient(f.link);
   const r = await call('room_send', { to: '@claude, astra', text: 'line 1\n"quoted" `tick` $HOME ✓', reply_to: '#12' });
   assert.equal(r.isError, false, r.text);
-  const send = f.requests.find((x) => x.method === 'send')!.params as Params<'send'>;
+  const send = f.requests.find((x) => x.method === 'guarded_send')!.params as Params<'guarded_send'>;
   assert.deepEqual(send.caller, { kind: 'agent', native: { harness: 'codex', sessionId: THREAD, source: 'codex-mcp-meta' }, declaredName: null });
   assert.deepEqual(send.to, ['claude', 'astra']);
   assert.equal(send.replyTo, 'm12');
@@ -95,7 +99,7 @@ test('room_send resolves identity per call, parses recipients, resolves #N repli
 });
 
 test('identity failure is an error and nothing is sent', async () => {
-  const f = fakeLink({ send: () => assert.fail('must not send') });
+  const f = fakeLink({ guarded_send: () => assert.fail('must not send') });
   const { call } = await connectClient(f.link);
   const r = await call('room_send', { to: 'all', text: 'hi' }, {});
   assert.equal(r.isError, true);
@@ -105,7 +109,7 @@ test('identity failure is an error and nothing is sent', async () => {
 });
 
 test('room errors come back with their code and hint', async () => {
-  const f = fakeLink({ send: () => { throw new RoomError('unknown_recipient', 'no participant "bob"'); } });
+  const f = fakeLink({ guarded_send: () => { throw new RoomError('unknown_recipient', 'no participant "bob"'); } });
   const { call } = await connectClient(f.link);
   const r = await call('room_send', { to: 'bob', text: 'hi' });
   assert.equal(r.isError, true);
@@ -215,4 +219,85 @@ test('room_send missing or invalid text explains the field without dispatching',
     }
     assert.equal(f.requests.length,0);
   } finally {await client.close();}
+});
+
+test('room_send passes snapshot, urgent reason and revision lineage to guarded_send', async () => {
+  const f = fakeLink({ guarded_send: () => sentOutcome({ ...msg(14), deduplicated: false }, { guard: 'urgent', newSinceSnapshot: null }) });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_send', { to: 'astra', text: 'now', snapshot: 'snap-1', urgent: true, reason: '  build is broken  ', revises_attempt_id: 'att-0' });
+  assert.equal(r.isError, false, r.text);
+  const p = f.requests.find((x) => x.method === 'guarded_send')!.params as Params<'guarded_send'>;
+  assert.equal(p.snapshot, 'snap-1');
+  assert.deepEqual(p.urgent, { reason: 'build is broken' });
+  assert.equal(p.revisesAttemptId, 'att-0');
+  assert.match(r.text, /Sent #14/);
+  assert.match(r.text, /URGENT over an unknown number/);
+});
+
+test('room_send without options sends no guard fields (the service decides)', async () => {
+  const f = fakeLink({ guarded_send: () => sentOutcome({ ...msg(15), deduplicated: false }) });
+  const { call } = await connectClient(f.link);
+  await call('room_send', { to: 'astra', text: 'hi' });
+  const p = f.requests.find((x) => x.method === 'guarded_send')!.params as Record<string, unknown>;
+  for (const k of ['snapshot', 'urgent', 'revisesAttemptId']) assert.equal(k in p, false, k);
+});
+
+test('urgent needs a reason and a reason needs urgent; nothing is sent either way', async () => {
+  const f = fakeLink({ guarded_send: () => assert.fail('must not send') });
+  const { call } = await connectClient(f.link);
+  const a = await call('room_send', { to: 'astra', text: 'x', urgent: true, reason: '   ' });
+  assert.equal(a.isError, true);
+  assert.match(a.text, /urgent send needs a reason/);
+  const b = await call('room_send', { to: 'astra', text: 'x', reason: 'because' });
+  assert.equal(b.isError, true);
+  assert.match(b.text, /only used with urgent/);
+  assert.equal(f.requests.length, 0);
+});
+
+test('a not-sent result is flagged as an error and carries the delta, snapshot and attempt id', async () => {
+  const f = fakeLink({ guarded_send: () => ({ status: 'not_sent', reason: 'snapshot_stale', attemptId: 'att-7', inbox: inboxPage(), guidance: '' }) });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_send', { to: 'astra', text: 'late', snapshot: 'old' });
+  assert.equal(r.isError, true);
+  assert.match(r.text, /^NOT SENT: /);
+  assert.match(r.text, /#20 /);
+  assert.match(r.text, /snapshot=snap-9 revises_attempt_id=att-7/);
+});
+
+test('room_inbox forwards snapshot, cursor and limit and renders the page', async () => {
+  const f = fakeLink({ inbox: () => inboxPage({ hasMore: true, nextCursor: 'cur-3', remaining: 4 }) });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_inbox', { snapshot: 'snap-1', cursor: 'cur-2', limit: 5 });
+  assert.equal(r.isError, false, r.text);
+  const p = f.requests[0]!.params as Params<'inbox'>;
+  assert.equal(f.requests[0]!.method, 'inbox');
+  assert.equal(p.caller.kind, 'agent');
+  assert.equal(p.snapshot, 'snap-1');
+  assert.equal(p.cursor, 'cur-2');
+  assert.equal(p.limit, 5);
+  assert.match(r.text, /snapshot: snap-9/);
+  assert.match(r.text, /room_inbox cursor=cur-3 snapshot=snap-9/);
+});
+
+test('room_withdraw resolves #N, passes recipients, and reports each recipient honestly', async () => {
+  const f = fakeLink({
+    read: () => ({ items: [msg(12)], lastSeq: 12, hasMore: false }),
+    withdraw: () => ({ messageId: 'm12', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }, { recipient: 'bob', disposition: 'submitted' }] }),
+  });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_withdraw', { message_id: '#12', recipients: 'astra, bob' });
+  assert.equal(r.isError, false, r.text);
+  const p = f.requests.find((x) => x.method === 'withdraw')!.params as Params<'withdraw'>;
+  assert.equal(p.messageId, 'm12');
+  assert.deepEqual(p.recipients, ['astra', 'bob']);
+  assert.match(r.text, /^Withdrew #12 for 1 of 2 recipients only\./);
+  assert.match(r.text, /bob: NOT withdrawn: .*too late/);
+});
+
+test('room_withdraw without recipients leaves the choice to the service (all original recipients)', async () => {
+  const f = fakeLink({ withdraw: () => ({ messageId: 'm-x', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }) });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_withdraw', { message_id: 'm-x' });
+  assert.match(r.text, /^Withdrew m-x for every recipient\./);
+  assert.equal('recipients' in (f.requests[0]!.params as Record<string, unknown>), false);
 });
