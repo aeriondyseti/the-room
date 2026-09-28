@@ -59,7 +59,7 @@ their own rows**.
 |---|---|---|---|---|
 | 5.1 | TUI polish | Claude | ⬜ | |
 | 5.2 | Agent ergonomics | Astra | ✅ | v0.0.17; review: reviews/5.2.md; 193 tests; peer-approved envelope. |
-| 5.3 | Human ergonomics and release | Claude + Astra | ⬜ | |
+| 5.3 | Human ergonomics and release | Claude + Astra | 🟡 | README + clean-clone checks ready; final release blocked on 4.1 gates. |
 
 ## Milestone 6 — Post-release
 
