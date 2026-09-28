@@ -170,3 +170,47 @@ test('dispatch observations preserve the binding inbox display snapshot',async t
  const state=room.ledger.participants().find(p=>p.name==='astra')!;
  assert.equal(state.inbox?.snapshot,page.snapshot);assert.equal(state.inbox?.uncovered,1);
 });
+
+test('withdraw wins during a pending probe, keeps a tombstone, and cannot erase a human-visible copy',async t=>{
+ const {room,adapter}=await setup(t);let release!:()=>void;let probing=false;
+ adapter.probe=async()=>{probing=true;await new Promise<void>(r=>release=r);return{liveness:'online',activity:'unknown'};};
+ const first=await send(room,'cancel me',['astra','human']);await until(()=>probing);
+ const outcome=await call(room,'withdraw',{caller:human,messageId:first.message.id});
+ assert.deepEqual(outcome.recipients.map(r=>r.disposition),['withdrawn','already_visible']);
+ const tombstone=room.ledger.delivery(first.message.id,'astra');assert.ok(tombstone.withdrawnAt);assert.equal(tombstone.state,'withdrawn');
+ release();await room.dispatcher.idle();assert.equal(adapter.sent.length,0);
+ assert.equal((await call(room,'withdraw',{caller:human,messageId:first.message.id,recipients:['astra']})).recipients[0]?.disposition,'already_withdrawn');
+ assert.equal(room.ledger.read(first.message.id).message.body,'cancel me');
+ await assert.rejects(call(room,'withdraw',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'},messageId:first.message.id}),{code:'identity_mismatch'});
+});
+
+test('withdraw never succeeds after dispatch claim or uncertain native submission',async t=>{
+ const {room,adapter}=await setup(t);let release!:(r:SubmitResult)=>void;
+ adapter.action=async()=>await new Promise<SubmitResult>(r=>release=r);
+ const first=await send(room);await until(()=>adapter.sent.length===1);
+ assert.equal((await call(room,'withdraw',{caller:human,messageId:first.message.id})).recipients[0]?.disposition,'already_submitting');
+ release({status:'uncertain',error:{code:'service_unavailable',message:'fixture ambiguity'}});await room.dispatcher.idle();
+ assert.equal((await call(room,'withdraw',{caller:human,messageId:first.message.id})).recipients[0]?.disposition,'uncertain');
+ assert.equal(room.ledger.delivery(first.message.id,'astra').state,'uncertain');
+});
+
+test('urgent lane preserves lane FIFO and respects pause before overtaking broker-held normal work',async t=>{
+ const {room,adapter}=await setup(t);await call(room,'pause',{caller:human});await room.dispatcher.idle();adapter.sent=[];
+ const normal=await send(room,'normal');
+ const urgent1=await call(room,'guarded_send',{caller:human,to:['astra'],body:'urgent1',urgent:{reason:'coordination deadline'}});
+ const urgent2=await call(room,'guarded_send',{caller:human,to:['astra'],body:'urgent2',urgent:{reason:'follow-up'}});
+ assert.equal(urgent1.status,'sent');assert.equal(urgent2.status,'sent');if(urgent1.status!=='sent'||urgent2.status!=='sent')return;
+ await room.dispatcher.idle();assert.equal(adapter.sent.length,0);
+ assert.equal(room.ledger.delivery(urgent1.result.message.id,'astra').priority,'urgent');
+ await call(room,'resume',{caller:human});await room.dispatcher.idle();
+ assert.deepEqual(adapter.sent.map(s=>s.messageId),[urgent1.result.message.id,urgent2.result.message.id,normal.message.id]);
+});
+
+test('urgent arrival while an ordinary native probe waits changes the next dispatch claim',async t=>{
+ const {room,adapter}=await setup(t);let release!:()=>void;let probes=0;
+ adapter.probe=async()=>{if(++probes===1)await new Promise<void>(r=>release=r);return{liveness:'online',activity:'unknown'};};
+ const normal=await send(room,'normal');await until(()=>probes===1);
+ const urgent=await call(room,'guarded_send',{caller:human,to:['astra'],body:'urgent',urgent:{reason:'time critical'}});assert.equal(urgent.status,'sent');if(urgent.status!=='sent')return;
+ release();await room.dispatcher.idle();
+ assert.deepEqual(adapter.sent.map(s=>s.messageId),[urgent.result.message.id,normal.message.id]);
+});
