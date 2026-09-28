@@ -38,7 +38,7 @@ test('monochrome: no colour escapes at all, but the cursor (inverse), states and
   assert.deepEqual(colourCodes, [], 'no colour codes in monochrome');
   assert.match(frame, /\u001B\[7m/, 'inverse (the composer cursor) survives');
   const text = plain(frame);
-  assert.match(text, /ctx (▓+░* )?88\.0%!/, 'high usage is marked without colour');
+  assert.match(text, /ctx .*88\.0%!/, 'high usage is marked without colour');
   assert.match(text, /\? astra uncertain/, 'delivery states keep glyph + word');
   assert.match(text, /○ codex_review/, 'offline liveness keeps its glyph');
 });

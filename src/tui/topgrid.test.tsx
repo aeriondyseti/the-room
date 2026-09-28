@@ -45,7 +45,7 @@ test('AGENTS: a quiet section label, then one aligned row per agent; only the st
   const rows = agentGrid([agent('astra', withWs('gpt-6-astra', 'main')), agent('claude', { activity: 'busy', ...withWs('claude-opus-5-5', 'sprint/6.9', 3) })], { width: 100, stale: false, maxRows: 6 })!;
   const text = rows.map(lineText);
   assert.equal(text[0], 'AGENTS');
-  assert.match(text[1]!, /^ ● astra +idle +ctx ▓{6}░{4} 59\.0% +gpt-6-astra +main$/);
+  assert.match(text[1]!, /^ ● astra +idle +ctx {3}59\.0% ░░ +gpt-6-astra +main$/);
   assert.match(text[2]!, /^ ● claude +busy +ctx .* +opus-5-5 +sprint\/6\.9\*3$/);
   for (const needle of ['ctx', 'main']) assert.equal(colOf(text[1]!, needle === 'main' ? 'main' : needle), colOf(text[2]!, needle === 'main' ? 'sprint' : needle), `column "${needle}" lines up`);
   const busy = rows[2]!.find((s) => s.text === 'busy');
@@ -57,7 +57,7 @@ test('AGENTS: a quiet section label, then one aligned row per agent; only the st
 test('AGENTS: sheds bars, then model, then branch to fit; overflow is "+N more · /who"; disconnected says last known; null when nothing fits', () => {
   const two = [agent('astra', withWs('gpt-6-astra', 'main')), agent('claude', withWs('claude-opus-5-5', 'sprint/6.9'))];
   const narrow = agentGrid(two, { width: 44, stale: false, maxRows: 6 })!.map(lineText);
-  assert.ok(narrow.every((l) => l.length <= 44 && !l.includes('▓')), narrow.join('\n'));
+  assert.ok(narrow.every((l) => l.length <= 44 && !l.includes('░')), narrow.join('\n'));
   assert.ok(narrow.some((l) => l.includes('59.0%')), 'the number is kept');
   const many = Array.from({ length: 9 }, (_, i) => agent(`agent${i}`));
   const capped = agentGrid(many, { width: 100, stale: false, maxRows: 4 })!.map(lineText);
@@ -73,12 +73,13 @@ test('BUDGETS: one row per account; 5h / weekly / Fable weekly named once; model
   const text = rows.map(lineText);
   assert.equal(text.length, 3, 'header + one row per account (no separate Fable row)');
   assert.match(text[0]!, /^BUDGETS +5h +weekly +Fable weekly$/);
-  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻ 1h53m +▓▓░{8} 24\.0% +▓▓▓░{7} 27\.0%$/);
-  assert.match(text[2]!, /^ Codex +— +▓▓░{8} 18\.0% +stale$/, 'Codex has no Fable limit: blank cells, not "—"; its caveat stays on its row');
-  assert.equal(colOf(text[0]!, '5h'), colOf(text[1]!, '▓'), '5h header over its column');
-  assert.equal(colOf(text[0]!, 'weekly'), text[2]!.indexOf('▓'), 'weekly header over its column');
-  assert.equal(colOf(text[0]!, 'Fable weekly'), text[1]!.lastIndexOf('▓▓▓'), 'Fable weekly header over its column');
-  assert.equal(colOf(text[2]!, '—'), colOf(text[1]!, '▓'), 'the dash sits in the 5h column');
+  assert.match(text[1]!, /^ Claude +29\.0% ░░ +↻ 1h53m +24\.0% ░░ +27\.0% ░░$/);
+  assert.match(text[2]!, /^ Codex +— +18\.0% ░░ +stale$/, 'Codex has no Fable limit: blank cells, not "—"; its caveat stays on its row');
+  const barStart = (l: string, pct: string) => l.indexOf(pct) - 2; // the number is centred: two filled cells precede it
+  assert.equal(colOf(text[0]!, '5h'), barStart(text[1]!, '29.0%'), '5h header over its column');
+  assert.equal(colOf(text[0]!, 'weekly'), barStart(text[2]!, '18.0%'), 'weekly header over its column');
+  assert.equal(colOf(text[0]!, 'Fable weekly'), barStart(text[1]!, '27.0%'), 'Fable weekly header over its column');
+  assert.equal(colOf(text[2]!, '—'), barStart(text[1]!, '29.0%'), 'the dash sits in the 5h column');
   assert.ok(rows[2]!.every((s) => !s.color), 'stale values: colourless');
   assert.ok(!text.join('\n').includes('unverified'), 'login unverified is hidden (Kevin, 6.10)');
   const fb = budgetGrid([{ ...claude, fallback: true }], { width: 140, now: NOW })!;
@@ -90,7 +91,7 @@ test('6.12: as the width shrinks, bars go 10 → 8 cells (fill recomputed) → p
     const g = budgetGrid([claude, codex], { width, now: NOW });
     if (!g) return 'fallback';
     const t = g.map(lineText).join('\n');
-    return t.includes('▓▓▓░░░░░░░ 29.0%') ? '10' : t.includes('▓▓░░░░░░ 29.0%') ? '8' : /[▓░]/.test(t) ? '?' : 'numbers';
+    return t.includes('29.0% ░░') ? '10' : t.includes('29.0% ░') ? '8' : /░/.test(t) ? '?' : 'numbers';
   };
   const seen: string[] = [];
   for (let w = 130; w >= 30; w--) {
@@ -150,7 +151,7 @@ test('like pieces line up (Kevin): reset times, caveats and percentages each hav
   assert.equal(resets(text[1]!)[1], resets(text[2]!)[0], `weekly resets share a column:\n${text.join('\n')}`);
   assert.equal(colOf(text[1]!, 'via statusline'), colOf(text[2]!, 'stale'), 'caveats share a column');
   assert.equal(text[2]!.indexOf('18.0%'), text[1]!.indexOf('24.0%'), 'weekly percentages line up');
-  assert.ok(text[1]!.includes('░  7.0%') || text[1]!.includes('░ 7.0%'), 'the Fable value renders');
+  assert.ok(text[1]!.includes('7.0%'), 'the Fable value renders');
 });
 test('help keys never run into their descriptions (measured key column)', () => {
   for (const line of helpLines().filter((l) => l.length === 2)) assert.match(line[0]!.text, / {2}$/, `"${line[0]!.text}" keeps a gap before its description`);
@@ -175,9 +176,7 @@ test('review fix: a limit that was hit (100.0%) still lines up its decimal with 
   const full: AccountUsage = { ...codex, status: 'ok', buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 100, resetsAt: null }] }] };
   const low: AccountUsage = { ...claude, buckets: [{ id: 'claude', windows: [{ kind: 'b', durationMinutes: 10_080, usedPercent: 7, resetsAt: null }] }] };
   const text = budgetGrid([low, full], { width: 120, now: NOW })!.map(lineText);
-  const dot = (l: string) => l.indexOf('.', l.indexOf('▓') >= 0 ? l.indexOf('▓') : l.indexOf('░'));
-  assert.equal(dot(text[1]!), dot(text[2]!), text.join('\n'));
-  assert.match(text[1]!, /░ {3}7\.0%$/, 'padded to the column\'s widest number');
+  assert.equal(text[1]!.indexOf('7.0%') + 1, text[2]!.indexOf('100.0%') + 3, `decimal points share a column:\n${text.join('\n')}`);
 });
 test('6.11: the reset arrow is followed by a space (it renders wider than one cell in some terminals)', () => {
   const text = budgetGrid([claude], { width: 120, now: NOW })!.map(lineText).join('\n');
@@ -195,20 +194,24 @@ test('6.12 review: every window of a model bucket gets a column — a Codex mode
   assert.equal(text[2]!.indexOf('61.0%') - text[0]!.indexOf('Spark 5h') < 12, true, 'under its own header');
 });
 
-test('6.12 review: empty columns take no space; inline caveats are preferred over bigger bars, else the biggest bars with the caveat wrapped', () => {
+test('6.12 review / 6.14: empty columns take no space; bar size is monotonic in width (a narrower terminal never gets bigger bars); caveats wrap whole', () => {
   const g = budgetGrid([claude, codex], { width: 200, now: NOW })!.map(lineText);
-  assert.doesNotMatch(g[1]!, /%\s{5,}▓/, `no doubled gap left by an all-empty reset column:\n${g.join('\n')}`);
+  assert.match(g[1]!, /24\.0% ░░ {4}27\.0%/, `one gap (plus the bar's two filled cells) between columns, none doubled by an all-empty reset column:\n${g.join('\n')}`);
   const long: AccountUsage = { ...claude, fallback: true };
-  const widest = (w: number) => budgetGrid([long], { width: w, now: NOW })!.map(lineText);
-  // Find a width where 10-cell bars fit but the long caveat only fits inline with 8-cell bars.
-  let chosen: string[] | null = null;
-  for (let w = 140; w > 60 && !chosen; w--) {
-    const t = widest(w);
-    if (t[1]!.includes('▓▓░░░░░░ ') && t[1]!.endsWith('via statusline, no model limits')) chosen = t;
+  const size = (w: number) => {
+    const t = budgetGrid([long, codex], { width: w, now: NOW });
+    if (!t) return 0;
+    const s = t.map(lineText).join('\n');
+    return s.includes('29.0% ░░') ? 10 : s.includes('29.0% ░') ? 8 : 1;
+  };
+  let prev = Infinity;
+  for (let w = 160; w >= 30; w--) {
+    const s = size(w);
+    assert.ok(s <= prev, `width ${w}: bars grew from ${prev} to ${s} cells as the terminal narrowed`);
+    prev = s;
   }
-  assert.ok(chosen, 'at some width the 8-cell layout is chosen because it keeps the caveat on the row');
-  const tight = widest(72);
-  assert.ok(tight.some((l) => l.includes('▓')) || tight.every((l) => !l.includes('░')), 'values still shown');
+  const tight = budgetGrid([long], { width: 72, now: NOW })!.map(lineText);
+  assert.ok(tight.join('\n').includes('29.0%'), 'values still shown');
   assert.ok(tight.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole');
 });
 test('6.12 cross-review: two distinct buckets with the same label are both shown, under visibly distinct headers', () => {
