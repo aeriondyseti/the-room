@@ -160,11 +160,14 @@ function Room({
     // Height guard (like the width guard): the full grid never squeezes the conversation below a readable height; on a
     // short terminal the top bar shows the wrapping chips instead (the saved density is kept).
     // While an overlay (help, /who, detail, activity) is open it gets the room: the grid yields the same way.
-    const gridFits = grid !== null && !overlay && rows - grid.length - TOP_BAR_OTHER_CHROME_ROWS >= MIN_CONVERSATION_ROWS;
+    // Persistent extra rows count too (the connection/notice banner, the left-layout notice); transient ones (feedback,
+    // a multi-line draft, suggestions) don't, so the grid doesn't flicker while typing.
+    const persistent = (view.connection.state !== 'connected' || (view.notice !== null && view.loaded) ? 1 : 0) + (layout === 'left' ? 1 : 0);
+    const gridFits = grid !== null && !overlay && rows - grid.length - persistent - TOP_BAR_OTHER_CHROME_ROWS >= MIN_CONVERSATION_ROWS;
     const lines = gridFits ? grid : [...chips(topBar === 'compact' ? 1 : TOP_BAR_PARTICIPANT_LINES), ...usage()];
     if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${leftPanelMinCols(panelWidth, panelBreakpoint)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
     return lines;
-  }, [showLeft, layout, topBar, overlay, rows, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
+  }, [showLeft, layout, topBar, overlay, rows, view.connection.state, view.notice, view.loaded, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
   const convWidth = colsTotal - (showLeft ? panelWidth + 1 : 0) - 1;
   const saveGen = useRef(0);
   const switchLayout = (next: TuiLayout): Feedback => {

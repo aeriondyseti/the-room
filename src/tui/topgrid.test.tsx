@@ -155,3 +155,11 @@ test('the grid yields to the wrapping chips on a short terminal and while an ove
   await tick();
   assert.match(plain(tall.lastFrame()), /AGENTS/, 'and the grid comes back');
 });
+test('review fix: a limit that was hit (100.0%) still lines up its decimal with the other rows', () => {
+  const full: AccountUsage = { ...codex, status: 'ok', buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 100, resetsAt: null }] }] };
+  const low: AccountUsage = { ...claude, buckets: [{ id: 'claude', windows: [{ kind: 'b', durationMinutes: 10_080, usedPercent: 7, resetsAt: null }] }] };
+  const text = budgetGrid([low, full], { width: 120, now: NOW })!.map(lineText);
+  const dot = (l: string) => l.indexOf('.', l.indexOf('▓') >= 0 ? l.indexOf('▓') : l.indexOf('░'));
+  assert.equal(dot(text[1]!), dot(text[2]!), text.join('\n'));
+  assert.match(text[1]!, /░ {3}7\.0%$/, 'padded to the column\'s widest number');
+});

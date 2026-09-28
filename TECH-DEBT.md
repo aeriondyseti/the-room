@@ -40,6 +40,7 @@ keep a sprint focused, and "good enough for now" decisions worth revisiting.
 | TD-0024 | 2026-09-28 | 6.7 | review (lean) | The participant chip shows the last-known model/branch with no staleness marker; only `/who` states the observation age | 30/low | Workspace changes slowly; `/who` gives the age | Dim or mark (`?`) the chip's workspace part once observedAt is older than a ROOM_* threshold | 🔵 Open |
 | TD-0025 | 2026-09-28 | 6.8 | review (lean) | `mono` is no longer used by participantChip / participantLines / accountSegments / sidePanelLines (the "!" marker now shows in every theme) | 30/low | Harmless; removing it touches many call sites and tests | Drop the parameter in a cleanup pass | 🔵 Open |
 | TD-0026 | 2026-09-28 | 6.9 | review (lean) | `ActivityService.stop()` still awaits an in-flight activity pass without a bound (local transcript reads, up to activityReadBytes per participant) | 35/low | Local reads are fast; the slow observers (probes, git, daemon/endpoint) are bounded by 6.9 | Apply the same settleWithin + abandoned pattern to ActivityService | 🔵 Open |
+| TD-0027 | 2026-09-28 | 6.10 | review (lean) | The top-bar height guard counts persistent rows (banner, left notice) but not transient ones (feedback line, multi-line draft, / suggestions), so while typing the conversation can briefly have fewer than MIN_CONVERSATION_ROWS | 40/low | Counting transient rows would make the grid flicker on every keystroke; the viewport is still floored at 3 | Hysteresis, or yield only while the draft exceeds one row | 🔵 Open |
 
 ---
 

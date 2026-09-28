@@ -7,7 +7,7 @@
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import { colorFor, cols, fitLine, lineCols, sanitize, type Line, type Segment } from './format.js';
-import { contextBar, usageBar } from './bars.js';
+import { contextBar, numberWidth, usageBar } from './bars.js';
 import { accountNotes, activityLabel, gitLabel, harnessLabel, resetHint, shortModel, stateDot } from './topbar.js';
 
 const GAP = '  ';
@@ -31,7 +31,7 @@ const sectionLabel = (text: string): Segment => ({ text, dim: true, bold: true }
 
 // ---- AGENTS -------------------------------------------------------------------------------------------------
 
-function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; model: boolean; branch: boolean }): Line[] {
+function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; model: boolean; branch: boolean; numberWidth: number }): Line[] {
   const dot = opts.stale ? { glyph: '◌', color: 'gray' } : stateDot(p);
   const name: Line = [{ text: `${dot.glyph} `, color: dot.color }, { text: sanitize(p.name), color: opts.stale ? 'gray' : colorFor(p.name), bold: true }];
   const status = activityLabel(p);
@@ -40,7 +40,7 @@ function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; 
   const state: Line = opts.stale
     ? [{ text: `last known: ${status.text}`, dim: true }]
     : [{ text: status.text, color: status.color, bold: loud, dim: !loud && p.activity !== 'idle' }];
-  const cells: Line[] = [name, state, opts.stale ? [] : contextBar(p.usage, { stale: false, bar: opts.bars, alignNumber: true })];
+  const cells: Line[] = [name, state, opts.stale ? [] : contextBar(p.usage, { stale: false, bar: opts.bars, numberWidth: opts.numberWidth })];
   cells.push(opts.model && p.workspace?.model ? [{ text: sanitize(shortModel(p.workspace.model)), dim: true }] : []);
   const git = opts.branch ? gitLabel(p.workspace?.git ?? null) : null;
   cells.push(git ? [{ text: git, dim: true }] : []);
@@ -64,7 +64,8 @@ export function agentGrid(participants: readonly ParticipantState[], opts: { wid
   const cap = Math.max(1, opts.maxRows);
   const shown = participants.length > cap ? participants.slice(0, cap - 1) : participants;
   for (const v of variants) {
-    const rows = shown.map((p) => trim(agentCells(p, { stale: opts.stale, ...v })));
+    const width = numberWidth(shown.map((p) => (p.usage?.status !== 'unavailable' ? p.usage?.context?.percent : null)));
+    const rows = shown.map((p) => trim(agentCells(p, { stale: opts.stale, ...v, numberWidth: width })));
     const widths = colWidths(rows);
     const lines = rows.map((r): Line => [{ text: ' ' }, ...join(r, widths)]);
     if (lines.every((l) => lineCols(l) <= opts.width)) {
@@ -104,9 +105,9 @@ function budgetRows(a: AccountUsage, disconnected: boolean): BudgetRow[] {
 }
 
 /** A window's value cell: bar + right-aligned percentage, or "—" when there is no reading (never 0). */
-function valueCell(w: UsageWindow | null, opts: { stale: boolean; bars: boolean }): Line {
+function valueCell(w: UsageWindow | null, opts: { stale: boolean; bars: boolean; numberWidth: number }): Line {
   if (!w) return [{ text: '—', dim: true }];
-  return usageBar('', w.usedPercent, { stale: opts.stale, bar: opts.bars, alignNumber: true });
+  return usageBar('', w.usedPercent, { stale: opts.stale, bar: opts.bars, numberWidth: opts.numberWidth });
 }
 
 /** A window's reset cell (quiet), in its own column so reset times line up; empty when unknown. */
@@ -128,8 +129,11 @@ export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: num
   const rows = accounts.flatMap((a) => budgetRows(a, !!opts.disconnected));
   const labelCell = (r: BudgetRow): Line => [{ text: ' ' }, { text: r.label, bold: true }];
   const noteCell = (r: BudgetRow): Line => (r.notes.length ? [{ text: r.notes.join(' · '), dim: true, italic: true }] : []);
+  // Each value column right-aligns its percentages to its own widest number.
+  const w5 = numberWidth(rows.map((r) => r.fiveHour?.usedPercent));
+  const wW = numberWidth(rows.map((r) => r.weekly?.usedPercent));
   for (const bars of [true, false]) {
-    const values = (r: BudgetRow): Line[] => [labelCell(r), valueCell(r.fiveHour, { stale: r.stale, bars }), resetCell(r.fiveHour, now), valueCell(r.weekly, { stale: r.stale, bars }), resetCell(r.weekly, now)];
+    const values = (r: BudgetRow): Line[] => [labelCell(r), valueCell(r.fiveHour, { stale: r.stale, bars, numberWidth: w5 }), resetCell(r.fiveHour, now), valueCell(r.weekly, { stale: r.stale, bars, numberWidth: wW }), resetCell(r.weekly, now)];
     const available = rows.filter((r) => !r.unavailable);
     const header: Line[] = [[sectionLabel('BUDGETS')], [{ text: '5h', dim: true }], [], [{ text: 'weekly', dim: true }], []];
     const widths = colWidths([header, ...available.map(values), ...rows.map((r) => [labelCell(r)])]);

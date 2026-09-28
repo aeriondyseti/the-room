@@ -36,15 +36,16 @@ export function usageColor(percent: number): string {
  * Unknown → `label —` / `—`, no bar (never an empty 0% bar). Stale → dim and colourless (the caller labels it).
  * A fresh reading at or above 70% gets a bold "!" — never colour alone.
  */
-export function usageBar(label: string, percent: number | null, opts: { stale: boolean; bar?: boolean; alignNumber?: boolean }): Line {
+export function usageBar(label: string, percent: number | null, opts: { stale: boolean; bar?: boolean; numberWidth?: number }): Line {
   // Kevin's mockup: a missing value is an em dash (never 0, never blank).
   if (percent === null) return [{ text: label ? `${label} —` : '—', dim: true }];
   const high = !opts.stale && percent >= WARN_PERCENT;
   const c = opts.stale ? undefined : usageColor(percent);
   const out: Segment[] = label ? [{ text: `${label} `, dim: true }] : [];
   if (opts.bar !== false) out.push({ text: `${sliderBar(percent)} `, color: c, dim: opts.stale });
-  // alignNumber: right-align the percentage (grids), so decimals line up down a column ( 9.0% under 38.0%).
-  const num = opts.alignNumber ? percent.toFixed(1).padStart(4) : percent.toFixed(1);
+  // numberWidth: right-align the percentage to its column's widest number (grids), so decimals line up down a column
+  // (" 9.0%" under "38.0%", and under "100.0%" when a limit is hit).
+  const num = percent.toFixed(1).padStart(opts.numberWidth ?? 0);
   out.push({ text: `${num}%${high ? '!' : ''}`, color: c, bold: high, dim: opts.stale });
   return out;
 }
@@ -53,7 +54,7 @@ export function usageBar(label: string, percent: number | null, opts: { stale: b
  * An agent's context reading as a metric (`ctx ▓▓▓▓░░░░░░ 42.0%`). Tokens without a known limit show as `ctx 12k`
  * (no bar: no percentage was observed); a stale snapshot is dim with "?"; unavailable is `ctx —`.
  */
-export function contextBar(usage: UsageSnapshot | null | undefined, opts: { stale: boolean; bar?: boolean; alignNumber?: boolean }): Line {
+export function contextBar(usage: UsageSnapshot | null | undefined, opts: { stale: boolean; bar?: boolean; numberWidth?: number }): Line {
   if (!usage || usage.status === 'unavailable' || !usage.context) return [{ text: 'ctx —', dim: true }];
   const stale = opts.stale || usage.status === 'stale';
   if (usage.context.percent === null) {
@@ -61,11 +62,16 @@ export function contextBar(usage: UsageSnapshot | null | undefined, opts: { stal
     if (usage.status === 'stale' && !opts.stale) tokens.push({ text: '?', dim: true });
     return tokens;
   }
-  const line = usageBar('ctx', usage.context.percent, { stale, bar: opts.bar, alignNumber: opts.alignNumber });
+  const line = usageBar('ctx', usage.context.percent, { stale, bar: opts.bar, numberWidth: opts.numberWidth });
   if (usage.status === 'stale' && !opts.stale) line.push({ text: '?', dim: true });
   return line;
 }
 
 function compact(n: number): string {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n);
+}
+
+/** Width of the widest one-decimal number among these readings (for right-aligning a column); 0 when none. */
+export function numberWidth(percents: readonly (number | null | undefined)[]): number {
+  return Math.max(0, ...percents.map((p) => (typeof p === 'number' ? p.toFixed(1).length : 0)));
 }
