@@ -21,7 +21,7 @@ const text = (item: MessageWithDeliveries, width = 100) => messageLines(item, ct
 
 test('an urgent send shows the URGENT badge, ⤫ with the count, and its reason', () => {
   const lines = text(withCrossing(crossing({ guard: 'urgent', urgent: { reason: 'main is red' }, newSinceSnapshot: 2 })));
-  assert.match(lines[0]!, / URGENT  astra ⤫ → claude  sent over 2 not covered/);
+  assert.match(lines[0]!, / URGENT  ⤫ astra → claude  sent over 2 not covered/);
   assert.match(lines[1]!, /why urgent: main is red/);
   assert.match(lines[2]!, /deploy is blocked/);
 });
@@ -113,7 +113,8 @@ test('a partial withdraw is never shown as whole', () => {
   const lines = messageLines(delivered([['claude', 'withdrawn'], ['bob', 'submitted']]), ctx(100));
   const head = lineText(lines[0]!);
   assert.doesNotMatch(head, /astra ⊘ withdrawn/);
-  assert.match(head, /⊘ withdrawn for 1 of 2/);
+  assert.match(lineText(messageLines(delivered([['claude', 'withdrawn'], ['bob', 'submitted']]), ctx(36))[0]!), /⊘ 1\/2 withdrawn/, 'kept at narrow widths');
+  assert.match(head, /astra ⊘ 1\/2 withdrawn → claude, bob/);
   const body = lines.find((l) => lineText(l).includes('please hold'))!;
   assert.ok(!body.some((s) => s.dim), 'body stays normal while some recipient still got it');
   const marks = lines.at(-1)!;
@@ -123,4 +124,21 @@ test('a partial withdraw is never shown as whole', () => {
 
 test('the legend explains the withdrawn mark', () => {
   assert.ok(DELIVERY_LEGEND.some((m) => m.label === 'withdrawn' && m.glyph === '⊘'));
+});
+test('⤫ survives a long sender name at a narrow width', () => {
+  const m = src.post('a-very-long-agent-name-that-overflows', ['claude'], 'x');
+  const item = { ...m, message: { ...m.message, crossing: crossing({ guard: 'urgent', urgent: { reason: 'r' }, newSinceSnapshot: 3 }) } } as MessageWithDeliveries;
+  assert.match(lineText(messageLines(item, ctx(30))[0]!), /⤫/);
+});
+
+test('the side panel shows the inbox row even when the agent has a model/branch row', () => {
+  const p = agent('astra', { inbox: inbox(3), workspace: { model: 'gpt-5', cwd: null, git: null } as ParticipantState['workspace'] });
+  const lines = sidePanelLines([p], [], { width: 30, height: 30, stale: false, mono: false, humanName: 'Kevin' }).map(lineText);
+  assert.ok(lines.some((l) => /3 not covered · as of 10:02/.test(l)), lines.join('\n'));
+  assert.ok(lines.some((l) => /gpt-5/.test(l)));
+});
+
+test('with no inbox counts the agent grid keeps its pre-M7 spacing', () => {
+  const rows = agentGrid([agent('astra'), agent('claude', { inbox: inbox(0) })], { width: 100, stale: false, maxRows: 6 })!.map(lineText);
+  for (const r of rows.filter((x) => /astra|claude/.test(x))) assert.match(r, /idle {2}ctx/, 'no empty inbox column (one GAP only)');
 });

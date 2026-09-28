@@ -202,10 +202,11 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   // M7 crossing guard: urgency and "sent over uncovered messages" are never dropped; their detail is.
   const crossing = message.crossing;
   if (crossing?.urgent) core.push({ text: ' URGENT ', color: 'yellow', inverse: true, bold: true }, { text: ' ' });
+  // ⤫ sits before the name so truncating a long name can never cut it off.
+  const crossed = crossing?.guard === 'urgent' && crossing.newSinceSnapshot !== 0;
+  if (crossed) core.push({ text: '⤫ ', color: 'yellow', bold: true });
   core.push({ text: name(message.from.name), color: colorFor(message.from.name), bold: true });
   if (message.from.identity.mode === 'declared') core.push({ text: ' (declared)', dim: true, italic: true });
-  const crossed = crossing?.guard === 'urgent' && crossing.newSinceSnapshot !== 0;
-  if (crossed) core.push({ text: ' ⤫', color: 'yellow', bold: true });
   const detail: Line = [];
   if (crossed) {
     const n = crossing.newSinceSnapshot;
@@ -217,7 +218,7 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   const withdrawn = item.deliveries.filter((d) => d.state === 'withdrawn').length;
   const allWithdrawn = withdrawn > 0 && withdrawn === item.deliveries.length;
   if (allWithdrawn) core.push({ text: ' ⊘ withdrawn', color: 'gray', italic: true });
-  else if (withdrawn > 0) detail.unshift({ text: `  ⊘ withdrawn for ${withdrawn} of ${item.deliveries.length}`, color: 'gray', italic: true });
+  else if (withdrawn > 0) core.push({ text: ` ⊘ ${withdrawn}/${item.deliveries.length} withdrawn`, color: 'gray', italic: true });
   const recipients: Line = [{ text: ' → ', dim: true }];
   if (message.addressing === 'broadcast') {
     recipients.push({ text: message.from.name === HUMAN ? 'everyone' : 'all', dim: true });
