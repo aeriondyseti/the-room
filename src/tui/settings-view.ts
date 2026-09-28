@@ -119,7 +119,9 @@ export function settingsLines(s: SettingsState, width: number): Line[] {
     else if (value !== s.view.defaults[k]) status.push({ text: `  changed · default ${show(k, s.view.defaults[k])}`, dim: true });
     else status.push({ text: '  default', dim: true });
     // A hold of 0 turns batching (and its cap) off in the service, so say so rather than show them as active.
-    if (k !== 'deliveryHoldMs' && pending(s, 'deliveryHoldMs') === 0) status.push({ text: ' · no effect while the hold is off', dim: true, italic: true });
+    // The hold that will actually apply: the environment's when it overrides, otherwise the saved/draft value.
+    const holdInForce = s.view.overridden.includes('deliveryHoldMs') ? s.view.effective.deliveryHoldMs : pending(s, 'deliveryHoldMs');
+    if (k !== 'deliveryHoldMs' && holdInForce === 0) status.push({ text: ' · no effect while the hold is off', dim: true, italic: true });
     out.push(fitLine([
       { text: sel ? '› ' : '  ', color: 'cyan', bold: true },
       { text: LABEL[k].padEnd(labelW), bold: sel },
