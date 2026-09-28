@@ -242,6 +242,7 @@ export class RoomService {
         if(caller.sender.kind==='human'){
           const intent:HumanKickIntent={id:randomBytes(16).toString('hex'),target:registration,reason:text(reason,'reason'),createdAt:new Date().toISOString()};
           this.ledger.putHumanKickIntent(intent);
+          this.scheduleKickExpiry();
           return await this.executeKick(null,registration,intent.reason,intent.id);
         }
         if(caller.sender.identity.mode!=='verified')throw new RoomError('identity_unresolved','Kick votes require verified native session identity.');
@@ -336,7 +337,8 @@ export class RoomService {
   private scheduleKickExpiry():void {
     if(this.kickTimer)clearTimeout(this.kickTimer);
     const now=Date.now();
-    const next=this.ledger.openKickProposals().reduce((min,p)=>Math.min(min,p.voters.every(v=>v.votedAt!==null)?now+Math.max(1000,loadConfig().dispatchPollMs):Date.parse(p.expiresAt)),Number.POSITIVE_INFINITY);
+    const retryAt=now+Math.max(1000,loadConfig().dispatchPollMs);
+    const next=this.ledger.openKickProposals().reduce((min,p)=>Math.min(min,p.voters.every(v=>v.votedAt!==null)?retryAt:Date.parse(p.expiresAt)),this.ledger.humanKickIntents().length?retryAt:Number.POSITIVE_INFINITY);
     if(!Number.isFinite(next)){this.kickTimer=null;return;}
     this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.serialized(()=>this.recoverKickProposals()).catch(()=>this.scheduleKickExpiry());},Math.min(2_147_483_647,Math.max(1,next-Date.now())));
     this.kickTimer.unref();
@@ -386,7 +388,7 @@ export class RoomService {
     // only rows still queued afterward can receive a broker cancellation tombstone.
     if(this.serviceStarted)await this.dispatcher.settleRecipient(target.name);
     const cancelled=this.ledger.transaction(()=>{
-      const rows=this.ledger.kickQueued(target.name,{harness:target.harness,sessionId:target.sessionId});
+      const rows=this.ledger.kickQueued({harness:target.harness,sessionId:target.sessionId});
       if(proposal)this.ledger.putKickProposal({...proposal,status:'executed'});
       if(superseded)this.ledger.putKickProposal({...superseded,status:'executed'});
       if(humanIntentId)this.ledger.deleteHumanKickIntent(humanIntentId);

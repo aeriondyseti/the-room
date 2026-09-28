@@ -299,8 +299,10 @@ export class Ledger {
     return this.queued(from).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&
       d.attempts.at(-1)?.outcome!=='in_flight'&&this.findDelivery(d.messageId,to)!==null).map(d=>d.messageId);
   }
-  kickQueued(name:string,target:Delivery['target']):Delivery[] {
-    return this.transaction(()=>this.queued(name).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&d.attempts.at(-1)?.outcome!=='in_flight')
+  kickQueued(target:Delivery['target']):Delivery[] {
+    // A name may be reused during crash recovery. Cancel by the frozen native
+    // binding across labels, never by whichever session owns the label now.
+    return this.transaction(()=>this.queued().filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&d.attempts.at(-1)?.outcome!=='in_flight')
       .map(d=>this.updateDelivery(d.messageId,d.recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.withdrawalCause='kick';value.held=false;value.waiting=null;})));
   }
   recordParticipantAlias(oldName:string,target:Delivery['target']):void {

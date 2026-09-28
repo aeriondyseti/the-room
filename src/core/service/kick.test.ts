@@ -141,6 +141,22 @@ test('recovering a human kick never removes a replacement binding at the old nam
   assert.equal((await readRegistry(root)).target?.session_id,'00000000-0000-4000-8000-00000000000d');
 });
 
+test('a recovered kick cancels old-label deliveries when the target renamed and its name was reused',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-rename-reuse-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'old label, old binding'});
+  room.ledger.putHumanKickIntent({id:'rename-and-reuse',target:{name:'target',harness:'codex',sessionId:c},reason:'remove original binding',createdAt:new Date().toISOString()});
+  await renameParticipant(root,'target','newtarget',{harness:'codex',session_id:c});
+  await joinParticipant(root,'target',{harness:'codex',session_id:'00000000-0000-4000-8000-00000000000d'});
+  await room.close();room=new RoomService(root);await room.start();
+  assert.equal(room.ledger.delivery(pending.message.id,'target').withdrawalCause,'kick');
+  assert.deepEqual(room.ledger.humanKickIntents(),[]);
+  const registry=await readRegistry(root);
+  assert.equal(registry.target?.session_id,'00000000-0000-4000-8000-00000000000d');
+  assert.equal(registry.newtarget,undefined);
+});
+
 test('kick waits for an accepted native handoff and cancels only the still-queued delivery',async t=>{
   const root=await mkdtemp(join(tmpdir(),'vp-kick-in-flight-'));
   let release!:()=>void,started!:()=>void;
