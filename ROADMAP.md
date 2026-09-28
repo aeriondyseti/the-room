@@ -298,24 +298,25 @@ Spec: [docs/PARTICIPANT-LIFECYCLE-SPEC.md](docs/PARTICIPANT-LIFECYCLE-SPEC.md) (
 Kevin (2026-09-28): a rename tool that needs no restart, and a kick tool executed by unanimous consent of all other
 online agents; renames relabel in-flight deliveries. Ownership per the spec §6 (proposed).
 
-- [ ] **8.1 Ghost cleanup** *(fable; was 7.8)*
+- [x] **8.1 Ghost cleanup** *(fable; was 7.8)*
   **Done-when:** `participants()` is registry-driven and the only emitter of `participant.removed`; departed ledger
   rows are pruned once; no display refresh republishes a departed name; a startup reconcile relabels queued
   deliveries whose recipient left the registry but whose binding is registered under another name; rename,
   restart, inbox and withdraw regressions pass.
-- [ ] **8.2 Rename without restart** *(Astra core; fable surfaces)*
+- [x] **8.2 Rename without restart** *(Astra core; fable surfaces)*
   **Done-when:** `room_rename` / `room rename` (self only, binding-resolved) and the human's `room rename OLD NEW` /
   `/rename`; registry moved atomically under the lock; the ledger row and every QUEUED delivery (held, waiting and burst members
   included; never submitted, uncertain or in-flight attempts) to the old name relabelled in one transaction with
-  targets unchanged; tokens unaffected; a system message announces the new name
-  to every agent; the old name is refused with a "renamed to" hint.
-- [ ] **8.3 Kick by unanimous consent** *(Astra core; fable surfaces)*
+  targets unchanged; tokens unaffected; a system message announces the new name to the other agents on a self-rename
+  (the renamer learns from its tool result) and to every agent on a human rename; the old name is refused with a
+  "renamed to" hint.
+- [x] **8.3 Kick by unanimous consent** *(Astra core; fable surfaces)*
   **Done-when:** `room_kick { name, reason }` is one verb meaning "I vote to remove": the first call opens a persisted
   proposal (TTL, default 10 min) announced as a system message; votes count once per binding from the agents
   registered and online at open, excluding the target; unanimity executes immediately (product call); the human's
   own kick executes alone; expiry closes it with a message. Execution removes the registration, cancels queued
   deliveries with `kicked` tombstones (never redirects), emits `participant.removed` and a system message; the
   session is untouched and may rejoin.
-- [ ] **8.4 TUI** *(fable)*
+- [x] **8.4 TUI** *(fable)*
   **Done-when:** `/rename old new` and `/kick name reason`; "offline · N queued" and "rebind needed · N queued" flagged
   on chips and the side panel; system messages for renames, proposals, expiries and removals render as notes.

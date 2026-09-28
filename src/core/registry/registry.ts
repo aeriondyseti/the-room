@@ -91,6 +91,39 @@ export async function joinParticipant(root: string, name: string, input: Binding
     await writeRegistry(root, registry); return registry;
   });
 }
+/** Move only the display name. The expected native binding is checked under the
+ * registry lock so a concurrent rebind can never be renamed by stale authority.
+ */
+export async function renameParticipant(root: string, oldName: string, newName: string, expected: Binding, options: RegistryOptions = {}): Promise<Registry> {
+  if (!isValidParticipantName(oldName) || !isValidParticipantName(newName)) throw new RoomError('bad_request', 'Choose valid, unreserved participant names.');
+  const normalized = binding(expected);
+  return locked(root, options, async () => {
+    const registry = await readRegistry(root);
+    const current = registry[oldName];
+    if (!current) throw new RoomError('not_registered', 'The old participant name is no longer registered; refresh room who.');
+    if (!equal(current, normalized)) throw new RoomError('rebind_conflict', 'The participant binding changed; refresh room who before renaming.');
+    if (oldName === newName) return registry;
+    if (Object.hasOwn(registry, newName)) throw new RoomError('duplicate_name', 'The new participant name is already taken.');
+    delete registry[oldName];
+    registry[newName] = current;
+    await writeRegistry(root, registry);
+    return registry;
+  });
+}
+/** Remove one exact binding after an approved kick or a human command. */
+export async function removeRegistryParticipant(root: string, name: string, expected: Binding, options: RegistryOptions = {}): Promise<Registry> {
+  if (!isValidParticipantName(name)) throw new RoomError('bad_request', 'Choose a valid participant name.');
+  const normalized = binding(expected);
+  return locked(root, options, async () => {
+    const registry = await readRegistry(root);
+    const current = registry[name];
+    if (!current) throw new RoomError('not_registered', 'The target participant is no longer registered; refresh room who.');
+    if (!equal(current, normalized)) throw new RoomError('rebind_conflict', 'The target binding changed; the kick must be proposed again.');
+    delete registry[name];
+    await writeRegistry(root, registry);
+    return registry;
+  });
+}
 /** Explicit, backed-up migration; never interprets embedded send commands. */
 export async function migrateLegacyRegistry(root: string, options: RegistryOptions = {}): Promise<Registry> {
   return locked(root, options, async () => {

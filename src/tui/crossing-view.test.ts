@@ -152,3 +152,10 @@ test('an agent+human message whose only agent delivery is withdrawn is not "whol
   const body = lines.find((l) => lineText(l).includes('heads up'))!;
   assert.ok(!body.some((s) => s.dim), 'the human saw it, so the body is not dimmed as withdrawn');
 });
+test('a delivery cancelled by a kick is marked kicked, distinct from a sender withdrawal, in marks and legend', () => {
+  const m = src.post('astra', ['ghost'], 'gone');
+  const item = { ...m, deliveries: [{ recipient: 'ghost', state: 'withdrawn', held: false, waiting: null, withdrawnAt: '2026-09-28T11:05:00', withdrawalCause: 'kick' }] } as unknown as MessageWithDeliveries;
+  const marks = lineText(messageLines(item, ctx(100)).at(-1)!);
+  assert.match(marks, /⊘ ghost kicked 11:05/);
+  assert.ok(DELIVERY_LEGEND.some((l) => l.label === 'kicked'));
+});

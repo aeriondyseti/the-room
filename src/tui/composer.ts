@@ -3,7 +3,7 @@
 
 // ---- parsing --------------------------------------------------------------------------------------------
 
-export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout' | 'compact' | 'settings';
+export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout' | 'compact' | 'settings' | 'rename' | 'kick';
 
 export interface CommandInfo {
   name: ComposerCommand;
@@ -18,9 +18,11 @@ export const COMMAND_CATALOGUE: readonly CommandInfo[] = [
   { name: 'compact', args: '[on|off]', description: 'top bar: compact lines instead of the full grid (Ctrl+T toggles); remembered' },
   { name: 'detail', args: '[#N]', description: 'delivery detail: attempts, evidence, errors' },
   { name: 'help', args: '', description: 'keys and commands' },
+  { name: 'kick', args: '@agent reason', description: 'remove an agent at once (its queued messages get a tombstone; it can rejoin)' },
   { name: 'layout', args: '[top|left]', description: 'switch between the top bar and the left panel (Ctrl+B toggles); remembered' },
   { name: 'pause', args: '[message]', description: 'hold new deliveries and ask every agent to stop' },
   { name: 'quit', args: '', description: 'leave the TUI (agents and the room keep running)' },
+  { name: 'rename', args: '@old @new', description: "change an agent's name without a restart (everyone is told)" },
   { name: 'restart', args: '', description: 'restart the room service (e.g. after an upgrade); keeps queued messages' },
   { name: 'resume', args: '', description: 'release held deliveries in order' },
   { name: 'retry', args: '#N [@agent]', description: 're-send a failed or uncertain delivery' },

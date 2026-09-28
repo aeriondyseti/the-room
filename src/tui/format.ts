@@ -56,7 +56,9 @@ export interface DeliveryMark {
 }
 
 /** One glyph per recipient. Held/waiting override the base state because they explain *why* it's queued. */
-export function deliveryMark(d: Pick<Delivery, 'state' | 'held' | 'waiting'>): DeliveryMark {
+export function deliveryMark(d: Pick<Delivery, 'state' | 'held' | 'waiting'> & Partial<Pick<Delivery, 'withdrawalCause'>>): DeliveryMark {
+  // M8: a delivery cancelled by a kick is a tombstone like a withdrawal, but says why (invariant 3).
+  if (d.state === 'withdrawn' && d.withdrawalCause === 'kick') return { glyph: '⊘', color: 'gray', label: 'kicked' };
   if (d.state === 'queued' && d.held) return { glyph: '⏸', color: 'yellow', label: 'held' };
   if (d.state === 'queued' && d.waiting === 'offline') return { glyph: '⋯', color: 'yellow', label: 'offline' };
   if (d.state === 'queued' && d.waiting === 'rebind_needed') return { glyph: '⚠', color: 'yellow', label: 'rebind needed' };
@@ -85,6 +87,7 @@ export const DELIVERY_LEGEND: readonly DeliveryMark[] = [
   deliveryMark({ state: 'failed', held: false, waiting: null }),
   deliveryMark({ state: 'uncertain', held: false, waiting: null }),
   deliveryMark({ state: 'withdrawn', held: false, waiting: null }),
+  deliveryMark({ state: 'withdrawn', held: false, waiting: null, withdrawalCause: 'kick' }),
 ];
 
 // ---- text -----------------------------------------------------------------------------------------------

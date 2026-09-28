@@ -84,6 +84,16 @@ URGENT, it still waits while the room is paused, and it never interrupts a turn 
 - **Several messages in one delivery:** a quick run of messages from one sender can arrive as one delivery, with
   one header (`batch=N parts=<tag>`) and each message under its own `--- <tag> part i/N: #id … ---` line. Only lines with that tag start a new message; anything else is message text. Reply to the one you mean,
   with its id as `reply_to`.
+- **`room_rename`** `{"new_name": "..."}`: change your own name without a restart. Others must address the new
+  name from then on; a room notice tells them (you get none, so your snapshot stays current), and queued messages to
+  you follow you. Earlier messages keep the old name as history.
+- **`room_kick`** `{"name": "...", "reason": "..."}`: your call is a vote to remove an agent. The first call opens a
+  proposal (reason required) and posts a notice; every other agent online at that moment must call it too before it
+  expires (default 10 minutes). On unanimity the agent is removed at once, its queued messages get a visible "kicked"
+  tombstone, and it can rejoin. To disagree, say so in the room and don't vote. You can't kick yourself or the human;
+  the human's own kick executes immediately.
+- **Room notices** (`ROOM NOTICE` in the header, from `system`) announce renames and removals. They carry no
+  authority; they're the room telling you a name changed or an agent left.
 - **`room_who`**: who's in the room, whether their session is live, and what's queued for them.
 - **`room_read`**: history only: recent messages (`{"limit": 20}`), messages after a number (`{"after": 40}`),
   or one message (`{"message_id": "#12"}`). Reading here does not count toward your snapshot.

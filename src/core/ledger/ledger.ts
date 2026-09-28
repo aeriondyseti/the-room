@@ -2,10 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantState, RoomMessage, RoomState, Sender, TargetSnapshot } from '../../contracts/domain.js';
+import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantRegistration, ParticipantState, RoomMessage, RoomState, Sender, TargetSnapshot } from '../../contracts/domain.js';
 import { HUMAN } from '../../contracts/domain.js';
 import { loadConfig } from '../config.js';
 import type { WithdrawOutcome, WithdrawDisposition } from '../../contracts/crossing.js';
+import type { KickProposal } from '../../contracts/lifecycle.js';
 import { RoomError } from '../../contracts/errors.js';
 
 export interface EnqueueInput {
@@ -28,6 +29,8 @@ export interface EnqueueInput {
   crossing?: RoomMessage['crossing'];
 }
 export interface UsageCursor { source: string; offset: number; identity: string; updatedAt: string }
+/** A human removal survives a crash between the registry CAS and delivery tombstones. */
+export interface HumanKickIntent { id:string; target:ParticipantRegistration; reason:string; createdAt:string }
 interface MessageRow { seq: number; id: string; payload: string; fingerprint: string }
 interface DeliveryRow { payload: string }
 
@@ -73,6 +76,10 @@ export class Ledger {
         );
         CREATE INDEX IF NOT EXISTS delivery_order ON deliveries(recipient,state);
         CREATE TABLE IF NOT EXISTS participants (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS participant_aliases (old_name TEXT PRIMARY KEY, native_scope TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS kick_proposals (id TEXT PRIMARY KEY, target_scope TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL);
+        CREATE UNIQUE INDEX IF NOT EXISTS kick_open_target ON kick_proposals(target_scope) WHERE status='open';
+        CREATE TABLE IF NOT EXISTS human_kick_intents (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS usage_cursors (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_records (id TEXT PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_display (scope TEXT PRIMARY KEY, snapshot TEXT NOT NULL, checked_at TEXT NOT NULL);
@@ -228,9 +235,14 @@ export class Ledger {
     return (this.db.prepare('SELECT payload FROM deliveries WHERE message_id=? ORDER BY recipient').all(messageId) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
   }
   delivery(messageId: string, recipient: string): Delivery {
-    const row = this.db.prepare('SELECT payload FROM deliveries WHERE message_id=? AND recipient=?').get(messageId, recipient) as unknown as DeliveryRow | undefined;
-    if (!row) throw new RoomError('not_found', 'Delivery not found in this room.');
-    return JSON.parse(row.payload) as Delivery;
+    const found=this.findDelivery(messageId,recipient);
+    if (!found) throw new RoomError('not_found', 'Delivery not found in this room.');
+    return found;
+  }
+  /** A rename may move a queued row while the old dispatcher worker awaits a probe. */
+  findDelivery(messageId:string,recipient:string):Delivery|null {
+    const row=this.db.prepare('SELECT payload FROM deliveries WHERE message_id=? AND recipient=?').get(messageId,recipient) as unknown as DeliveryRow|undefined;
+    return row?JSON.parse(row.payload) as Delivery:null;
   }
   unfinishedAttempts(): Delivery[] {
     return (this.db.prepare("SELECT payload FROM deliveries WHERE json_extract(payload,'$.attempts[#-1].outcome')='in_flight'").all() as unknown as DeliveryRow[]).map(row=>JSON.parse(row.payload) as Delivery);
@@ -243,8 +255,14 @@ export class Ledger {
       const owner=this.db.prepare('SELECT sender_scope FROM messages WHERE id=?').get(messageId) as {sender_scope:string}|undefined;
       if(!owner)throw new RoomError('not_found','Message not found.');
       if(owner.sender_scope!==scope)throw new RoomError('identity_mismatch','Only the original sender can withdraw this message.');
-      const item=this.read(messageId);const targets=recipients??item.message.to;
-      if(!targets.length||new Set(targets).size!==targets.length||targets.some(n=>!item.message.to.includes(n)))throw new RoomError('bad_request','Withdraw recipients must be distinct original recipients.');
+      const item=this.read(messageId);
+      // Delivery rows are the truth for who holds a delivery now (a relabelled row lives under its new name; 8.1);
+      // the message's `to` list is history. The human has no row.
+      const current=this.deliveries(messageId).map(d=>d.recipient);
+      // In the message's own order, then any row relabelled to a name the message never listed.
+      const known=[...item.message.to.filter(n=>n===HUMAN||current.includes(n)),...current.filter(n=>!item.message.to.includes(n))];
+      const targets=recipients??known;
+      if(!targets.length||new Set(targets).size!==targets.length||targets.some(n=>!known.includes(n)))throw new RoomError('bad_request',`Withdraw recipients must be distinct current recipients of this message (${known.join(', ')||'none'}).`);
       return {messageId,recipients:targets.map(recipient=>{
         let disposition:WithdrawDisposition;
         if(recipient===HUMAN)disposition='already_visible';
@@ -256,13 +274,76 @@ export class Ledger {
           else if(d.state==='submitted'||d.attempts.some(a=>a.outcome==='submitted'))disposition='submitted';
           else if(d.state==='uncertain'||d.attempts.some(a=>a.outcome==='uncertain'))disposition='uncertain';
           else{
-            this.updateDelivery(messageId,recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.held=false;value.waiting=null;});
+            this.updateDelivery(messageId,recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.withdrawalCause='sender';value.held=false;value.waiting=null;});
             disposition='withdrawn';
           }
         }
         return {recipient,disposition};
       })};
     });
+  }
+  /**
+   * 8.1/8.2: move QUEUED deliveries addressed to `from` whose target is `target` under the name `to`. The target
+   * snapshot never changes (invariant 5): only the label does. A stale rebind wait is cleared, because the binding is
+   * registered again under the new name. Submitted, uncertain, in-flight and terminal rows stay as history.
+   *
+   * Run it only while the dispatcher is stopped or the old name's worker is quiesced (8.1 calls it before the
+   * dispatcher starts): a worker that has selected a queued row but not yet claimed it would find the row gone
+   * (TD-0041; 8.2's live rename must drain the old name's worker first or make that path tolerant).
+   */
+  relabelQueued(from:string,to:string,target:Delivery['target'],paused:boolean):Delivery[] {
+    return this.transaction(()=>{
+      const rows=this.queued(from).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&d.attempts.at(-1)?.outcome!=='in_flight');
+      const moved:Delivery[]=[];
+      for(const d of rows){
+        if(this.db.prepare('SELECT 1 FROM deliveries WHERE message_id=? AND recipient=?').get(d.messageId,to))continue;
+        const next:Delivery={...d,recipient:to,updatedAt:new Date().toISOString()};
+        // A cleared rebind wait follows the pause like a fresh enqueue would, except stop requests, which pause
+        // never holds.
+        if(next.waiting==='rebind_needed'){next.waiting=null;next.held=paused&&this.read(d.messageId).message.kind!=='stop_request';}
+        this.db.prepare('UPDATE deliveries SET recipient=?,held=?,payload=? WHERE message_id=? AND recipient=?').run(to,Number(next.held),JSON.stringify(next),d.messageId,from);
+        moved.push(next);
+      }
+      return moved;
+    });
+  }
+  relabelConflicts(from:string,to:string,target:Delivery['target']):string[] {
+    return this.queued(from).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&
+      d.attempts.at(-1)?.outcome!=='in_flight'&&this.findDelivery(d.messageId,to)!==null).map(d=>d.messageId);
+  }
+  kickQueued(target:Delivery['target']):Delivery[] {
+    // A name may be reused during crash recovery. Cancel by the frozen native
+    // binding across labels, never by whichever session owns the label now.
+    return this.transaction(()=>this.queued().filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&d.attempts.at(-1)?.outcome!=='in_flight')
+      .map(d=>this.updateDelivery(d.messageId,d.recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.withdrawalCause='kick';value.held=false;value.waiting=null;})));
+  }
+  recordParticipantAlias(oldName:string,target:Delivery['target']):void {
+    this.db.prepare('INSERT INTO participant_aliases(old_name,native_scope) VALUES(?,?) ON CONFLICT(old_name) DO UPDATE SET native_scope=excluded.native_scope').run(oldName,`${target.harness}:${target.sessionId}`);
+  }
+  participantAlias(oldName:string):string|null {
+    const row=this.db.prepare('SELECT native_scope FROM participant_aliases WHERE old_name=?').get(oldName) as {native_scope:string}|undefined;
+    return row?.native_scope??null;
+  }
+  /** Proposal records are durable; a unanimous open record can be completed after service restart. */
+  putKickProposal(proposal:KickProposal):void {
+    const scope=`${proposal.target.harness}:${proposal.target.sessionId}`;
+    this.db.prepare('INSERT INTO kick_proposals(id,target_scope,status,payload) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload').run(proposal.id,scope,proposal.status,JSON.stringify(proposal));
+  }
+  openKickProposal(target:Delivery['target']):KickProposal|null {
+    const row=this.db.prepare("SELECT payload FROM kick_proposals WHERE target_scope=? AND status='open'").get(`${target.harness}:${target.sessionId}`) as {payload:string}|undefined;
+    return row?JSON.parse(row.payload) as KickProposal:null;
+  }
+  openKickProposals():KickProposal[] {
+    return (this.db.prepare("SELECT payload FROM kick_proposals WHERE status='open'").all() as {payload:string}[]).map(row=>JSON.parse(row.payload) as KickProposal);
+  }
+  putHumanKickIntent(intent:HumanKickIntent):void {
+    this.db.prepare('INSERT INTO human_kick_intents(id,payload) VALUES(?,?)').run(intent.id,JSON.stringify(intent));
+  }
+  humanKickIntents():HumanKickIntent[] {
+    return (this.db.prepare('SELECT payload FROM human_kick_intents').all() as {payload:string}[]).map(row=>JSON.parse(row.payload) as HumanKickIntent);
+  }
+  deleteHumanKickIntent(id:string):void {
+    this.db.prepare('DELETE FROM human_kick_intents WHERE id=?').run(id);
   }
   /** Update mutable state only; message, recipient and target snapshot cannot be replaced. */
   updateDelivery(messageId: string, recipient: string, update: (delivery: Delivery) => void): Delivery {

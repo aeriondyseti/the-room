@@ -41,6 +41,7 @@ import { DELIVERY_LEGEND, colorFor, cols, conversationLines, deliveryMark, fitLi
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
 import { SettingsPane } from './settings.js';
+import { kickText, renameNoop, renameText } from '../presentation/lifecycle.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
@@ -381,6 +382,30 @@ function Room({
         finish(null);
         setOverlay('settings');
         return;
+      case 'rename': {
+        const names = args.split(/\s+/).map((n) => n.replace(/^@/, '').toLowerCase()).filter(Boolean);
+        if (names.length !== 2) {
+          setFeedback({ tone: 'error', text: 'Usage: /rename @old @new' });
+          return;
+        }
+        return run('rename', async () => {
+          const outcome = await source.request('rename', { caller: { kind: 'human' }, oldName: names[0]!, newName: names[1]! });
+          return finish({ tone: renameNoop(outcome) ? 'info' : 'ok', text: renameText(outcome, false).split('\n')[0]! });
+        });
+      }
+      case 'kick': {
+        const [target, ...rest] = args.trim().split(/\s+/);
+        const name = (target ?? '').replace(/^@/, '').toLowerCase();
+        const reason = rest.join(' ').trim();
+        if (!name || !reason) {
+          setFeedback({ tone: 'error', text: 'Usage: /kick @agent reason (removes it at once; it can rejoin)' });
+          return;
+        }
+        return run('kick', async () => {
+          const outcome = await source.request('kick', { caller: { kind: 'human' }, name, reason });
+          return finish({ tone: 'ok', text: kickText(outcome, 'cli').split('\n')[0]! });
+        });
+      }
       case 'activity': {
         const name = args.replace(/^@/, '').trim();
         if (!name) {

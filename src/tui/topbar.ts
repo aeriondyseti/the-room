@@ -35,7 +35,8 @@ export function stateDot(p: ParticipantState): { glyph: string; color: string } 
 /** Short status for a participant. Attention states get a color; the rest stay dim. */
 export function activityLabel(p: ParticipantState): { text: string; color?: string } {
   const pending = p.pending > 0 ? ` · ${p.pending} queued` : '';
-  if (p.liveness === 'offline') return { text: `offline${pending}` };
+  // An offline agent with queued deliveries needs attention (M8): those messages wait until it returns or is removed.
+  if (p.liveness === 'offline') return p.pending > 0 ? { text: `offline${pending}`, color: 'yellow' } : { text: `offline${pending}` };
   if (p.liveness === 'rebind_needed') return { text: `rebind needed${pending}`, color: 'yellow' };
   if (p.activity === 'waiting_permission') return { text: `needs approval${pending}`, color: 'yellow' };
   if (p.activity === 'unknown') return { text: `status unknown${pending}` };

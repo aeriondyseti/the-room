@@ -143,6 +143,8 @@ export interface Delivery {
   state: DeliveryState;
   /** Broker cancellation tombstone; absent on pre-M7 deliveries. */
   withdrawnAt?: string;
+  /** Why a queued delivery was cancelled; absent on historical tombstones. */
+  withdrawalCause?: 'sender' | 'kick';
   /** Earliest native submission time for ordinary chat; persisted across restart. */
   notBefore?: string;
   burst?: { id:string; startedAt:string; holdMs:number; maxHoldMs:number };

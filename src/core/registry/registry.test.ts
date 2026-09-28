@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { resolveRoomRoot, roomGitEnvironment } from './root.js';
-import { joinParticipant, readRegistry, parseRegistry, migrateLegacyRegistry } from './registry.js';
+import { joinParticipant, renameParticipant, removeRegistryParticipant, readRegistry, parseRegistry, migrateLegacyRegistry } from './registry.js';
 const one = { harness: 'codex', session_id: '00000000-0000-4000-8000-000000000001' } as const;
 const two = { harness: 'claude', session_id: '00000000-0000-4000-8000-000000000002' } as const;
 async function fixture(t: TestContext) {
@@ -28,6 +28,33 @@ test('duplicate bindings, name collisions and stale compare-and-swap do not muta
   assert.equal(await readFile(path.join(root, 'session.toml'), 'utf8'), before);
   await joinParticipant(root, 'astra', two, { expectedPrevious: one });
   await assert.rejects(joinParticipant(root, 'astra', one, { expectedPrevious: one }), /already bound/);
+});
+test('rename moves one binding under the lock and refuses stale authority or a taken name', async t => {
+  const root = await fixture(t);
+  await joinParticipant(root, 'astra', one);
+  await joinParticipant(root, 'fable', two);
+  const before = await readFile(path.join(root, 'session.toml'), 'utf8');
+  await assert.rejects(renameParticipant(root, 'astra', 'fable', one), { code: 'duplicate_name' });
+  await assert.rejects(renameParticipant(root, 'astra', 'new_name', two), { code: 'rebind_conflict' });
+  await assert.rejects(renameParticipant(root, 'absent', 'new_name', one), { code: 'not_registered' });
+  await assert.rejects(renameParticipant(root, 'astra', 'human', one), { code: 'bad_request' });
+  assert.equal(await readFile(path.join(root, 'session.toml'), 'utf8'), before);
+  const moved = await renameParticipant(root, 'astra', 'renamed', one);
+  assert.deepEqual(moved.renamed, one);
+  assert.deepEqual(moved.fable, two);
+  assert.equal(Object.hasOwn(moved, 'astra'), false);
+  assert.deepEqual(await readRegistry(root), moved);
+  assert.deepEqual(await renameParticipant(root, 'renamed', 'renamed', one), moved);
+});
+test('removal requires the exact current native binding', async t => {
+  const root=await fixture(t);
+  await joinParticipant(root,'astra',one);await joinParticipant(root,'fable',two);
+  await assert.rejects(removeRegistryParticipant(root,'astra',two),{code:'rebind_conflict'});
+  assert.deepEqual((await readRegistry(root)).astra,one);
+  const registry=await removeRegistryParticipant(root,'astra',one);
+  assert.equal(Object.hasOwn(registry,'astra'),false);
+  assert.deepEqual(registry.fable,two);
+  await assert.rejects(removeRegistryParticipant(root,'astra',one),{code:'not_registered'});
 });
 test('strict minimal schema rejects extra fields, duplicate TOML tables and reserved names', () => {
   assert.throws(() => parseRegistry('[participants.astra]\nharness="codex"\nsession_id="bad"'), /Invalid/);

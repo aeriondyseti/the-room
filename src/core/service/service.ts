@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto';
+import type { KickOutcome, KickProposal } from '../../contracts/lifecycle.js';
 import { RoomSettings } from '../settings.js';
 import { InboxStore } from '../ledger/inbox.js';
 import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.js';
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
-import { Ledger } from '../ledger/ledger.js';
-import { joinParticipant, readRegistry } from '../registry/registry.js';
-import { HUMAN, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
+import { Ledger, type HumanKickIntent } from '../ledger/ledger.js';
+import { joinParticipant, readRegistry, renameParticipant, removeRegistryParticipant, type Registry } from '../registry/registry.js';
+import { HUMAN, SYSTEM, isValidParticipantName, type Delivery, type MessageWithDeliveries, type ParticipantRegistration, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
 import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } from '../../contracts/ipc.js';
 import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
@@ -18,6 +19,7 @@ import type { AccountUsageProvider } from '../../contracts/account.js';
 import type { ActivityCursorState, ActivityReader } from '../../observer/activity-reader.js';
 import type { ActivityRequest } from '../../contracts/activity.js';
 import type { UsageCursor as ObserverCursor } from '../../observer/observer.js';
+import { openKickProposal, voteKickProposal } from './kick-vote.js';
 
 const OBSERVER_CURSORS='usage-observer';
 const ACTIVITY_CURSORS='activity-reader';
@@ -28,6 +30,10 @@ export class RoomService {
   readonly inbox: InboxStore;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
+  private requestTail:Promise<void>=Promise.resolve();
+  private kickTimer:NodeJS.Timeout|null=null;
+  private serviceStarted=false;
+  private closed=false;
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
@@ -50,11 +56,60 @@ export class RoomService {
   enableAccounts(providers:AccountUsageProvider[],intervalMs:number,staleAfterMs:number,stopGraceMs?:number):void{
     this.accounts=new AccountMonitor({providers,publish:event=>this.publish(event),intervalMs,staleAfterMs,...(stopGraceMs!==undefined?{stopGraceMs}:{})});
   }
-  start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
-  async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
+  /**
+   * 8.1: repair labels after a rename that did not finish, or a manual registry edit. A queued delivery whose recipient
+   * name left the registry, but whose target binding is registered under another name, is relabelled to that name.
+   * Nothing is redirected: the target is the same session. Returns how many deliveries moved.
+   */
+  async reconcile():Promise<number>{
+    const registry=await readRegistry(this.root);const paused=this.ledger.roomState().paused;let moved=0;
+    const byBinding=new Map(Object.entries(registry).map(([name,b])=>[`${b.harness}:${b.session_id}`,name] as const));
+    // One pass per (departed name, binding) pair, so a repair is attempted and reported once, not once per row.
+    const pairs=new Map<string,{from:string;target:Delivery['target'];to:string}>();
+    for(const d of this.ledger.queued()){
+      if(Object.hasOwn(registry,d.recipient))continue;
+      const to=byBinding.get(`${d.target.harness}:${d.target.sessionId}`);if(!to)continue;
+      pairs.set(`${d.recipient}|${d.target.harness}:${d.target.sessionId}`,{from:d.recipient,target:d.target,to});
+    }
+    for(const {from,target,to} of pairs.values()){
+      for(const delivery of this.ledger.relabelQueued(from,to,target,paused)){this.publish({type:'delivery.updated',delivery});moved++;}
+      // A row the relabel had to skip (the same message already has a delivery under the new name) stays stranded
+      // under the departed name; say so rather than claim a full repair (8.2's explicit rename refuses such a case).
+      // Rows with an in-flight attempt are not collisions: the dispatcher's recovery settles them as uncertain.
+      const stranded=this.ledger.queued(from).filter(q=>q.target.harness===target.harness&&q.target.sessionId===target.sessionId&&q.attempts.at(-1)?.outcome!=='in_flight');
+      if(stranded.length)console.error(`room: ${stranded.length} queued deliver${stranded.length===1?'y':'ies'} to departed name "${from}" could not be relabelled to "${to}" (the message already has a delivery under that name): ${stranded.map(q=>q.messageId).join(', ')}`);
+    }
+    return moved;
+  }
+  /** The display refresh after a committed request: awaited, but a failure only logs; it never becomes the caller's error. */
+  private async refreshDisplay(fields:{pending:boolean}):Promise<void>{
+    try{await this.syncDisplay(fields);}catch(error){console.error(`room: participant display refresh skipped: ${error instanceof Error?error.message:String(error)}`);}
+  }
+  async start():Promise<void>{
+    // A repair that can't run (registry unreadable right now) must not stop the room: the dispatcher's own registry
+    // checks mark such deliveries rebind_needed as before, and the next start retries the repair.
+    try{await this.reconcile();}catch(error){console.error(`room: startup delivery repair skipped: ${error instanceof Error?error.message:String(error)}`);}
+    await this.recoverKickProposals();this.serviceStarted=true;
+    this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();
+  }
+  async close():Promise<void>{this.closed=true;this.serviceStarted=false;if(this.kickTimer)clearTimeout(this.kickTimer);await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
+  /** Rename spans a registry write and a ledger relabel. Serialize room requests
+   * that can observe or mutate that boundary so a send cannot enqueue an old
+   * recipient after the final relabel pass.
+   */
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
+    if(!['send','guarded_send','rename','kick','join','retry','pause','resume','withdraw','inbox','who'].includes(request.method))return this.handleOne(request,client);
+    return this.serialized(()=>this.handleOne(request,client));
+  }
+  private async serialized<T>(work:()=>Promise<T>):Promise<T> {
+    const previous=this.requestTail;let release!:()=>void;
+    this.requestTail=new Promise<void>(resolve=>{release=resolve;});
+    await previous;
+    try{return await work();}finally{release();}
+  }
+  private async handleOne(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
     switch(request.method) {
       case 'settings_get': return this.settings.get();
@@ -64,13 +119,10 @@ export class RoomService {
         const messageId=text(p.messageId,'messageId');
         if(p.recipients!==undefined&&(!Array.isArray(p.recipients)||p.recipients.some(n=>typeof n!=='string')))throw new RoomError('bad_request','Withdraw recipients must be strings.');
         const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
-        this.refreshInboxDisplay();
         for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
-        // Recompute pending for existing bindings without changing their inbox coverage.
-        for(const participant of this.ledger.participants()){
-          const pending=this.ledger.queued(participant.name).length;
-          if(pending!==participant.pending){const updated={...participant,pending};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});}
-        }
+        // Pending counts (withdraw is the one request that recomputes them here) and inbox coverage, for CURRENT
+        // participants only (8.1); best effort, after the outcome is committed and announced.
+        await this.refreshDisplay({pending:true});
         return result;
       }
       case 'inbox': {
@@ -81,7 +133,7 @@ export class RoomService {
         if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
         if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
         if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
-        const page=this.inbox.review(caller.scope,options);this.refreshInboxDisplay();return page;
+        const page=this.inbox.review(caller.scope,options);await this.refreshDisplay({pending:false});return page;
       }
       case 'guarded_send':
       case 'send': {
@@ -114,7 +166,11 @@ export class RoomService {
         const targets=recipients.map(name=>{
           if(name===HUMAN)return {name,target:null};
           const binding=Object.hasOwn(registry,name)?registry[name]:undefined;
-          if(!binding)throw new RoomError('unknown_recipient',`Unknown participant: ${name}`);
+          if(!binding){
+            const scope=this.ledger.participantAlias(name);
+            const renamed=scope?Object.entries(registry).find(([,b])=>`${b.harness}:${b.session_id}`===scope)?.[0]:null;
+            throw new RoomError('unknown_recipient',renamed?`${name} was renamed to ${renamed}; address the new name.`:`Unknown participant: ${name}`);
+          }
           return {name,target:{harness:binding.harness,sessionId:binding.session_id}};
         });
         const saved=this.ledger.transaction(()=>{
@@ -138,14 +194,16 @@ export class RoomService {
           }
           return{result,replyDelivery,rejected:null};
         });
-        if(saved.rejected){this.refreshInboxDisplay();return saved.rejected;}
+        if(saved.rejected){await this.refreshDisplay({pending:false});return saved.rejected;}
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
-          this.refreshInboxDisplay();
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           for(const delivery of result.updatedDeliveries??[])this.publish({type:'delivery.updated',delivery});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
+          // After the commit is announced and delivery is under way: the display refresh is best effort (Astra's
+          // cross-review), so a failed registry read can never turn a persisted send into an error.
+          await this.refreshDisplay({pending:false});
         }
         const {updatedDeliveries:_,...publicResult}=result;
         return guarded?{status:'sent',result:publicResult,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:publicResult;
@@ -167,6 +225,80 @@ export class RoomService {
         const state=(await this.participants()).find(participant=>participant.name===name)!;
         this.ledger.putParticipant(state);this.publish({type:'participant.updated',participant:state});void this.dispatcher.kick();void this.monitor?.refresh(name);
         return {registration,created:!prior[name],rebound:!!prior[name]&&(prior[name].harness!==binding.harness||prior[name].session_id!==binding.session_id)};
+      }
+      case 'rename': {
+        const registry=await readRegistry(this.root);
+        const caller=resolveCaller(p.caller,client,registry);
+        if(caller.sender.kind==='agent'&&caller.sender.identity.mode!=='verified')throw new RoomError('identity_unresolved','Renaming requires verified native session identity.');
+        const oldName=caller.sender.kind==='human'?text(p.oldName,'oldName'):caller.sender.name;
+        if(caller.sender.kind==='agent'&&p.oldName!==undefined&&p.oldName!==null)throw new RoomError('bad_request','Agents rename only their own binding; omit oldName.');
+        const newName=text(p.newName,'newName');
+        if(!isValidParticipantName(newName))throw new RoomError('bad_request','Choose a valid, unreserved participant name.');
+        const binding=registry[oldName];
+        if(!binding)throw new RoomError('not_registered','The participant is no longer registered; refresh room who.');
+        const target={harness:binding.harness,sessionId:binding.session_id};
+        if(oldName===newName)return{oldName,registration:{name:newName,...target},relabeled:0,noticeId:null};
+        const conflicts=this.ledger.relabelConflicts(oldName,newName,target);
+        if(conflicts.length)throw new RoomError('invalid_state',`Rename would collide with an existing delivery for ${newName}; resolve message ${conflicts[0]} before retrying.`);
+        const renamed=await renameParticipant(this.root,oldName,newName,binding);
+        const moved=this.ledger.transaction(()=>{
+          const previous=this.ledger.participants().find(row=>row.name===oldName&&row.harness===target.harness&&row.sessionId===target.sessionId);
+          const deliveries=this.ledger.relabelQueued(oldName,newName,target,this.ledger.roomState().paused);
+          if(previous)this.ledger.putParticipant({...previous,name:newName,pending:this.ledger.queued(newName).length});
+          this.ledger.recordParticipantAlias(oldName,target);
+          for(const openProposal of this.ledger.openKickProposals()){
+            const matching=(binding:TargetSnapshot)=>binding.harness===target.harness&&binding.sessionId===target.sessionId;
+            const renamedTarget=matching(openProposal.target)?{...openProposal.target,name:newName}:openProposal.target;
+            const renamedVoters=openProposal.voters.map(v=>matching(v.binding)?{...v,name:newName}:v);
+            if(renamedTarget!==openProposal.target||renamedVoters.some((v,i)=>v!==openProposal.voters[i]))this.ledger.putKickProposal({...openProposal,target:renamedTarget,voters:renamedVoters});
+          }
+          return deliveries;
+        });
+        try{
+          const participant=(await this.participants()).find(row=>row.name===newName);
+          if(participant){this.ledger.putParticipant(participant);this.publish({type:'participant.updated',participant});}
+        }catch(error){console.error(`room: participant display refresh skipped after rename: ${error instanceof Error?error.message:String(error)}`);}
+        for(const delivery of moved)this.publish({type:'delivery.updated',delivery});
+        void this.dispatcher.kick();
+        const noticeId=this.postSystemNotice(`${oldName} is now ${newName}.`,renamed,caller.sender.kind==='agent'?newName:null);
+        return{oldName,registration:{name:newName,...target},relabeled:moved.length,noticeId};
+      }
+      case 'kick': {
+        const registry=await readRegistry(this.root);
+        const caller=resolveCaller(p.caller,client,registry);
+        const name=text(p.name,'name');const reason=p.reason===undefined?null:text(p.reason,'reason');
+        if(reason&&reason.length>500)throw new RoomError('bad_request','Kick reason must be 1–500 characters.');
+        const binding=registry[name];if(!binding)throw new RoomError('unknown_recipient',`No registered agent named ${name}.`);
+        const target={harness:binding.harness,sessionId:binding.session_id};
+        const registration={name,...target};
+        if(caller.sender.kind==='human'){
+          const intent:HumanKickIntent={id:randomBytes(16).toString('hex'),target:registration,reason:text(reason,'reason'),createdAt:new Date().toISOString()};
+          this.ledger.putHumanKickIntent(intent);
+          this.scheduleKickExpiry();
+          return await this.executeKick(null,registration,intent.reason,intent.id);
+        }
+        if(caller.sender.identity.mode!=='verified')throw new RoomError('identity_unresolved','Kick votes require verified native session identity.');
+        const own=registry[caller.sender.name]!;const voter={harness:own.harness,sessionId:own.session_id};
+        let proposal=this.ledger.openKickProposal(target);
+        if(proposal&&proposal.voters.every(v=>v.votedAt!==null))return await this.executeKick(proposal,proposal.target,proposal.reason,null,caller.sender.name);
+        if(proposal&&Date.parse(proposal.expiresAt)<=Date.now()){await this.expireKickProposal(proposal);proposal=null;}
+        if(!proposal){
+          if(!reason)throw new RoomError('bad_request','Opening a kick proposal requires a reason; later votes may omit it.');
+          proposal=openKickProposal(registry,await this.participants(),name,voter,reason,new Date(),loadConfig().participantRefreshMs,loadConfig().kickProposalTtlMs);
+          const opening=`${caller.sender.name} proposes removing ${name}: ${proposal.reason}. Voters: ${proposal.voters.map(v=>v.name).join(', ')}. ${proposal.excluded.length?`Not qualified as online: ${proposal.excluded.map(v=>`${v.name} (${v.reason})`).join(', ')}. `:''}Other listed voters may call room_kick for ${name}; expires ${proposal.expiresAt}.`;
+          const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(proposal!);return this.enqueueSystemNotice(opening,registry,caller.sender.name);});
+          this.publishSystemNotice(notice);this.scheduleKickExpiry();
+          if(proposal.voters.every(v=>v.votedAt!==null))return await this.executeKick(proposal,registration,proposal.reason,null,caller.sender.name);
+          return{status:'open',proposal,vote:'recorded'} satisfies KickOutcome;
+        }
+        const voted=voteKickProposal(proposal,voter,new Date());
+        if(voted.vote!=='recorded')return{status:'open',proposal:voted.proposal,vote:voted.vote} satisfies KickOutcome;
+        proposal=voted.proposal;
+        const count=proposal.voters.filter(v=>v.votedAt!==null).length;
+        const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(proposal!);return this.enqueueSystemNotice(`${caller.sender.name} agreed to remove ${name} (${count}/${proposal!.voters.length} votes).`,registry,caller.sender.name);});
+        this.publishSystemNotice(notice);
+        if(voted.unanimous)return await this.executeKick(proposal,proposal.target,proposal.reason,null,caller.sender.name);
+        return{status:'open',proposal,vote:'recorded'} satisfies KickOutcome;
       }
       case 'deliveries': return {deliveries:this.ledger.read(text(p.messageId,'messageId')).deliveries};
       case 'activity': {
@@ -218,20 +350,142 @@ export class RoomService {
       default:throw new RoomError('bad_request','This request is handled by the IPC connection.');
     }
   }
+  /** The caller can commit this together with a proposal before publishing it. */
+  private enqueueSystemNotice(body:string,registry:Registry,exclude:string|null=null):MessageWithDeliveries {
+    const names=Object.keys(registry).filter(name=>name!==exclude);
+    return this.ledger.enqueue({sender:{name:SYSTEM,kind:'system',identity:{mode:'system',source:'service'}},senderScope:SYSTEM,
+      body,requestedRecipients:[...names,HUMAN],recipients:[...names.map(name=>({name,target:{harness:registry[name]!.harness,sessionId:registry[name]!.session_id}})),{name:HUMAN,target:null}],
+      addressing:'direct',kind:'system',held:this.ledger.roomState().paused});
+  }
+  private publishSystemNotice(result:MessageWithDeliveries):void {
+    this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
+    if(this.serviceStarted)void this.dispatcher.kick();
+  }
+  /** Renames remain valid if their informational notice fails after registry commit. */
+  private postSystemNotice(body:string,registry:Registry,exclude:string|null=null):string|null {
+    try{const result=this.enqueueSystemNotice(body,registry,exclude);this.publishSystemNotice(result);return result.message.id;}
+    catch{return null;}
+  }
+  private scheduleKickExpiry():void {
+    if(this.closed)return;
+    if(this.kickTimer)clearTimeout(this.kickTimer);
+    const now=Date.now();
+    const retryAt=now+Math.max(1000,loadConfig().dispatchPollMs);
+    const next=this.ledger.openKickProposals().reduce((min,p)=>{
+      const deadline=Date.parse(p.expiresAt);
+      return Math.min(min,p.voters.every(v=>v.votedAt!==null)||deadline<=now?retryAt:deadline);
+    },this.ledger.humanKickIntents().length?retryAt:Number.POSITIVE_INFINITY);
+    if(!Number.isFinite(next)){this.kickTimer=null;return;}
+    this.kickTimer=setTimeout(()=>{
+      this.kickTimer=null;if(this.closed)return;
+      void this.serialized(async()=>{if(!this.closed)await this.recoverKickProposals();}).catch(()=>{if(!this.closed)try{this.scheduleKickExpiry();}catch{/* The service is shutting down or its ledger is unavailable. */}});
+    },Math.min(2_147_483_647,Math.max(1,next-Date.now())));
+    this.kickTimer.unref();
+  }
+  private async expireKickProposal(proposal:KickProposal):Promise<void> {
+    if(proposal.status!=='open')return;
+    const registry=await readRegistry(this.root);
+    const expired:KickProposal={...proposal,status:'expired'};
+    const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(expired);return this.enqueueSystemNotice(`Kick proposal for ${proposal.target.name} expired without every listed vote.`,registry);});
+    this.publishSystemNotice(notice);
+    this.scheduleKickExpiry();
+  }
+  private async recoverKickProposals():Promise<void> {
+    for(const intent of this.ledger.humanKickIntents()){
+      try{await this.executeKick(null,intent.target,intent.reason,intent.id);}catch{/* Keep the intent for the next recovery attempt. */}
+    }
+    for(const proposal of this.ledger.openKickProposals()){
+      if(proposal.voters.every(v=>v.votedAt!==null)){
+        try{await this.executeKick(proposal,proposal.target,proposal.reason);}catch{/* Keep the approved proposal for the next recovery attempt. */}
+      }
+      else if(Date.parse(proposal.expiresAt)<=Date.now()){
+        try{await this.expireKickProposal(proposal);}catch{/* Keep it open and retry when the registry is readable. */}
+      }
+    }
+    this.scheduleKickExpiry();
+  }
+  private async executeKick(proposal:KickProposal|null,target:ParticipantRegistration,reason:string,humanIntentId:string|null=null,excludeNotice:string|null=null):Promise<KickOutcome> {
+    const superseded=proposal?null:this.ledger.openKickProposal({harness:target.harness,sessionId:target.sessionId});
+    let registry=await readRegistry(this.root);
+    const same=(b:{harness:string;session_id:string})=>b.harness===target.harness&&b.session_id===target.sessionId;
+    // A proposal and a human decision both target a native binding. A rename
+    // changes its label, never the subject of the already recorded decision.
+    const currentName=Object.entries(registry).find(([,b])=>same(b))?.[0];
+    if(currentName)target={...target,name:currentName};
+    let bound=registry[target.name];
+    if(bound&&!same(bound))bound=undefined; // An old label may have been reused; never remove its replacement.
+    if(!bound&&!proposal&&!humanIntentId)throw new RoomError('not_registered','The target is no longer registered.');
+    if(bound){
+      try{registry=await removeRegistryParticipant(this.root,target.name,{harness:target.harness,session_id:target.sessionId});}
+      catch(error){
+        // A failed pre-removal lock/CAS must not turn the human's error into an
+        // unattended kick later. Keep the intent only if the binding may
+        // already have disappeared and needs completion.
+        if(humanIntentId){
+          const fresh=await readRegistry(this.root).catch(()=>null);
+          const stillBound=fresh?.[target.name];
+          if(stillBound&&same(stillBound)){this.ledger.deleteHumanKickIntent(humanIntentId);this.scheduleKickExpiry();}
+        }
+        throw error;
+      }
+    }
+    // The native handoff may already be underway. It settles under the old label;
+    // only rows still queued afterward can receive a broker cancellation tombstone.
+    if(this.serviceStarted)await this.dispatcher.settleRecipient(target.name);
+    const voters=proposal?proposal.voters.filter(v=>v.votedAt!==null).map(v=>v.name).join(', '):'human';
+    const completed=this.ledger.transaction(()=>{
+      const rows=this.ledger.kickQueued({harness:target.harness,sessionId:target.sessionId});
+      if(proposal)this.ledger.putKickProposal({...proposal,status:'executed'});
+      if(superseded)this.ledger.putKickProposal({...superseded,status:'executed'});
+      if(humanIntentId)this.ledger.deleteHumanKickIntent(humanIntentId);
+      const subject=bound?`${target.name} was removed from the room by ${voters}.`:`The former ${target.name} binding was already absent from the room; ${voters} completed its removal.`;
+      const notice=this.enqueueSystemNotice(`${subject} Reason: ${reason.replace(/\s+/g,' ').trim()}. Queued deliveries cancelled: ${rows.length}.`,registry,excludeNotice);
+      return {rows,notice};
+    });
+    try{await this.participants();}catch(error){console.error(`room: participant display refresh skipped after kick: ${error instanceof Error?error.message:String(error)}`);}
+    for(const delivery of completed.rows)this.publish({type:'delivery.updated',delivery});
+    this.publishSystemNotice(completed.notice);
+    this.scheduleKickExpiry();
+    return{status:'executed',proposal:proposal?{...proposal,status:'executed'}:null,removed:target,cancelled:completed.rows.length,noticeId:completed.notice.message.id,vote:proposal?'recorded':'human'};
+  }
   private inboxDisplay(scope:string) {
     const display=this.ledger.inboxDisplay(scope);if(!display)return null;
     const uncovered=this.inbox.uncovered(scope,display.snapshot);
     return uncovered===null?null:{...display,uncovered};
   }
-  private refreshInboxDisplay():void {
-    for(const participant of this.ledger.participants()){
-      const inbox=this.inboxDisplay(`${participant.harness}:${participant.sessionId}`);
-      if(JSON.stringify(participant.inbox??null)===JSON.stringify(inbox))continue;
-      const updated={...participant,inbox};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});
+  /**
+   * Publish participant rows whose derived display (inbox coverage, pending count) changed. Only CURRENT registry
+   * participants are considered (7.8): a name that left the registry is never republished, so it cannot come back
+   * as a ghost after a TUI restart. New or rebound rows are introduced by the monitor, not here.
+   */
+  private async syncDisplay(fields:{pending:boolean}):Promise<void> {
+    // Always a FRESH registry read: a request's own snapshot may predate a join that completed meanwhile, and
+    // pruning from it would delete and "remove" a participant that is registered (review finding).
+    const current=await this.participants();
+    // The ledger snapshot is taken AFTER that await, so the read-modify-write below is synchronous and cannot clobber
+    // liveness, usage or pending that the monitor or dispatcher persisted during the registry read (review finding).
+    const saved=new Map(this.ledger.participants().map(p=>[p.name,p] as const));
+    for(const participant of current){
+      const prev=saved.get(participant.name);
+      if(!prev||prev.harness!==participant.harness||prev.sessionId!==participant.sessionId)continue;
+      // Pending is otherwise the dispatcher's to publish (as it claims and settles), so only withdraw recomputes it here.
+      const pending=fields.pending?participant.pending:prev.pending;
+      if(JSON.stringify(prev.inbox??null)===JSON.stringify(participant.inbox)&&prev.pending===pending)continue;
+      const updated={...prev,inbox:participant.inbox,pending};
+      this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});
     }
   }
+  /**
+   * Registry-driven participant states: the registry is the truth for WHO is in the room. Ledger rows for names no
+   * longer in it (a rename, a removed section) are pruned here and announced once with `participant.removed` (7.8);
+   * this is the only emitter of that event. A rebound name is not "removed": its row is simply superseded.
+   */
   async participants():Promise<ParticipantState[]> {
-    const registry=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
+    const registry:Registry=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
+    for(const stale of previous){
+      if(Object.hasOwn(registry,stale.name))continue;
+      this.ledger.removeParticipant(stale.name);this.publish({type:'participant.removed',name:stale.name});
+    }
     return Object.entries(registry).map(([name,binding])=>{
       const saved=previous.find(p=>p.name===name&&p.harness===binding.harness&&p.sessionId===binding.session_id);
       return {name,harness:binding.harness,sessionId:binding.session_id,inbox:this.inboxDisplay(`${binding.harness}:${binding.session_id}`),liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,

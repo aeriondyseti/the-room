@@ -181,3 +181,38 @@ test('withdraw --recipients scopes the headline to the named recipients', async 
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /^Withdrew #12 for every requested recipient\./);
 });
+test('rename: an agent renames itself with one name; the human names old and new', async (t) => {
+  const { run, requests } = await setup(t, { rename: (p) => ({ oldName: p['oldName'] ?? 'astra', registration: { name: p['newName'], harness: 'codex', sessionId: 's' }, relabeled: 0, noticeId: null }) });
+  const self = await run('rename', ['@Luna']);
+  assert.equal(self.code, 0, self.err);
+  assert.equal(requests[0]!.params['newName'], 'luna');
+  assert.equal('oldName' in requests[0]!.params, false);
+  assert.match(self.out, /You are now "luna"/);
+  assert.equal((await run('rename', ['a', 'b'])).code, 2, 'an agent cannot rename another');
+  const byHuman = await run('rename', ['astra', 'luna'], human);
+  assert.equal(byHuman.code, 0, byHuman.err);
+  assert.deepEqual([requests.at(-1)!.params['oldName'], requests.at(-1)!.params['newName']], ['astra', 'luna']);
+  assert.match(byHuman.out, /^Renamed "astra" to "luna"/);
+  assert.equal((await run('rename', ['luna'], human)).code, 2, 'the human must name both');
+});
+
+test('kick: the call is a vote; exit 4 when it changed nothing', async (t) => {
+  const proposal = { id: 'k1', target: { name: 'ghost', harness: 'codex', sessionId: 'z' }, reason: 'gone', openedAt: 'x', expiresAt: new Date(Date.now() + 600_000).toISOString(), voters: [{ name: 'astra', binding: { harness: 'codex', sessionId: 'y' }, votedAt: null }], excluded: [], status: 'open' };
+  let vote = 'recorded';
+  const { run, requests } = await setup(t, { kick: () => ({ status: 'open', proposal, vote }) });
+  const first = await run('kick', ['@Ghost', '--reason', 'gone']);
+  assert.equal(first.code, 0, first.err);
+  assert.deepEqual([requests[0]!.params['name'], requests[0]!.params['reason']], ['ghost', 'gone']);
+  assert.match(first.out, /calls room kick for "ghost"/);
+  vote = 'not_a_voter';
+  const second = await run('kick', ['ghost']);
+  assert.equal(second.code, 4);
+  assert.match(second.out, /not a voter .* nothing changed/);
+  assert.equal((await run('kick', [])).code, 2);
+});
+test('rename to the same name exits 4 and says nothing changed', async (t) => {
+  const { run } = await setup(t, { rename: (p) => ({ oldName: p['newName'], registration: { name: p['newName'], harness: 'codex', sessionId: 's' }, relabeled: 0, noticeId: null }) });
+  const r = await run('rename', ['astra']);
+  assert.equal(r.code, 4);
+  assert.match(r.out, /^"astra" is already your name; nothing changed\./);
+});

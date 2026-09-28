@@ -60,6 +60,8 @@ export interface RoomConfig {
   claudeProcStartCacheMs: number;
   /** How often the service refreshes participant liveness, activity and usage. */
   participantRefreshMs: number;
+  /** M8: how long an agent kick proposal remains open for unanimous online votes. */
+  kickProposalTtlMs: number;
   /** Codex home holding `sessions/` rollouts (else CODEX_HOME, else ~/.codex). */
   codexHome: string | null;
   /** A usage reading older than this is labelled `stale` (values still shown). */
@@ -146,6 +148,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   claudeProcStartTimeoutMs: 5_000,
   claudeProcStartCacheMs: 30_000,
   participantRefreshMs: 5_000,
+  kickProposalTtlMs: 10 * 60_000,
   codexHome: null,
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
@@ -205,6 +208,7 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   claudeProcStartTimeoutMs: 'ROOM_CLAUDE_PROC_START_TIMEOUT_MS',
   claudeProcStartCacheMs: 'ROOM_CLAUDE_PROC_START_CACHE_MS',
   participantRefreshMs: 'ROOM_PARTICIPANT_REFRESH_MS',
+  kickProposalTtlMs: 'ROOM_KICK_PROPOSAL_TTL_MS',
   codexHome: 'ROOM_CODEX_HOME',
   usageStaleMs: 'ROOM_USAGE_STALE_MS',
   contextLimits: 'ROOM_CONTEXT_LIMITS',

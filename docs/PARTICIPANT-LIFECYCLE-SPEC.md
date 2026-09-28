@@ -52,8 +52,12 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
   away must be treated as gone (skip, not fail) and the new name's worker woken, so nothing is sent twice (invariant
   2) and nothing stalls.
 - **Announcement:** `participant.removed(old)`, `participant.updated(new)`, `delivery.updated` per relabelled
-  delivery, and a **system message** "claude is now fable" delivered natively to every agent like any message
-  (invariant 1); the human sees it as a note in the room and TUI, since the human has no native delivery. *(Astra)* The notice is **best effort across a crash**: labels are repaired by the reconcile,
+  delivery, and a **system message** "claude is now fable" delivered natively like any message (invariant 1); the
+  human sees it as a note in the room and TUI, since the human has no native delivery. *(Astra)* On a
+  **self-rename** the notice is addressed to every *other* agent: the renaming agent learns the result from its own
+  tool call, and a notice addressed to it would become an uncovered inbox message that breaks its next guarded send
+  with the token it already holds. On a **human-initiated** rename the renamed agent is included, since it saw no
+  tool result. The notice is in room history for everyone either way. *(Astra)* The notice is **best effort across a crash**: labels are repaired by the reconcile,
   but a crash between the registry write and the notice may lose the notice; M8 does not add a persisted intent
   record to make it exactly-once. Old-name sends fail `unknown_recipient` with a "renamed to" hint (the rename is
   recorded).
@@ -109,7 +113,8 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
 - **Ghosts:** rename a section by hand, restart the TUI, read the inbox: the old name never reappears.
 - **Rename:** with two queued deliveries to the old name, `room_rename` succeeds; `who` shows only the new name; both
   deliveries arrive under the new name exactly once with the same target; the old name is refused with the hint;
-  every agent received the system message; the next guarded send works with the existing token.
+  every *other* agent received the system message (the renamer learns from its tool result; on a human-initiated
+  rename the renamed agent receives it too); the next guarded send works with the existing token.
 - **Kick:** three agents online: two `room_kick` calls from the non-targets execute the removal; one call alone
   expires with a message; an offline agent neither blocks nor counts; the human's single call executes at once; the
   target's queued deliveries show `kicked`, `who` omits it, its next call fails `not_registered`, and it may rejoin.

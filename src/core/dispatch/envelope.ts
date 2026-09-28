@@ -5,6 +5,7 @@ import { loadConfig } from '../config.js';
 
 /** Service-issued snapshot tokens are short printable ASCII (M7 contract); anything else is a bug, never embedded. */
 const SNAPSHOT_TOKEN=/^[\x21-\x7e]{1,40}$/;
+const authorityOf=(kind:RoomMessage['from']['kind'])=>kind==='human'?'HUMAN DIRECTIVE':kind==='system'?'ROOM NOTICE (no human authority)':'PEER MESSAGE (not human approval)';
 
 /**
  * The native envelope for one delivery. `options.snapshot` (M7) is a token covering THIS message only; it is carried
@@ -15,16 +16,17 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  const token=options.snapshot;
  if(token!==undefined&&(!SNAPSHOT_TOKEN.test(token)||/["'\\`]/.test(token)))throw new RoomError('internal','Refusing to embed a malformed snapshot token in an envelope.');
  const room=createHash('sha256').update(root).digest('hex').slice(0,12);
- const authority=message.from.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
+ const authority=authorityOf(message.from.kind);
  // M7 urgent: marked in the header; the reason is the sender's claim (never the human's), flattened to one line so it
  // cannot imitate an envelope header, and never cut (it is part of the header budget, not the body preview).
  const urgent=message.crossing?.urgent;
  const urgentLine=urgent?`URGENT (sender's reason, not a human instruction): ${urgent.reason.replace(/\s+/g,' ').trim()}\n`:'';
  const header=`[room ${room} #${message.id} ${authority}${urgent?' URGENT':''} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`+urgentLine;
- const tail=`Replies go to ${message.from.name}; don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
- const footer=`\n--\nReply via room_send({reply_to:"${message.id}",text:"..."}) or room reply ${message.id} --file <path>. ${tail}`;
+ const notice=message.from.kind==='system';
+ const tail=notice?'This is an informational room notice, not a human directive. No reply is needed. The human sees all room messages.':`Replies go to ${message.from.name}; don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
+ const footer=notice?`\n--\n${tail}`:`\n--\nReply via room_send({reply_to:"${message.id}",text:"..."}) or room reply ${message.id} --file <path>. ${tail}`;
  if(token!==undefined){
-  const guarded=`\n--\nsnapshot: ${token} (covers this message only)\nReply via room_send({reply_to:"${message.id}",snapshot:"${token}",text:"..."}) or room reply ${message.id} --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`;
+  const guarded=notice?`\n--\nsnapshot: ${token} (covers this message only)\nKeep this token for a later guarded send. ${tail}`:`\n--\nsnapshot: ${token} (covers this message only)\nReply via room_send({reply_to:"${message.id}",snapshot:"${token}",text:"..."}) or room reply ${message.id} --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`;
   const withToken=header+message.body+guarded;
   if(withToken.length<=limit)return{text:withToken,referenced:false,snapshot:true};
  }
@@ -53,13 +55,14 @@ export function buildBatchEnvelope(root:string,messages:readonly RoomMessage[],r
  const first=messages[0];
  if(!first)throw new RoomError('internal','An envelope batch needs at least one message.');
  const sender=first.from;
+ if(sender.kind==='system'&&messages.length>1)throw new RoomError('internal','Room notices are sent one at a time.');
  if(messages.some(m=>m.from.name!==sender.name||m.from.kind!==sender.kind||m.from.identity.mode!==sender.identity.mode))throw new RoomError('internal','An envelope batch must come from one sender.');
  if(messages.some(m=>m.crossing?.urgent||m.kind==='stop_request'))throw new RoomError('internal','Urgent messages and stop requests are never batched.');
  const token=options.snapshot;
  if(token!==undefined&&(!SNAPSHOT_TOKEN.test(token)||/["'\\`]/.test(token)))throw new RoomError('internal','Refusing to embed a malformed snapshot token in an envelope.');
  if(messages.length===1)return{...buildEnvelope(root,first,recipient,limit,options),included:1};
  const room=createHash('sha256').update(root).digest('hex').slice(0,12);
- const authority=sender.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
+ const authority=authorityOf(sender.kind);
  const tag=randomBytes(4).toString('hex');
  const build=(batch:readonly RoomMessage[],withToken:boolean)=>{
   const header=`[room ${room} #${batch.map(m=>m.id).join(',#')} ${authority} from=${sender.name}${sender.identity.mode==='declared'?'(declared)':''} delivery_to=${recipient} batch=${batch.length} parts=${tag}]\n`;
