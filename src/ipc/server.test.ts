@@ -11,7 +11,7 @@ import type { RoomEvent } from '../contracts/ipc.js';
 const id='00000000-0000-4000-8000-000000000001';
 const native={harness:'codex' as const,sessionId:id,source:'codex-env' as const};
 async function fixture(t:TestContext){const root=await mkdtemp(path.join(tmpdir(),'room-ipc-'));return root;}
-async function setup(t:TestContext){const root=await fixture(t);const server=await startServer(root);const client=await RoomClient.connect(root,{client:'cli',autoStart:false});t.after(async()=>{client.close();await server.close();await rm(root,{recursive:true,force:true});});return{root,server,client};}
+async function setup(t:TestContext){const root=await fixture(t);const server=await startServer(root);const client=await RoomClient.connect(root,{client:'cli',autoStart:false});t.after(async()=>{client.close();await server.close();await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});});return{root,server,client};}
 const send={caller:{kind:'human' as const},to:['astra'],body:'first'};
 test('real IPC join/send/read/who, identity and delivery events are ordered',async t=>{
  const {server,client}=await setup(t);const events:RoomEvent[]=[];client.onEvent(event=>events.push(event));
@@ -48,7 +48,7 @@ test('subscribe replays stored messages in order, and reconnect can refresh held
 });
 test('OS lock refuses a second writer; stale owner metadata is replaced only after exclusive bind',async t=>{
  const root=await fixture(t);await mkdir(path.join(root,'.room'));await writeFile(path.join(root,'.room/service.lock'),JSON.stringify({pid:999999999,nonce:'stale'}));
- const server=await startServer(root);t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});
+ const server=await startServer(root);t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});});
  const owner=JSON.parse(await readFile(path.join(root,'.room/service.lock'),'utf8')) as {pid:number;nonce:string};
  assert.equal(owner.pid,process.pid);assert.notEqual(owner.nonce,'stale');
  await assert.rejects(startServer(root),{code:'EADDRINUSE'});
@@ -60,7 +60,7 @@ test('two independent auto-starting clients find one detached service and shutdo
  const script=`import {RoomClient} from ${JSON.stringify(moduleUrl)}; const c=await RoomClient.connect(process.argv[1],{client:'cli'}); console.log(JSON.stringify(await c.request('who',{}))); c.close();`;
  const run=()=>new Promise<string>((resolve,reject)=>{const child=spawn(process.execPath,['--input-type=module','-e',script,root],{windowsHide:true});let out='';let err='';child.stdout.on('data',chunk=>{out+=String(chunk);});child.stderr.on('data',chunk=>{err+=String(chunk);});child.on('error',reject);child.on('exit',code=>code===0?resolve(out):reject(Error(err)));});
  const clientPromise=Promise.all([run(),run()]);
- t.after(async()=>{try{const client=await RoomClient.connect(root,{client:'cli',autoStart:false});await client.request('shutdown',{caller:{kind:'human'}});client.close();}catch{} await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{try{const client=await RoomClient.connect(root,{client:'cli',autoStart:false});await client.request('shutdown',{caller:{kind:'human'}});client.close();}catch{} await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});});
  const outputs=await clientPromise;assert.ok(outputs.every(output=>JSON.parse(output).participants[0].name==='astra'));
  const client=await RoomClient.connect(root,{client:'cli',autoStart:false});await client.request('shutdown',{caller:{kind:'human'}});client.close();
  const deadline=Date.now()+3000;
@@ -94,7 +94,7 @@ test('hello waits until initialization and event forwarding are complete',async 
  const connecting=RoomClient.connect(root,{client:'cli',autoStart:false});
  const premature=await Promise.race([connecting.then(()=>true),new Promise<boolean>(resolve=>setTimeout(()=>resolve(false),20))]);
  assert.equal(premature,false);release();const server=await starting;const client=await connecting;
- t.after(async()=>{client.close();await server.close();await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{client.close();await server.close();await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});});
  const events:RoomEvent[]=[];client.onEvent(e=>events.push(e));await client.request('subscribe',{});
  await client.request('join',{name:'astra',native});await client.request('send',send);
  assert.ok(events.some(e=>e.type==='message.created'));

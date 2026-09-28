@@ -71,6 +71,8 @@ export interface RoomConfig {
   tuiPanelWidth: number;
   /** TUI: the left panel shows only when the terminal is at least this wide (else the top bar, with a notice). */
   tuiPanelBreakpoint: number;
+  /** TUI: the most rows the composer grows to before it scrolls (always bounded by the terminal's free rows). */
+  tuiComposerMaxRows: number;
   /** TUI: messages loaded on first connect. */
   tuiHistoryLimit: number;
   /** TUI: max pages read when catching up after a reconnect (beyond it, a notice says history may be missing). */
@@ -144,6 +146,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   tuiLayout: 'top',
   tuiPanelWidth: 34,
   tuiPanelBreakpoint: 90,
+  tuiComposerMaxRows: 12,
   tuiHistoryLimit: 500,
   tuiCatchUpMaxPages: 50,
   tuiReconnectMinMs: 250,
@@ -198,6 +201,7 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   tuiLayout: 'ROOM_TUI_LAYOUT',
   tuiPanelWidth: 'ROOM_TUI_PANEL_WIDTH',
   tuiPanelBreakpoint: 'ROOM_TUI_PANEL_BREAKPOINT',
+  tuiComposerMaxRows: 'ROOM_TUI_COMPOSER_MAX_ROWS',
   tuiHistoryLimit: 'ROOM_TUI_HISTORY_LIMIT',
   tuiCatchUpMaxPages: 'ROOM_TUI_CATCH_UP_MAX_PAGES',
   tuiReconnectMinMs: 'ROOM_TUI_RECONNECT_MIN_MS',
