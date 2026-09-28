@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GuardedSendOutcome, InboxReviewPage } from '../contracts/crossing.js';
 import type { MessageWithDeliveries } from '../contracts/domain.js';
-import { envelopeSnapshotLine, guardedSendText, inboxItemText, inboxPageText, withdrawText } from './crossing.js';
+import { guardedSendText, inboxItemText, inboxPageText, withdrawText } from './crossing.js';
 
 const msg = (seq: number): MessageWithDeliveries =>
   ({
@@ -21,15 +21,9 @@ const sent = (over: Partial<Extract<GuardedSendOutcome, { status: 'sent' }>>): G
   ...over,
 });
 
-test('envelope line carries the token and says it covers only that message', () => {
-  const line = envelopeSnapshotLine('tok-xyz');
-  assert.match(line, /tok-xyz/);
-  assert.match(line, /this message only/);
-});
-
 test('inbox page lists uncovered messages with ids and the snapshot', () => {
   const t = inboxPageText(page());
-  assert.match(t, /not covered by your previous snapshot \(1 item\(s\), oldest first\)/);
+  assert.match(t, /not covered yet \(1 item\(s\), oldest first\)/);
   assert.match(t, /#7 .*astra → claude/);
   assert.match(t, /id: m7/);
   assert.match(t, /snapshot: snap-1/);
@@ -94,7 +88,7 @@ test('CLI surface: every hint names a shell command, never an MCP call', () => {
 
 test('withdraw: a full withdraw says so', () => {
   const t = withdrawText({ messageId: 'm9', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }, { recipient: 'bob', disposition: 'already_withdrawn' }] }, 9);
-  assert.match(t, /^Withdrew #9 for every recipient\./);
+  assert.match(t, /^Withdrew #9 for every recipient \(1 already withdrawn earlier\)\./);
 });
 
 test('withdraw: a partial broadcast is never shown as wholly withdrawn', () => {
@@ -105,7 +99,7 @@ test('withdraw: a partial broadcast is never shown as wholly withdrawn', () => {
 
 test('withdraw: nothing cancelled, including the human and in-flight cases', () => {
   const t = withdrawText({ messageId: 'm9', recipients: [{ recipient: 'human', disposition: 'already_visible' }, { recipient: 'astra', disposition: 'already_submitting' }, { recipient: 'bob', disposition: 'uncertain' }] });
-  assert.match(t, /^Could not withdraw m9 for any recipient\./);
+  assert.match(t, /^Could not withdraw m9 for any remaining recipient\./);
   assert.match(t, /- human: NOT withdrawn: the human sees/);
   assert.match(t, /- astra: NOT withdrawn: delivery was already in progress/);
   assert.match(t, /- bob: NOT withdrawn: it may already have been delivered/);
@@ -120,4 +114,13 @@ test('a message part is labelled and never presented as the whole message', () =
   const part = (i: number) => inboxItemText({ kind: 'message_part', message: meta, bodyDigest: 'd', text: `chunk ${i}`, partIndex: i, partCount: 3 });
   assert.match(part(1), /#8 .*\nid: m8\n\[part 1\/3; the rest follows on the next page, and the message is not covered until every part is read\]\nchunk 1$/);
   assert.match(part(3), /\[part 3\/3; last part\]\nchunk 3$/);
+});
+test('withdraw: repeating a withdraw says nothing changed rather than "Withdrew"', () => {
+  const t = withdrawText({ messageId: 'm9', recipients: [{ recipient: 'astra', disposition: 'already_withdrawn' }, { recipient: 'bob', disposition: 'already_withdrawn' }] }, 9);
+  assert.match(t, /^#9 was already withdrawn for every recipient; nothing changed\./);
+  assert.doesNotMatch(t, /^Withdrew/);
+});
+
+test('withdraw: a fresh full withdraw has no "earlier" note', () => {
+  assert.match(withdrawText({ messageId: 'm9', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }), /^Withdrew m9 for every recipient\.$/m);
 });

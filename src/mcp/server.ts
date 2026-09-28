@@ -9,6 +9,7 @@ import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import type { Caller, Method, Params, Result } from '../contracts/ipc.js';
 import { formatMessages, guardedSendText, inboxPageText, withdrawText } from '../presentation/crossing.js';
 import {deliveryDetail} from '../presentation/delivery.js';
+import { loadConfig } from '../core/config.js';
 import { VERSION } from '../version.js';
 import type { IdentityResult } from './identity.js';
 
@@ -102,6 +103,8 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         const reason = args.reason?.trim() ?? '';
         if (args.urgent && !reason) throw new RoomError('bad_request', 'An urgent send needs a reason.', 'Add reason: why this cannot wait, or drop urgent and send with your snapshot.');
         if (!args.urgent && reason) throw new RoomError('bad_request', 'reason is only used with urgent: true.', 'Set urgent: true, or remove reason.');
+        const reasonMax = loadConfig().urgentReasonMaxChars;
+        if (reason.length > reasonMax) throw new RoomError('bad_request', `An urgent reason can be at most ${reasonMax} characters.`, 'Keep the reason short; put the details in text.');
         const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
         const r = await room();
         const replyTo = args.reply_to ? await resolveMessageRef(r, args.reply_to) : null;
@@ -148,7 +151,8 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         cursor: z.string().optional().describe('The cursor from an Incomplete result, to continue it.'),
         limit: z.number().int().min(1).max(READ_MAX).optional().describe(`Most items to return (max ${READ_MAX}); the room also caps by size.`),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      // Each call records coverage (and a baseline is audited), so it is not idempotent.
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args, extra) =>
       guard(async () => {
@@ -178,7 +182,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         'as they are sent, so a withdraw never hides it from them. The message stays in history, marked withdrawn.',
       inputSchema: {
         message_id: z.string().describe('The id or #number of your message.'),
-        recipients: z.union([z.string(), z.array(z.string())]).optional().describe('Only these recipients (default: all original recipients).'),
+        recipients: z.union([z.string(), z.array(z.string())]).optional().describe('Only these recipients. Omit it (or say "all") for every original recipient.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
@@ -191,7 +195,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         const outcome = await r.request('withdraw', {
           caller,
           messageId,
-          ...(args.recipients !== undefined ? { recipients: parseRecipients(args.recipients) } : {}),
+          ...withdrawRecipients(args.recipients),
         });
         return text(withdrawText(outcome, seqMatch ? Number(seqMatch[1]) : undefined) + (note ? `\nNote: ${note}` : ''));
       }),
@@ -316,6 +320,13 @@ export function parseRecipients(to: string | string[]): string[] {
   const list = (Array.isArray(to) ? to : to.split(/[,\s]+/)).map((s) => s.trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
   if (list.length === 0) throw new RoomError('no_recipients', 'No recipients given.');
   return list.includes('all') ? ['all'] : [...new Set(list)];
+}
+
+/** Withdraw targets: omitted, or any list containing "all", means every ORIGINAL recipient (the service default). */
+export function withdrawRecipients(to: string | string[] | undefined): { recipients?: string[] } {
+  if (to === undefined) return {};
+  const list = parseRecipients(to);
+  return list.includes('all') ? {} : { recipients: list };
 }
 
 /** Accept a message id or `#N`/`N` (resolved through `read`). */

@@ -31,7 +31,8 @@ room retry ID|#N RECIPIENT [--confirm-uncertain]
 room migrate
 
 All commands accept --json. Exit: 0 success, 2 input/identity error, 3 unavailable/uncertain service,
-4 agent send not sent by the crossing guard (nothing queued; the output shows what to read first).
+4 agent send not sent by the crossing guard (nothing queued; the output shows what to read first),
+or a withdraw that cancelled nothing.
 Agent sends need --snapshot from room inbox or the delivery being answered. --urgent (with --reason)
 skips that check and goes ahead of queued ordinary messages; it is audited. The human is never guarded.
 withdraw cancels only deliveries not yet handed to a recipient's session; after that it is too late.
@@ -144,6 +145,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       if(caller.kind==='human'&&guardFlags)throw new RoomError('bad_request','--snapshot, --urgent, --reason and --revises are for agent sends; the human is never guarded.');
       if(caller.kind==='agent'&&o.urgent&&!reason)throw new RoomError('bad_request','An urgent send needs --reason.','Say why it cannot wait, or drop --urgent and send with --snapshot.');
       if(caller.kind==='agent'&&!o.urgent&&o.reason!==undefined)throw new RoomError('bad_request','--reason is only used with --urgent.');
+      if(reason.length>config.urgentReasonMaxChars)throw new RoomError('bad_request',`An urgent reason can be at most ${config.urgentReasonMaxChars} characters.`,'Keep the reason short; put the details in the message.');
       const clientMessageId=text('client-message-id')??randomUUID();
       // Printed before dispatch so a lost response still leaves a usable idempotency key.
       err(sanitize(`client_message_id=${clientMessageId}`));
@@ -169,8 +171,11 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       const messageId=await ref(link,p[0]!);const seq=/^#?(\d+)$/.exec(p[0]!);
       const recipients=text('recipients')?.split(/[,\s]+/).map(x=>x.replace(/^@/,'').toLowerCase()).filter(Boolean);
       if(recipients&&recipients.length===0)throw new RoomError('bad_request','--recipients names nobody.');
-      const outcome=await link.request('withdraw',{caller,messageId,...(recipients?{recipients}:{})});
-      out(json?JSON.stringify(outcome):sanitize(withdrawText(outcome,seq?Number(seq[1]):undefined)));return 0;
+      // "all" (like omitting it) means every ORIGINAL recipient, which is the service default.
+      const outcome=await link.request('withdraw',{caller,messageId,...(recipients&&!recipients.includes('all')?{recipients}:{})});
+      out(json?JSON.stringify(outcome):sanitize(withdrawText(outcome,seq?Number(seq[1]):undefined)));
+      // 4 when this call cancelled nothing (too late, in flight, or already withdrawn), as with a refused send.
+      return outcome.recipients.some(r=>r.disposition==='withdrawn')?0:4;
     }
     if(command==='join') {
       const name=text('as');if(!name)throw new RoomError('bad_request','join requires --as NAME.');

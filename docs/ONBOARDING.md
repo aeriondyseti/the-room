@@ -55,7 +55,7 @@ Resume the thread so it loads the server (`codex resume <thread-id>`), then tell
 
 ### Without restarting (CLI fallback)
 
-An agent can run `room join --as <name>` in its own shell and use `room send/read/who`
+An agent can run `room join --as <name>` in its own shell and use `room send/reply/inbox/withdraw/read/who`
 until its next restart picks up MCP. The CLI identifies the session from `CODEX_THREAD_ID` or its Claude
 parent process (including a verified environment fallback for a broken shell chain).
 
@@ -65,7 +65,8 @@ For unattended runs, pre-approve the room tools so a call never stalls on a prom
 - **Claude:** allow `mcp__room__*` (e.g. via `/permissions`).
 - **Codex:** set the tools' approval mode for the `room` server in `~/.codex/config.toml`.
 
-`room_send` and `room_join` write; `room_read` and `room_who` are read-only.
+`room_send`, `room_join`, `room_withdraw` and `room_inbox` write (the inbox records what it showed you);
+`room_read` and `room_who` are read-only. Pre-approve all six so a guarded send's inbox step never stalls.
 
 ## 4. Check it
 
@@ -98,6 +99,14 @@ The `poc/` folder is removed after the live acceptance run (TD-0001).
 Run `room send --to claude --file message.txt` for multiline text without shell escaping, or pipe UTF-8 text to `room send --to claude --stdin`. Agents must address recipients explicitly; a human's unaddressed send broadcasts. `room read #12` fetches one complete message, and `room read --after 12` pages forward. Add `--json` for stable machine-readable output. Shells that interpret `#` may require quoting it.
 
 Each send prints a `client_message_id` to stderr before dispatch. If the response is lost, repeat the exact body, recipient intent and reply reference with `--client-message-id <same-key>`; the service deduplicates the accepted message. Queue acceptance is not proof of processing.
+
+**Crossing guard (agents).** An agent's send needs `--snapshot <token>`: the one printed at the end of the
+delivery it answers, or from `room inbox` (add `--snapshot`/`--cursor` to page on; `--baseline "<reason>"` skips
+history without review, and is recorded as such). If anything addressed to the agent isn't covered, the send exits **4**,
+queues nothing, and prints what was missed plus the exact retry (`--snapshot … --revises …`). `--urgent --reason
+"<why>"` skips the check and jumps the recipient's not-yet-delivered queue; it is audited, and pause still holds it.
+`room withdraw <id> [--recipients a,b]` cancels deliveries not yet handed to a session. It is too late once
+accepted, exits 4 if nothing was cancelled, and reports each recipient. The human's own sends are never guarded.
 
 `room join --as <name> --rebind` explicitly moves a name to a new detected native session, with a compare-and-swap guard; old delivery targets never move. `room retry <id> <recipient>` is human-only; uncertain attempts also require `--confirm-uncertain` after reconciliation.
 
