@@ -92,3 +92,35 @@ test('keys typed while the panel is open never reach the composer', async () => 
   await t.type(K.esc);
   assert.doesNotMatch(t.frame(), /hello/);
 });
+
+test('Esc during an in-flight save is ignored until the save settles (no false "discarded")', async () => {
+  const t = await setup();
+  const real = t.src.request.bind(t.src);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  t.src.request = (async (method: string, params: unknown) => {
+    if (method === 'settings_update') await gate;
+    return real(method as never, params as never);
+  }) as typeof t.src.request;
+  await open(t);
+  await t.type(K.right);
+  await t.type(K.enter);
+  await t.type(K.esc);
+  assert.match(t.frame(), /Saving…/);
+  assert.doesNotMatch(t.frame(), /discarded/);
+  release();
+  await tick(80);
+  assert.match(t.frame(), /Settings saved/);
+  assert.doesNotMatch(t.frame(), /ROOM SETTINGS/);
+});
+
+test('fixing a draft problem clears its error', async () => {
+  const t = await setup();
+  await open(t);
+  // Push the hold above the 2s batch cap, try to save, then bring it back down.
+  for (let i = 0; i < 16; i++) await t.type(K.right);
+  await t.type(K.enter);
+  assert.match(t.frame(), /must be at least the hold/);
+  for (let i = 0; i < 16; i++) await t.type(K.left);
+  assert.doesNotMatch(t.frame(), /must be at least the hold/);
+});

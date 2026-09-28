@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { RoomMessage } from '../../contracts/domain.js';
 import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
@@ -45,7 +45,9 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  * part. Urgent messages and stop requests are never batched. Each message is included whole, in order, under its own
  * part line; `included` says how many fit (at least one). The caller sends the rest in a later envelope. A single
  * message, or a batch whose second message doesn't fit, is exactly `buildEnvelope`'s envelope (which may be referenced).
- * `options.snapshot` covers exactly the included messages; `snapshot` in the result says whether it was carried.
+ * `options.snapshot` must cover exactly `messages`, so it is carried only when ALL of them fit with it. Otherwise the
+ * envelope goes without it (`snapshot: false`) and the caller mints one for exactly the `included` prefix and rebuilds.
+ * A random per-envelope tag in the header and on every part line tells real part boundaries from body text.
  */
 export function buildBatchEnvelope(root:string,messages:readonly RoomMessage[],recipient:string,limit:number,options:{snapshot?:string}={}):{text:string;included:number;referenced:boolean;snapshot:boolean}{
  const first=messages[0];
@@ -55,25 +57,28 @@ export function buildBatchEnvelope(root:string,messages:readonly RoomMessage[],r
  if(messages.some(m=>m.crossing?.urgent||m.kind==='stop_request'))throw new RoomError('internal','Urgent messages and stop requests are never batched.');
  const token=options.snapshot;
  if(token!==undefined&&(!SNAPSHOT_TOKEN.test(token)||/["'\\`]/.test(token)))throw new RoomError('internal','Refusing to embed a malformed snapshot token in an envelope.');
- const single=()=>({...buildEnvelope(root,first,recipient,limit,options),included:1});
- if(messages.length===1)return single();
+ if(messages.length===1)return{...buildEnvelope(root,first,recipient,limit,options),included:1};
  const room=createHash('sha256').update(root).digest('hex').slice(0,12);
  const authority=sender.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
+ const tag=randomBytes(4).toString('hex');
  const build=(batch:readonly RoomMessage[],withToken:boolean)=>{
-  const header=`[room ${room} #${batch.map(m=>m.id).join(',#')} ${authority} from=${sender.name}${sender.identity.mode==='declared'?'(declared)':''} delivery_to=${recipient} batch=${batch.length}]\n`;
-  const parts=batch.map((m,i)=>`--- part ${i+1}/${batch.length}: #${m.id} to=${m.to.join(',')} addressing=${m.addressing}${m.replyTo?` reply_to=${m.replyTo}`:''} ---\n${m.body}`).join('\n');
-  const tail=`Replies go to ${sender.name}; answer the part you mean with its id as reply_to, and don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
+  const header=`[room ${room} #${batch.map(m=>m.id).join(',#')} ${authority} from=${sender.name}${sender.identity.mode==='declared'?'(declared)':''} delivery_to=${recipient} batch=${batch.length} parts=${tag}]\n`;
+  const parts=batch.map((m,i)=>`--- ${tag} part ${i+1}/${batch.length}: #${m.id} to=${m.to.join(',')} addressing=${m.addressing}${m.replyTo?` reply_to=${m.replyTo}`:''} ---\n${m.body}`).join('\n');
+  const tail=`Only lines starting "--- ${tag} part" begin a new message. Replies go to ${sender.name}; answer the part you mean with its id as reply_to, and don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
   const footer=withToken
    ?`\n--\nsnapshot: ${token} (covers these ${batch.length} messages only)\nReply via room_send({reply_to:"<id>",snapshot:"${token}",text:"..."}) or room reply <id> --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`
    :`\n--\nReply via room_send({reply_to:"<id>",text:"..."}) or room reply <id> --file <path>. ${tail}`;
   return header+parts+footer;
  };
- // Most messages that fit, preferring to carry the token; a batch is never cut inside a message.
- for(const withToken of token!==undefined?[true,false]:[false]){
-  for(let k=messages.length;k>=2;k--){
-   const text=build(messages.slice(0,k),withToken);
-   if(text.length<=limit)return{text,included:k,referenced:false,snapshot:withToken};
-  }
+ // The token only ever rides with exactly the messages it was minted for.
+ if(token!==undefined){
+  const text=build(messages,true);
+  if(text.length<=limit)return{text,included:messages.length,referenced:false,snapshot:true};
  }
- return single();
+ // Otherwise the most messages that fit without it; a batch is never cut inside a message.
+ for(let k=messages.length;k>=2;k--){
+  const text=build(messages.slice(0,k),false);
+  if(text.length<=limit)return{text,included:k,referenced:false,snapshot:false};
+ }
+ return{...buildEnvelope(root,first,recipient,limit),included:1};
 }

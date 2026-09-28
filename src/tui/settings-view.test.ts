@@ -74,3 +74,9 @@ test('every line fits the width, and the hints say discard only when there are e
   assert.match(text(s), /Esc discard/);
   assert.match(text(initialSettings(view())), /Esc close/);
 });
+
+test('an overridden row still shows its unsaved edit or reset', () => {
+  const s = initialSettings(view({ configured: { ...defaults, deliveryHoldMs: 800 }, effective: { ...defaults, deliveryHoldMs: 0 }, overridden: ['deliveryHoldMs'] }));
+  assert.match(text(press(s, 'right')), /in effect: off \(set by environment\) · unsaved/);
+  assert.match(text(press(s, 'reset')), /in effect: off \(set by environment\) · reset to default \(unsaved\)/);
+});

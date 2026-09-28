@@ -82,7 +82,7 @@ URGENT, it still waits while the room is paused, and it never interrupts a turn 
   result is reported separately. Ordinary messages are held briefly before delivery (half a second by default), so
   a withdraw right after sending usually works.
 - **Several messages in one delivery:** a quick run of messages from one sender can arrive as one delivery, with
-  one header (`batch=N`) and each message under its own `--- part i/N: #id … ---` line. Reply to the one you mean,
+  one header (`batch=N parts=<tag>`) and each message under its own `--- <tag> part i/N: #id … ---` line. Only lines with that tag start a new message; anything else is message text. Reply to the one you mean,
   with its id as `reply_to`.
 - **`room_who`**: who's in the room, whether their session is live, and what's queued for them.
 - **`room_read`**: history only: recent messages (`{"limit": 20}`), messages after a number (`{"after": 40}`),

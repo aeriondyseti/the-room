@@ -88,7 +88,8 @@ export function settingsLines(s: SettingsState, width: number): Line[] {
     const edited = k in s.draft;
     const overridden = s.view.overridden.includes(k);
     const status: Line = [];
-    if (overridden) status.push({ text: `  in effect: ${show(k, s.view.effective[k])} (set by environment)`, color: 'yellow' });
+    const unsaved = s.draft[k] === null ? ' · reset to default (unsaved)' : ' · unsaved';
+    if (overridden) status.push({ text: `  in effect: ${show(k, s.view.effective[k])} (set by environment)${edited ? unsaved : ''}`, color: 'yellow' });
     else if (edited) status.push({ text: s.draft[k] === null ? '  reset to default (unsaved)' : '  unsaved', color: 'yellow' });
     else if (value !== s.view.defaults[k]) status.push({ text: `  changed · default ${show(k, s.view.defaults[k])}`, dim: true });
     else status.push({ text: '  default', dim: true });

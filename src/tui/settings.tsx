@@ -1,6 +1,6 @@
 // 7.6: the /settings pane. Owns its keys while open (like the activity pane): ↑↓ choose, ←→ change, r default,
 // Enter save, Esc close (discarding unsaved edits). Saving is one settings_update with only the edited keys.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { toErrorInfo } from '../contracts/errors.js';
 import { fitLine, type Line } from './format.js';
@@ -44,16 +44,30 @@ export function SettingsPane(props: { source: RoomSource; width: number; height:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A save that settles after the pane closed must not touch whatever is on screen by then.
+  const mounted = useRef(true);
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
+
   useInput((input, key) => {
-    if (key.escape || (input === 'q' && !saving)) {
+    // Like the app: a key RELEASE (CSI-u event type 3) is never an action, or each step would apply twice.
+    if (key.eventType === 'release') return;
+    // While a save is in flight nothing (not even Esc) may claim the edits were discarded.
+    if (saving) return;
+    if (key.escape || input === 'q') {
       return props.onClose(state && isDirty(state) ? { tone: 'info', text: 'Settings unchanged (edits discarded).' } : null);
     }
-    if (!state || saving) return;
-    if (key.upArrow) return setState(settingsKey(state, 'up'));
-    if (key.downArrow) return setState(settingsKey(state, 'down'));
-    if (key.leftArrow) return setState(settingsKey(state, 'left'));
-    if (key.rightArrow) return setState(settingsKey(state, 'right'));
-    if (input === 'r') return setState(settingsKey(state, 'reset'));
+    if (!state) return;
+    const edit = (k: 'up' | 'down' | 'left' | 'right' | 'reset') => {
+      setError(null);
+      setState(settingsKey(state, k));
+    };
+    if (key.upArrow) return edit('up');
+    if (key.downArrow) return edit('down');
+    if (key.leftArrow) return edit('left');
+    if (key.rightArrow) return edit('right');
+    if (input === 'r') return edit('reset');
     if (key.return) {
       if (!isDirty(state)) return props.onClose(null);
       const problem = draftProblem(state);
@@ -62,10 +76,12 @@ export function SettingsPane(props: { source: RoomSource; width: number; height:
       setError(null);
       props.source.request('settings_update', { caller: { kind: 'human' }, patch: state.draft }).then(
         (view) => {
+          if (!mounted.current) return;
           const env = view.overridden.length ? ` (${view.overridden.length} still set by environment)` : '';
           props.onClose({ tone: 'ok', text: `Settings saved; they apply to messages sent from now on${env}.` });
         },
         (e: unknown) => {
+          if (!mounted.current) return;
           const info = toErrorInfo(e);
           setSaving(false);
           setError(`Not saved: ${info.message}${info.hint ? ` — ${info.hint}` : ''}`);
