@@ -72,12 +72,12 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
   sparingly.
 - **Ownership:** build, review and merge only features you own (ROADMAP **Owner**). Reassign only by
   agreement, and note it in PROGRESS.
-- **Rebalance frequently (Kevin, 2026-09-28):** proactively renegotiate ownership boundaries to
-  distribute work evenly and prevent idle time. Component ownership is a coordination aid, not a
-  permanent assignment. Offer or request a handoff when another agent has spare capacity or a task
-  is blocked; split implementation, tests, research, and review when they can progress independently.
-  Agree on the new owner, exact files/scope, and current branch/commit before overlapping edits;
-  record the change in PROGRESS. Keep merge/tag serialization and independent review intact.
+- **Rebalance at boundaries (Kevin, 2026-09-28):** proactively renegotiate ownership at milestone
+  boundaries or between specific feature requests to distribute work evenly and prevent idle time.
+  Never change ownership in the middle of active development. At those boundaries, split upcoming
+  implementation, tests, research, and review where they can progress independently. Agree on the
+  next owner, exact files/scope, and branch/commit handoff before the next work starts; record the
+  change in PROGRESS. Keep merge/tag serialization and independent review intact.
 - **Worktrees:** one per sprint, under `.claude/worktrees/` (Claude) or your own ignored location
   (Astra). Never edit another agent's worktree.
 - **Serialized merges and tags:**
