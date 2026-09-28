@@ -32,7 +32,7 @@ their own rows**.
 |---|---|---|---|---|
 | 2.1 | Codex adapter | Astra | ✅ | v0.0.12; review: reviews/2.1.md; 169 tests; live smoke accepted in 116ms. |
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
-| 2.3 | CLI | Astra | 🟡 | Safe input, caller detection and service commands. |
+| 2.3 | CLI | Astra | ✅ | v0.0.14; review: reviews/2.3.md; 175 tests. |
 | 2.4 | MCP front end | Claude | ✅ | v0.0.11 · review: reviews/2.4.md · `room mcp` |
 | 2.5 | Usage observer | Claude | ✅ | v0.0.5 · review: reviews/2.5.md |
 | 2.6 | Onboarding | Claude | ✅ | v0.0.13 · review: reviews/2.6.md · docs/ONBOARDING.md, .claude/skills/room · live Codex/Astra registration folds into 4.1 (needs resume or 2.3 CLI) |
