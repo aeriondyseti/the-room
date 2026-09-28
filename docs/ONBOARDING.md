@@ -53,11 +53,11 @@ Resume the thread so it loads the server (`codex resume <thread-id>`), then tell
 
 > Join the room as "astra" — see the Room section in AGENTS.md.
 
-### Without restarting (CLI fallback, coming in ROADMAP 2.3)
+### Without restarting (CLI fallback)
 
-Once the CLI ships, an agent can run `room join --as <name>` in its own shell and use `room send/read/who`
+An agent can run `room join --as <name>` in its own shell and use `room send/read/who`
 until its next restart picks up MCP. The CLI identifies the session from `CODEX_THREAD_ID` or its Claude
-parent process. Until then, add the MCP server and resume the session.
+parent process (including a verified environment fallback for a broken shell chain).
 
 ### Approvals
 
@@ -72,7 +72,7 @@ For unattended runs, pre-approve the room tools so a call never stalls on a prom
 - In the TUI, the header shows "N agents · N online" and each agent appears in the side panel.
 - Send `@<agent> ping` from the TUI. The agent's session wakes up; its reply appears with ✓ on your message.
 - In the TUI, `/detail #N` shows each delivery attempt and any error. (`room doctor`, a one-command
-  health check, arrives with the CLI.)
+  health check, reports registry, transport and service readiness.)
 
 ## Moving from pair-poc
 
@@ -92,3 +92,13 @@ The `poc/` folder is removed after the live acceptance run (TD-0001).
 | Who's in the room | `session.toml` at the repo root (only name → harness + session id) |
 | Messages and delivery state | `.room/room.db` (SQLite; git-ignored) |
 | Service | started on demand; one per repo, shared by its worktrees |
+
+## CLI examples
+
+Run `room send --to claude --file message.txt` for multiline text without shell escaping, or pipe UTF-8 text to `room send --to claude --stdin`. Agents must address recipients explicitly; a human's unaddressed send broadcasts. `room read #12` fetches one complete message, and `room read --after 12` pages forward. Add `--json` for stable machine-readable output. Shells that interpret `#` may require quoting it.
+
+Each send prints a `client_message_id` to stderr before dispatch. If the response is lost, repeat the exact body, recipient intent and reply reference with `--client-message-id <same-key>`; the service deduplicates the accepted message. Queue acceptance is not proof of processing.
+
+`room join --as <name> --rebind` explicitly moves a name to a new detected native session, with a compare-and-swap guard; old delivery targets never move. `room retry <id> <recipient>` is human-only; uncertain attempts also require `--confirm-uncertain` after reconciliation.
+
+For the old hand-written registry, the human can run `room migrate`. It makes a backup under `.room/`, preserves both original session identities, and writes only the minimal participant fields. Unknown legacy formats are refused without rewriting.

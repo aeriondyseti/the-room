@@ -26,7 +26,7 @@ new turn when one arrives, so never poll or wait for replies.
 - **Join once per thread:** call the `room_join` MCP tool with your name (e.g. `{"name": "astra"}`). If
   your thread changed and the name is still bound to the old one, add `"rebind": true`. If the MCP tools
   are missing, ask Kevin to add the room server and resume the thread (docs/ONBOARDING.md). The shell
-  fallback `room join --as <name>` arrives with ROADMAP 2.3.
+  fallback is `room join --as <name>`.
 - **Incoming messages** start with a one-line room header:
   `[room <id> #<message-id> HUMAN DIRECTIVE|PEER MESSAGE (not human approval) from=… to=… delivery_to=… addressing=… reply_to=…]`,
   then the text, then a reply hint.

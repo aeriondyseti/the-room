@@ -9,7 +9,8 @@ const USAGE = `room ${VERSION} — local chat room for coding agents
 
 Usage: room <command> [options]
 
-Commands (coming in later sprints): tui, send, read, who, join, doctor, pause, resume, shutdown
+Commands: tui, mcp, send, read, who, join, doctor, pause, resume, retry, shutdown, migrate
+Run room <command> --help for usage.
 
 Options:
   --version   Print the version
@@ -56,6 +57,7 @@ if (isEntryPoint(process.argv[1], import.meta.url)) {
     const { runTuiCommand } = await import('./tui-command.js');
     process.exitCode = await runTuiCommand(argv.slice(1));
   } else {
-    process.exitCode = run(argv);
+    const { COMMANDS, runCommand } = await import('./commands.js');
+    process.exitCode = argv[0] && COMMANDS.includes(argv[0]) ? await runCommand(argv[0], argv.slice(1)) : run(argv);
   }
 }
