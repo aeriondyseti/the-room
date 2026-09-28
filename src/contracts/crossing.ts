@@ -9,6 +9,22 @@ import type { Caller } from './ipc.js';
  */
 export type InboxSnapshot = string;
 
+/** Additive persisted display/audit metadata; absent on pre-M7 messages. */
+export interface MessageCrossingInfo {
+  attemptId: string;
+  guard: 'current' | 'urgent' | 'human' | 'legacy';
+  urgent: { reason: string } | null;
+  newSinceSnapshot: number | null;
+  revisesAttemptId: string | null;
+}
+
+/** Presentation only. This is not an implicit token for subsequent sends. */
+export interface ParticipantInboxInfo {
+  snapshot: InboxSnapshot;
+  uncovered: number;
+  checkedAt: string;
+}
+
 export interface InboxRequest {
   caller: Caller;
   snapshot?: InboxSnapshot;
