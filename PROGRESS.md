@@ -78,6 +78,9 @@ their own rows**.
 | 6.13 | Composer keys + growing composer | Claude (+ Astra: spec, key probe) | ✅ | **v0.7.0** · review: reviews/6.13.md · Ctrl+Left/Right, Ctrl+Backspace/Ctrl+W, Ctrl+Enter newline (per terminal); composer grows to 12 visual rows and scrolls, never over the bottom bar |
 | 6.14 | Percentage inside the bar | Claude | ✅ | **v0.7.1** · review: reviews/6.14.md · ADR-0011 · htop/btop-style bars: reverse-video fill in the state colour, dim track, centred aligned number; monotonic bar sizing |
 | 6.15 | Bars as one flat surface | Claude | ✅ | **v0.7.2** · review: reviews/6.15.md · ADR-0012 · solid state-colour fill, solid dim track (no stipple), label over both; mono: inverse fill + ░ track |
+| 6.16 | Side bar pass | Claude (+ Astra: audit, acceptance tests) | ✅ | **v0.7.3** · review: reviews/6.16.md · AGENTS/BUDGETS like the top bar; one shared label column (bars, numbers, resets aligned); right-aligned state; agents before budget detail, attention first; every model window |
+
+> **2026-09-28 — Kevin signed off the TUI milestone (6.10–6.15) as complete** ("much better. I'm signing off on this milestone as complete"). Composer keys and long drafts confirmed by hand (TD-0029 closed); 16-colour terminals out of scope (TD-0031 won't fix).
 | 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
 | 6.3 | Tech-debt triage | both | ⬜ | |
 

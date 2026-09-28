@@ -109,19 +109,21 @@ export function usageBar(label: string, percent: number | null, opts: { stale: b
  * An agent's context reading as a metric (`ctx ▓▓▓▓░░░░░░ 42.0%`). Tokens without a known limit show as `ctx 12k`
  * (no bar: no percentage was observed); a stale snapshot is dim with "?"; unavailable is `ctx —`.
  */
-export function contextBar(usage: UsageSnapshot | null | undefined, opts: { stale: boolean; bar?: boolean; numberWidth?: number }): Line {
-  if (!usage || usage.status === 'unavailable' || !usage.context) return [{ text: 'ctx —', dim: true }];
+export function contextBar(usage: UsageSnapshot | null | undefined, opts: { stale: boolean; bar?: boolean; numberWidth?: number; cells?: number; label?: string }): Line {
+  // label: '' draws a bare value (the left panel supplies its own aligned "ctx" label column, 6.16).
+  const label = opts.label ?? 'ctx';
+  const named = (text: string) => (label ? `${label} ${text}` : text);
+  if (!usage || usage.status === 'unavailable' || !usage.context) return [{ text: named('—'), dim: true }];
   const stale = opts.stale || usage.status === 'stale';
   if (usage.context.percent === null) {
-    const tokens: Line = [{ text: `ctx ${compact(usage.context.usedTokens)}`, dim: true }];
+    const tokens: Line = [{ text: named(compact(usage.context.usedTokens)), dim: true }];
     if (usage.status === 'stale' && !opts.stale) tokens.push({ text: '?', dim: true });
     return tokens;
   }
-  const line = usageBar('ctx', usage.context.percent, { stale, bar: opts.bar, numberWidth: opts.numberWidth });
+  const line = usageBar(label, usage.context.percent, { stale, bar: opts.bar, numberWidth: opts.numberWidth, cells: opts.cells });
   if (usage.status === 'stale' && !opts.stale) line.push({ text: '?', dim: true });
   return line;
 }
-
 function compact(n: number): string {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n);
 }
