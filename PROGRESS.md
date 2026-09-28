@@ -24,7 +24,7 @@ their own rows**.
 |---|---|---|---|---|
 | 1.1 | SQLite ledger | Astra | ✅ | v0.0.3; review: reviews/1.1.md; 43 combined tests. |
 | 1.2 | Service process and IPC | Astra | ✅ | v0.0.7; review: reviews/1.2.md; 102 combined tests. |
-| 1.3 | Dispatcher, states, and pause | Astra | ⬜ | |
+| 1.3 | Dispatcher, states, and pause | Astra | 🟡 | Serialized native delivery, crash reconciliation and cooperative pause. |
 
 ## Milestone 2 — Adapters and agent access
 
