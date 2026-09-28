@@ -36,13 +36,14 @@ export function usageColor(percent: number): string {
  * Unknown → `label —` / `—`, no bar (never an empty 0% bar). Stale → dim and colourless (the caller labels it).
  * A fresh reading at or above 70% gets a bold "!" — never colour alone.
  */
-export function usageBar(label: string, percent: number | null, opts: { stale: boolean; bar?: boolean; numberWidth?: number }): Line {
+export function usageBar(label: string, percent: number | null, opts: { stale: boolean; bar?: boolean; numberWidth?: number; cells?: number }): Line {
   // Kevin's mockup: a missing value is an em dash (never 0, never blank).
   if (percent === null) return [{ text: label ? `${label} —` : '—', dim: true }];
   const high = !opts.stale && percent >= WARN_PERCENT;
   const c = opts.stale ? undefined : usageColor(percent);
   const out: Segment[] = label ? [{ text: `${label} `, dim: true }] : [];
-  if (opts.bar !== false) out.push({ text: `${sliderBar(percent)} `, color: c, dim: opts.stale });
+  // cells: the bar's width (10 by default; the budget grid may shrink it to 8 to fit — the fill is recomputed for it).
+  if (opts.bar !== false) out.push({ text: `${sliderBar(percent, opts.cells)} `, color: c, dim: opts.stale });
   // numberWidth: right-align the percentage to its column's widest number (grids), so decimals line up down a column
   // (" 9.0%" under "38.0%", and under "100.0%" when a limit is hit).
   const num = percent.toFixed(1).padStart(opts.numberWidth ?? 0);
