@@ -139,9 +139,12 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         'Messages addressed to you that your snapshot does not cover yet, oldest first, plus a new snapshot token that ' +
         'covers what it returned. Pass your latest snapshot to get only what is new; without one you get everything ' +
         'addressed to you. If the result says Incomplete, call again with the given cursor and snapshot. Use the final ' +
-        'snapshot with room_send.',
+        'snapshot with room_send. Keep your latest snapshot so you never start over.\n' +
+        'baseline (a reason) instead skips everything addressed to you so far WITHOUT reviewing it, e.g. when joining a ' +
+        'long history. It is recorded and visible as skipped, never as read; use it only deliberately.',
       inputSchema: {
         snapshot: z.string().optional().describe('Your latest snapshot token; omit to review from the start.'),
+        baseline: z.string().optional().describe('Reason for skipping everything addressed to you so far without review. Not with snapshot or cursor.'),
         cursor: z.string().optional().describe('The cursor from an Incomplete result, to continue it.'),
         limit: z.number().int().min(1).max(READ_MAX).optional().describe(`Most items to return (max ${READ_MAX}); the room also caps by size.`),
       },
@@ -149,10 +152,14 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
     },
     async (args, extra) =>
       guard(async () => {
+        const baseline = args.baseline?.trim();
+        if (args.baseline !== undefined && !baseline) throw new RoomError('bad_request', 'A baseline needs a reason.');
+        if (baseline && (args.snapshot !== undefined || args.cursor !== undefined)) throw new RoomError('bad_request', 'baseline cannot be combined with snapshot or cursor.', 'Call room_inbox with baseline alone.');
         const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
         const r = await room();
         const page = await r.request('inbox', {
           caller,
+          ...(baseline ? { baseline: { reason: baseline } } : {}),
           ...(args.snapshot !== undefined ? { snapshot: args.snapshot } : {}),
           ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
           ...(args.limit !== undefined ? { limit: args.limit } : {}),

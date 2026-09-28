@@ -21,7 +21,7 @@ export const COMMAND_HELP = `room send [--as NAME] [--to NAME,NAME|all|human] [-
 room reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--file PATH | --stdin | TEXT...]
 room read [ID|#N] [--after N] [--limit N]
-room inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N]
+room inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
 room withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
 room who
 room join --as NAME [--rebind]
@@ -55,7 +55,7 @@ export interface CommandDeps {
 const flags: Record<string, string[]> = {
   send:['as','to','reply-to','client-message-id','file','stdin','snapshot','urgent','reason','revises'],
   reply:['as','to','client-message-id','file','stdin','snapshot','urgent','reason','revises'],
-  read:['after','limit'], inbox:['as','snapshot','cursor','limit'], withdraw:['as','recipients'], who:[],
+  read:['after','limit'], inbox:['as','snapshot','cursor','limit','baseline'], withdraw:['as','recipients'], who:[],
   join:['as','rebind'], doctor:[], pause:['resend-stop'], resume:[], retry:['confirm-uncertain'], shutdown:[], migrate:[],
 };
 const booleans = new Set(['json','stdin','rebind','resend-stop','confirm-uncertain','urgent']);
@@ -158,7 +158,10 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
     }
     if(command==='inbox'){
       if(caller.kind!=='agent')throw new RoomError('identity_mismatch','inbox reviews an agent\'s messages; no agent context was detected.','Run it from the agent\'s session, or pass --as NAME.');
-      const page=await link.request('inbox',{caller,...(text('snapshot')!==undefined?{snapshot:text('snapshot')!}:{}),...(text('cursor')!==undefined?{cursor:text('cursor')!}:{}),...(o.limit!==undefined?{limit:integer(o.limit,'limit')!}:{})});
+      const baseline=text('baseline')?.trim();
+      if(o.baseline!==undefined&&!baseline)throw new RoomError('bad_request','--baseline needs a reason.');
+      if(baseline&&(o.snapshot!==undefined||o.cursor!==undefined))throw new RoomError('bad_request','--baseline cannot be combined with --snapshot or --cursor.');
+      const page=await link.request('inbox',{caller,...(baseline?{baseline:{reason:baseline}}:{}),...(text('snapshot')!==undefined?{snapshot:text('snapshot')!}:{}),...(text('cursor')!==undefined?{cursor:text('cursor')!}:{}),...(o.limit!==undefined?{limit:integer(o.limit,'limit')!}:{})});
       out(json?JSON.stringify(page):sanitize(inboxPageText(page,'cli')));return 0;
     }
     if(command==='withdraw'){
