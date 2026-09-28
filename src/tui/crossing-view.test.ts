@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MessageCrossingInfo } from '../contracts/crossing.js';
-import type { MessageWithDeliveries, ParticipantState } from '../contracts/domain.js';
+import { HUMAN, type MessageWithDeliveries, type ParticipantState } from '../contracts/domain.js';
 import { DELIVERY_LEGEND, lineText, messageLines } from './format.js';
 import { FakeRoomSource } from './fake-source.js';
 import { sidePanelLines } from './sidepanel.js';
@@ -141,4 +141,14 @@ test('the side panel shows the inbox row even when the agent has a model/branch 
 test('with no inbox counts the agent grid keeps its pre-M7 spacing', () => {
   const rows = agentGrid([agent('astra'), agent('claude', { inbox: inbox(0) })], { width: 100, stale: false, maxRows: 6 })!.map(lineText);
   for (const r of rows.filter((x) => /astra|claude/.test(x))) assert.match(r, /idle {2}ctx/, 'no empty inbox column (one GAP only)');
+});
+test('an agent+human message whose only agent delivery is withdrawn is not "wholly withdrawn"', () => {
+  const m = src.post('astra', ['claude', HUMAN], 'heads up');
+  const item = { ...m, deliveries: [{ recipient: 'claude', state: 'withdrawn', held: false, waiting: null, withdrawnAt: '2026-09-28T11:05:00' }] } as unknown as MessageWithDeliveries;
+  const lines = messageLines(item, ctx(100));
+  const head = lineText(lines[0]!);
+  assert.doesNotMatch(head, /astra ⊘ withdrawn/);
+  assert.match(head, /⊘ 1\/2 withdrawn/);
+  const body = lines.find((l) => lineText(l).includes('heads up'))!;
+  assert.ok(!body.some((s) => s.dim), 'the human saw it, so the body is not dimmed as withdrawn');
 });

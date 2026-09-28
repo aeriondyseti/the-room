@@ -214,11 +214,13 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   }
   if (crossing?.guard === 'legacy') detail.push({ text: '  unguarded', dim: true, italic: true });
   if (crossing?.revisesAttemptId) detail.push({ text: '  revised after a blocked send', dim: true });
-  // M7 withdraw: "withdrawn" only when every delivery was; a partial withdraw is never shown as whole.
+  // M7 withdraw: "withdrawn" only when every addressee was withdrawn; a partial withdraw is never shown as whole. The
+  // human, when addressed, has no delivery row and saw it at once, so it counts as an addressee that is never withdrawn.
   const withdrawn = item.deliveries.filter((d) => d.state === 'withdrawn').length;
-  const allWithdrawn = withdrawn > 0 && withdrawn === item.deliveries.length;
+  const addressees = item.deliveries.length + (message.to.includes(HUMAN) ? 1 : 0);
+  const allWithdrawn = withdrawn > 0 && withdrawn === addressees;
   if (allWithdrawn) core.push({ text: ' ⊘ withdrawn', color: 'gray', italic: true });
-  else if (withdrawn > 0) core.push({ text: ` ⊘ ${withdrawn}/${item.deliveries.length} withdrawn`, color: 'gray', italic: true });
+  else if (withdrawn > 0) core.push({ text: ` ⊘ ${withdrawn}/${addressees} withdrawn`, color: 'gray', italic: true });
   const recipients: Line = [{ text: ' → ', dim: true }];
   if (message.addressing === 'broadcast') {
     recipients.push({ text: message.from.name === HUMAN ? 'everyone' : 'all', dim: true });
