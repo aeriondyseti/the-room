@@ -5,7 +5,7 @@ import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import { Ledger } from '../ledger/ledger.js';
-import { joinParticipant, readRegistry } from '../registry/registry.js';
+import { joinParticipant, readRegistry, type Registry } from '../registry/registry.js';
 import { HUMAN, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
 import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } from '../../contracts/ipc.js';
 import { RoomError } from '../../contracts/errors.js';
@@ -64,13 +64,9 @@ export class RoomService {
         const messageId=text(p.messageId,'messageId');
         if(p.recipients!==undefined&&(!Array.isArray(p.recipients)||p.recipients.some(n=>typeof n!=='string')))throw new RoomError('bad_request','Withdraw recipients must be strings.');
         const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
-        this.refreshInboxDisplay();
         for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
-        // Recompute pending for existing bindings without changing their inbox coverage.
-        for(const participant of this.ledger.participants()){
-          const pending=this.ledger.queued(participant.name).length;
-          if(pending!==participant.pending){const updated={...participant,pending};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});}
-        }
+        // Pending counts and inbox coverage for CURRENT participants only (7.8).
+        await this.syncDisplay(registry,{pending:false});
         return result;
       }
       case 'inbox': {
@@ -81,7 +77,7 @@ export class RoomService {
         if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
         if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
         if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
-        const page=this.inbox.review(caller.scope,options);this.refreshInboxDisplay();return page;
+        const page=this.inbox.review(caller.scope,options);await this.syncDisplay(registry,{pending:false});return page;
       }
       case 'guarded_send':
       case 'send': {
@@ -138,10 +134,10 @@ export class RoomService {
           }
           return{result,replyDelivery,rejected:null};
         });
-        if(saved.rejected){this.refreshInboxDisplay();return saved.rejected;}
+        if(saved.rejected){await this.syncDisplay(registry,{pending:false});return saved.rejected;}
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
-          this.refreshInboxDisplay();
+          await this.syncDisplay(registry,{pending:false});
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           for(const delivery of result.updatedDeliveries??[])this.publish({type:'delivery.updated',delivery});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
@@ -223,15 +219,34 @@ export class RoomService {
     const uncovered=this.inbox.uncovered(scope,display.snapshot);
     return uncovered===null?null:{...display,uncovered};
   }
-  private refreshInboxDisplay():void {
-    for(const participant of this.ledger.participants()){
-      const inbox=this.inboxDisplay(`${participant.harness}:${participant.sessionId}`);
-      if(JSON.stringify(participant.inbox??null)===JSON.stringify(inbox))continue;
-      const updated={...participant,inbox};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});
+  /**
+   * Publish participant rows whose derived display (inbox coverage, pending count) changed. Only CURRENT registry
+   * participants are considered (7.8): a name that left the registry is never republished, so it cannot come back
+   * as a ghost after a TUI restart. New or rebound rows are introduced by the monitor, not here.
+   */
+  private async syncDisplay(registry:Registry|undefined,fields:{pending:boolean}):Promise<void> {
+    const saved=new Map(this.ledger.participants().map(p=>[p.name,p] as const));
+    for(const participant of await this.participants(registry)){
+      const prev=saved.get(participant.name);
+      if(!prev||prev.harness!==participant.harness||prev.sessionId!==participant.sessionId)continue;
+      // Pending is otherwise the dispatcher's to publish (as it claims and settles), so only withdraw recomputes it here.
+      const pending=fields.pending?participant.pending:prev.pending;
+      if(JSON.stringify(prev.inbox??null)===JSON.stringify(participant.inbox)&&prev.pending===pending)continue;
+      const updated={...prev,inbox:participant.inbox,pending};
+      this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});
     }
   }
-  async participants():Promise<ParticipantState[]> {
-    const registry=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
+  /**
+   * Registry-driven participant states: the registry is the truth for WHO is in the room. Ledger rows for names no
+   * longer in it (a rename, a removed section) are pruned here and announced once with `participant.removed` (7.8);
+   * this is the only emitter of that event. A rebound name is not "removed": its row is simply superseded.
+   */
+  async participants(registry?:Registry):Promise<ParticipantState[]> {
+    registry??=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
+    for(const stale of previous){
+      if(Object.hasOwn(registry,stale.name))continue;
+      this.ledger.removeParticipant(stale.name);this.publish({type:'participant.removed',name:stale.name});
+    }
     return Object.entries(registry).map(([name,binding])=>{
       const saved=previous.find(p=>p.name===name&&p.harness===binding.harness&&p.sessionId===binding.session_id);
       return {name,harness:binding.harness,sessionId:binding.session_id,inbox:this.inboxDisplay(`${binding.harness}:${binding.session_id}`),liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,
