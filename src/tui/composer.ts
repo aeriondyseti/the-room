@@ -4,7 +4,43 @@
 // ---- parsing --------------------------------------------------------------------------------------------
 
 export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity';
-export const COMMANDS: readonly ComposerCommand[] = ['pause', 'resume', 'retry', 'detail', 'who', 'help', 'quit', 'restart', 'activity'];
+
+export interface CommandInfo {
+  name: ComposerCommand;
+  /** Argument hint shown after the name (empty = no arguments). */
+  args: string;
+  description: string;
+}
+
+/** The single command catalogue: /help, the `/` suggestion list and parsing all derive from it (no drift). */
+export const COMMAND_CATALOGUE: readonly CommandInfo[] = [
+  { name: 'activity', args: '@name', description: "an agent's tool calls, results and messages (read-only)" },
+  { name: 'detail', args: '[#N]', description: 'delivery detail: attempts, evidence, errors' },
+  { name: 'help', args: '', description: 'keys and commands' },
+  { name: 'pause', args: '[message]', description: 'hold new deliveries and ask every agent to stop' },
+  { name: 'quit', args: '', description: 'leave the TUI (agents and the room keep running)' },
+  { name: 'restart', args: '', description: 'restart the room service (e.g. after an upgrade); keeps queued messages' },
+  { name: 'resume', args: '', description: 'release held deliveries in order' },
+  { name: 'retry', args: '#N [@agent]', description: 're-send a failed or uncertain delivery' },
+  { name: 'who', args: '', description: 'participants and their status' },
+];
+export const COMMANDS: readonly ComposerCommand[] = COMMAND_CATALOGUE.map((c) => c.name);
+
+/**
+ * Suggestions while typing a command name: the draft is `/` plus an optional partial name and nothing else
+ * (no space yet). Once arguments start, or for ordinary messages, there are none. Prefix match, catalogue order.
+ */
+export function commandSuggestions(draft: string): CommandInfo[] {
+  const m = /^\/([a-z]*)$/i.exec(draft);
+  if (!m) return [];
+  const prefix = m[1]!.toLowerCase();
+  return COMMAND_CATALOGUE.filter((c) => c.name.startsWith(prefix));
+}
+
+/** The draft after accepting a suggestion: `/name ` when it takes arguments, `/name` otherwise. */
+export function completeCommand(info: CommandInfo): string {
+  return `/${info.name}${info.args ? ' ' : ''}`;
+}
 
 /** Parse `#N` (or `N`) for /detail. */
 export function parseSeqArg(args: string): number | null {
