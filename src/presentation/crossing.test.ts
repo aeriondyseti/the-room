@@ -124,3 +124,13 @@ test('withdraw: repeating a withdraw says nothing changed rather than "Withdrew"
 test('withdraw: a fresh full withdraw has no "earlier" note', () => {
   assert.match(withdrawText({ messageId: 'm9', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }), /^Withdrew m9 for every recipient\.$/m);
 });
+test('withdraw of selected recipients scopes every claim to them', () => {
+  const t = withdrawText({ messageId: 'm', recipients: [{ recipient: 'a', disposition: 'withdrawn' }] }, 4, true);
+  assert.match(t, /^Withdrew #4 for every requested recipient\./);
+  assert.doesNotMatch(t, /for every recipient\./);
+  assert.match(t, /Only the recipients you named were asked; the message's other recipients are unchanged\./);
+  const again = withdrawText({ messageId: 'm', recipients: [{ recipient: 'a', disposition: 'already_withdrawn' }] }, 4, true);
+  assert.match(again, /^#4 was already withdrawn for every requested recipient; nothing changed\./);
+  const some = withdrawText({ messageId: 'm', recipients: [{ recipient: 'a', disposition: 'withdrawn' }, { recipient: 'b', disposition: 'submitted' }] }, 4, true);
+  assert.match(some, /^Withdrew #4 for 1 of 2 requested recipients only\./);
+});

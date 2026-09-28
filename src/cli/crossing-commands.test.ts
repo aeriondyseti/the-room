@@ -135,7 +135,7 @@ test('withdraw resolves #N, passes recipients and reports each one', async (t) =
   const p = requests.find((x) => x.method === 'withdraw')!.params;
   assert.equal(p['messageId'], 'm12');
   assert.deepEqual(p['recipients'], ['astra']);
-  assert.match(r.out, /^Could not withdraw #12 for any remaining recipient\./);
+  assert.match(r.out, /^Could not withdraw #12 for any requested recipient\./);
 });
 
 test('withdraw needs exactly one message reference', async (t) => {
@@ -174,4 +174,10 @@ test('an over-long urgent reason is refused before sending (ROOM_URGENT_REASON_M
   assert.equal(r.code, 2);
   assert.match(r.err, /at most 500 characters/);
   assert.equal(requests.length, 0);
+});
+test('withdraw --recipients scopes the headline to the named recipients', async (t) => {
+  const { run } = await setup(t, { read: () => ({ items: [msg(12)], lastSeq: 12, hasMore: false }), withdraw: () => ({ messageId: 'm12', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }) });
+  const r = await run('withdraw', ['#12', '--recipients', 'astra']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^Withdrew #12 for every requested recipient\./);
 });

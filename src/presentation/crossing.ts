@@ -111,18 +111,23 @@ const DISPOSITION: Record<WithdrawDisposition, string> = {
 
 /**
  * Per-recipient withdraw results. The headline never overstates: it separates what THIS call cancelled from what was
- * already withdrawn, and never calls a partial withdraw whole.
+ * already withdrawn, and never calls a partial withdraw whole. `selected` (the caller named recipients) scopes every
+ * claim to the requested recipients, since the result then says nothing about the message's other recipients.
  */
-export function withdrawText(outcome: WithdrawOutcome, seq?: number): string {
+export function withdrawText(outcome: WithdrawOutcome, seq?: number, selected = false): string {
   const ref = seq === undefined ? outcome.messageId : `#${seq}`;
   const count = (d: WithdrawDisposition) => outcome.recipients.filter((r) => r.disposition === d).length;
   const now = count('withdrawn'), before = count('already_withdrawn'), total = outcome.recipients.length;
   const earlier = before ? ` (${before} already withdrawn earlier)` : '';
+  const every = selected ? 'every requested recipient' : 'every recipient';
+  const whom = selected ? 'requested recipients' : 'recipients';
   let head: string;
   if (total === 0) head = `No recipients of ${ref} were affected.`;
-  else if (now === 0 && before === total) head = `${ref} was already withdrawn for every recipient; nothing changed.`;
-  else if (now + before === total) head = `Withdrew ${ref} for every recipient${earlier}.`;
-  else if (now === 0) head = `Could not withdraw ${ref} for any remaining recipient${earlier}.`;
-  else head = `Withdrew ${ref} for ${now} of ${total} recipients only${earlier}.`;
-  return [head, ...outcome.recipients.map((r) => `- ${r.recipient}: ${DISPOSITION[r.disposition]}`)].join('\n');
+  else if (now === 0 && before === total) head = `${ref} was already withdrawn for ${every}; nothing changed.`;
+  else if (now + before === total) head = `Withdrew ${ref} for ${every}${earlier}.`;
+  else if (now === 0) head = `Could not withdraw ${ref} for any ${selected ? 'requested' : 'remaining'} recipient${earlier}.`;
+  else head = `Withdrew ${ref} for ${now} of ${total} ${whom} only${earlier}.`;
+  const lines = [head, ...outcome.recipients.map((r) => `- ${r.recipient}: ${DISPOSITION[r.disposition]}`)];
+  if (selected && total > 0) lines.push('Only the recipients you named were asked; the message\'s other recipients are unchanged.');
+  return lines.join('\n');
 }

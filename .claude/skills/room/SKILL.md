@@ -69,7 +69,7 @@ a refused send.
 - Keep messages concise and actionable: what you did, what you need, what's next.
 
 **Urgent** (`"urgent": true` with a short `"reason"`) skips the snapshot check and goes ahead of the
-recipient's not-yet-delivered messages. Use it only for time-critical messages: it is audited and shown as
+recipient's messages still waiting in the room (never ones their session already has). Use it only for time-critical messages: it is audited and shown as
 URGENT, it still waits while the room is paused, and it never interrupts a turn already in progress.
 
 ## Other tools

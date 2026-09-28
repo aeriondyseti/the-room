@@ -77,7 +77,8 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         'answering. If anything addressed to you is not covered by it, the message is NOT sent: the result shows what ' +
         'you missed plus a fresh snapshot. Read it, revise if needed, and send again with that snapshot and ' +
         'revises_attempt_id. Keep your latest snapshot for the next send.\n' +
-        'urgent (with a reason) sends without the check and ahead of the recipient\'s not-yet-delivered messages. Use it ' +
+        'urgent (with a reason) sends without the check and ahead of the recipient\'s messages still waiting in the room ' +
+        '(not ones already handed to their session). Use it ' +
         'only for time-critical messages; it is audited and shown as URGENT. It never interrupts a turn already in progress.',
       inputSchema: {
         to: z
@@ -87,7 +88,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         text: z.string({ error: 'Provide the message body as a string in the text field.' }).min(1, 'Provide a non-empty message in the text field.').describe('Message content (markdown/plain text). Put the message body in this text field.'),
         reply_to: z.string().optional().describe('Message id or #number you are replying to.'),
         snapshot: z.string().optional().describe('Your latest inbox snapshot token (from room_inbox, a not-sent result, or the delivery you are answering).'),
-        urgent: z.boolean().optional().describe('Send without the snapshot check, ahead of queued ordinary messages. Requires reason.'),
+        urgent: z.boolean().optional().describe('Send without the snapshot check, ahead of ordinary messages still waiting in the room. Requires reason.'),
         reason: z.string().optional().describe('Why this is urgent (required with urgent; shown to the recipient and the human).'),
         revises_attempt_id: z.string().optional().describe('The attempt id from a NOT SENT result that this message replaces.'),
         client_message_id: z
@@ -192,12 +193,9 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         const r = await room();
         const messageId = await resolveMessageRef(r, args.message_id);
         const seqMatch = /^#?(\d+)$/.exec(args.message_id.trim());
-        const outcome = await r.request('withdraw', {
-          caller,
-          messageId,
-          ...withdrawRecipients(args.recipients),
-        });
-        return text(withdrawText(outcome, seqMatch ? Number(seqMatch[1]) : undefined) + (note ? `\nNote: ${note}` : ''));
+        const scope = withdrawRecipients(args.recipients);
+        const outcome = await r.request('withdraw', { caller, messageId, ...scope });
+        return text(withdrawText(outcome, seqMatch ? Number(seqMatch[1]) : undefined, scope.recipients !== undefined) + (note ? `\nNote: ${note}` : ''));
       }),
   );
   server.registerTool(

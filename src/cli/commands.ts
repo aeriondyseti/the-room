@@ -34,7 +34,8 @@ All commands accept --json. Exit: 0 success, 2 input/identity error, 3 unavailab
 4 agent send not sent by the crossing guard (nothing queued; the output shows what to read first),
 or a withdraw that cancelled nothing.
 Agent sends need --snapshot from room inbox or the delivery being answered. --urgent (with --reason)
-skips that check and goes ahead of queued ordinary messages; it is audited. The human is never guarded.
+skips that check and goes ahead of ordinary messages still waiting in the room (never ones a session already
+has); it is audited. The human is never guarded.
 withdraw cancels only deliveries not yet handed to a recipient's session; after that it is too late.
 Ordinary human sends broadcast; agents must choose --to. --as fallback is labelled declared.
 Use --file or --stdin to avoid shell quoting. -- ends option parsing.
@@ -172,8 +173,9 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       const recipients=text('recipients')?.split(/[,\s]+/).map(x=>x.replace(/^@/,'').toLowerCase()).filter(Boolean);
       if(recipients&&recipients.length===0)throw new RoomError('bad_request','--recipients names nobody.');
       // "all" (like omitting it) means every ORIGINAL recipient, which is the service default.
-      const outcome=await link.request('withdraw',{caller,messageId,...(recipients&&!recipients.includes('all')?{recipients}:{})});
-      out(json?JSON.stringify(outcome):sanitize(withdrawText(outcome,seq?Number(seq[1]):undefined)));
+      const selected=!!recipients&&!recipients.includes('all');
+      const outcome=await link.request('withdraw',{caller,messageId,...(selected?{recipients}:{})});
+      out(json?JSON.stringify(outcome):sanitize(withdrawText(outcome,seq?Number(seq[1]):undefined,selected)));
       // 4 when this call cancelled nothing (too late, in flight, or already withdrawn), as with a refused send.
       return outcome.recipients.some(r=>r.disposition==='withdrawn')?0:4;
     }

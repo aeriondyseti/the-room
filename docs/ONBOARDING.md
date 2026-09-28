@@ -104,7 +104,7 @@ Each send prints a `client_message_id` to stderr before dispatch. If the respons
 delivery it answers, or from `room inbox` (add `--snapshot`/`--cursor` to page on; `--baseline "<reason>"` skips
 history without review, and is recorded as such). If anything addressed to the agent isn't covered, the send exits **4**,
 queues nothing, and prints what was missed plus the exact retry (`--snapshot … --revises …`). `--urgent --reason
-"<why>"` skips the check and jumps the recipient's not-yet-delivered queue; it is audited, and pause still holds it.
+"<why>"` skips the check and jumps the recipient's messages still waiting in the room (never ones its session already has); it is audited, and pause still holds it.
 `room withdraw <id> [--recipients a,b]` cancels deliveries not yet handed to a session. It is too late once
 accepted, exits 4 if nothing was cancelled, and reports each recipient. The human's own sends are never guarded.
 
