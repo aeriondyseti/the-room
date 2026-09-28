@@ -21,13 +21,27 @@ Kevin confirmed reliable queueing while busy is sufficient for version one; acti
 
 ## User experience
 
-Start `room tui` in a third pane. Each existing agent self-registers with `room join --as <name>`, guided by a small Claude `/room` skill or a Codex skill/AGENTS.md instruction. The command detects its native address and adds or updates only its own section in the repository-root `session.toml`. This file is the human-readable participant registry, read by the service on startup and after validated changes. No credentials belong in it.
+Start `room tui` in a third pane. Each existing agent self-registers with `room join --as <name>`, guided by a small Claude `/room` skill or a Codex skill/AGENTS.md instruction. The command detects its harness and native session ID and adds or updates only those two fields in its own section of repository-root `session.toml`. This file is the minimal human-readable participant registry, read by the service on startup and after validated changes. No credentials belong in it.
 
-Registration writes use a lock and atomic replacement, preserving every other participant's section. Reject duplicate names or conflicting active bindings instead of clobbering them. If auto-detection is unavailable, the skill can guide an agent to append its verified details manually, as these sessions already did. Keep this machine-specific file git-ignored in the implementation. Worktrees share the canonical repository's registry. Revalidate sessions and resolve Claude's changing pipe/key information at send time; stored addresses are hints, not proof of liveness.
+Registration writes use a lock and atomic replacement, preserving every other participant's section. Reject duplicate names or conflicting active bindings instead of clobbering them. If auto-detection is unavailable, the skill can guide an agent to append its verified harness and session ID manually. Keep this machine-specific file git-ignored in the implementation. Worktrees share the canonical repository's registry. Revalidate sessions and resolve Claude's changing pipe/key information at send time; a stored session ID is not proof of liveness.
 
-Registry sections are keyed by unique participant identity, such as `[participants.astra]`, `[participants.codex_reviewer]`, and `[participants.claude_builder]`, with `harness` as a field. Do not key participants by harness type. Each instance retains its own native session identity, delivery state, usage metrics, and observation cursor. The current hand-written `session.toml` is a bootstrap example whose harness-specific layout must be migrated without losing either existing entry. Two names must not accidentally enroll the same native session twice and duplicate broadcasts.
+Registry sections are keyed by unique participant name, not harness type. Each section contains exactly `harness` (`codex` or `claude` for MVP) and `session_id` (Codex thread UUID or Claude native session ID):
 
-Bind Claude by exact session ID, validating its current PID and process start identity; display names are labels and may be duplicated. Bind Codex by exact thread UUID and its registered installation/home context. A process or pipe changing while the same session resumes can be revalidated without treating a reused PID or matching display name as identity proof.
+```toml
+[participants.astra]
+harness = "codex"
+session_id = "01a0e605-2485-7693-a111-97e35d22a97e"
+
+[participants.claude]
+harness = "claude"
+session_id = "67b7bc1e-0c3e-4ffa-9d51-a88eb52d61d8"
+```
+
+The CLI derives everything else: Claude PID/process start, pipe and key location from the live registry by session ID; Codex executable from PATH or room-level configuration; repository cwd from the canonical room root; frames, limits and send recipes from adapter code. Timestamps, resolved connection snapshots, liveness, delivery state, usage and observation cursors belong in SQLite, never in `session.toml`. Do not add optional participant fields speculatively; a non-default Codex home override, for example, requires a demonstrated need and an explicit schema decision.
+
+The current hand-written `session.toml`, including its protocol/send recipes and harness-specific tables, is migration input only. Preserve both participant identities when migrating and remove derivable metadata from the new registry. Two names must not accidentally enroll the same native session twice and duplicate broadcasts.
+
+Bind Claude by exact session ID, validating its current PID and process start identity; display names are labels and may be duplicated. Bind Codex by exact thread UUID, resolving installation/home context from the runtime environment or room-level configuration. Capture that resolved context with delivery attempts, not as duplicated participant configuration. A process or pipe changing while the same session resumes can be revalidated without treating a reused PID or matching display name as identity proof.
 
 The room skill/instructions tell agents to rerun `room join --as <same name>` after a clear, new conversation, fork, or resume that changes their native identity. Detect a confirmed invalid or changed binding at send time, show `rebind needed`, and hold unsent deliveries against their original session snapshots. An unavailable process or a thread absent from one daemon's loaded list alone is not proof of identity rotation: distinguish offline, unknown, and confirmed stale bindings. Rejoining enables new messages for the new binding; old pending work is not redirected automatically. An explicit readdress/resend action creates a linked new delivery and retains the original outcome. Submitted or uncertain attempts still require reconciliation before any resend.
 
@@ -97,7 +111,7 @@ Proposed commands:
 | Command | Purpose |
 | --- | --- |
 | `room tui` | Open the human conversation/activity interface and connect to the room service |
-| `room join --as <name>` | Detect and add/update the caller's own participant section in repository-root `session.toml` |
+| `room join --as <name>` | Detect harness/session ID and write only those fields under the caller's participant name in repository-root `session.toml` |
 | `room send` | Publish an addressed room message; accept text from stdin or a file as well as arguments |
 | `room read`, `room who` | Inspect room history and registered participants |
 | `room doctor` | Check versions, target reachability, observation coverage, and integration readiness |
@@ -109,7 +123,7 @@ These command names are design proposals, not existing functionality.
 
 ### Codex
 
-Use the configured `codex queue --thread <full UUID> --message <envelope>` command with a process argument array. Register the executable, home/configuration context, client type, and exact thread identity. Do not use `--last` or rely on display names.
+Use `codex queue --thread <full UUID> --message <envelope>` with a process argument array. Read the exact thread identity from the minimal participant entry; resolve the executable through PATH or a room-level override and determine home/configuration context and client capabilities at runtime. Record diagnostic snapshots in SQLite. Do not use `--last` or rely on display names.
 
 Claude's reported tests on CLI 0.157.1 found idle TUI wake, a separate next turn when busy, and retention until resumption for an inactive saved thread. Queueing does not establish that a session is running, that a particular observation endpoint owns it, or that the message has been processed.
 
@@ -169,6 +183,7 @@ Before declaring either adapter supported, qualify:
 4. A single human broadcast reaching every enrolled agent independently, followed by visible agent-to-agent and agent-to-human responses. Required fixture: four simultaneous agents, two Codex and two Claude Code sessions. Verify all four receive the broadcast, `@name` reaches only the selected instance, same-harness and cross-harness replies work, and one offline/busy instance does not block the others. Add/remove a participant while the room remains running and verify stable routing and scrollable TUI state. Four is an acceptance fixture, not a product limit.
 5. Pause with a stop-request exemption, repeated pause, resume ordering, oversized-message references, concurrent service startup, linked-worktree room identity, and responsive TUI rendering. Test desktop clients separately from CLI/TUI configurations; steering remains deferred.
 6. Identity rotation and rebind: exercise clear/new/fork/resume, changing pipes/PIDs, duplicate Claude display names, and a Codex thread missing from an unrelated daemon's loaded list. Verify distinct offline/unknown/rebind-needed states, no cross-session misdelivery, preserved pending snapshots, and explicit readdressing. In the four-agent fixture, verify a targeted reply does not fan out and agent `@all` excludes its sender.
+7. Minimal-registry migration and runtime resolution: preserve existing participant identities, ensure join writes only harness/session ID, derive fresh Claude connection details without rewriting the file, and resolve executable/cwd through their designated sources. Reject ambiguous or unsupported configuration rather than silently choosing another session.
 
 Retain runnable probe commands, versions/configurations, message IDs, timestamps, event excerpts, and tagged responses. Repeat idle wake at least 20 times per supported configuration and run a two-hour mixed exercise. Measure enqueue, turn-start, observation, and response latency separately. The reported 2.5–8-second Codex sample is not a hard bound; choose and publish a latency target after repeatable measurements rather than asserting an unproven five- or ten-second guarantee.
 
@@ -192,4 +207,5 @@ The first release is complete when Kevin can connect multiple existing agents, i
 - Prefer full native messages and one delivery path over doorbell-plus-hook reinjection for version one, with a visible reference fallback for oversized content.
 - Incorporate Claude's concrete review of service startup, caller identity, envelope limits, minimal MVP receipt states, and Kevin's cooperative pause decision.
 - Incorporate Kevin's self-registration decision: repository-root `session.toml` is authoritative, agents preserve each other's entries, and declared sender identity is allowed when automatic checks are unavailable.
+- Incorporate the R11 minimal-registry requirement: only harness and native session ID per named participant; the CLI derives connection details and SQLite stores runtime state. The existing verbose file is migration input, not the target schema.
 - Claude's final review (R8) approved the design conditional on that enrollment edit. Astra incorporated it and reviewed the resulting document; this document is now the single implementation proposal. Both original proposals and findings remain historical input.
