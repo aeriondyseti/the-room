@@ -5,12 +5,16 @@
 //  - a good reading older than `staleAfterMs` is also marked `stale` (values kept, labelled).
 import type { AccountUsage, AccountUsageProvider } from '../../contracts/account.js';
 import type { RoomEvent } from '../../contracts/ipc.js';
+import { DEFAULT_CONFIG } from '../config.js';
+import { settleWithin } from './settle.js';
 
 export interface AccountMonitorDeps {
   providers: readonly AccountUsageProvider[];
   publish(event: RoomEvent): void;
   intervalMs: number;
   staleAfterMs: number;
+  /** Shutdown grace for an in-flight pass (default: config monitorStopGraceMs). */
+  stopGraceMs?: number;
   now?: () => Date;
 }
 
@@ -21,6 +25,8 @@ export class AccountMonitor {
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
   private stopped = false;
+  /** Set when stop() gave up waiting for an in-flight pass: that pass must not write anything any more. */
+  private abandoned = false;
   private readonly now: () => Date;
 
   constructor(private readonly deps: AccountMonitorDeps) {
@@ -38,7 +44,9 @@ export class AccountMonitor {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    await this.running;
+    // Past the grace the pass is abandoned: from then on it writes nothing (the ledger may be closing). A pass that
+    // finishes within the grace still persists its results, e.g. observer cursors for the next start.
+    if (!(await settleWithin(this.running, this.deps.stopGraceMs ?? DEFAULT_CONFIG.monitorStopGraceMs))) this.abandoned = true;
   }
 
   /** Current view, one entry per source (with staleness applied at read time). */
@@ -67,6 +75,7 @@ export class AccountMonitor {
         void err;
         sample = unavailable(provider, 'the usage source failed unexpectedly', this.now(), this.current.get(provider.id)?.account);
       }
+      if (this.abandoned) return; // abandoned by stop()
       const next = this.merge(provider.id, sample);
       this.current.set(provider.id, next);
       // Compare what subscribers would SEE (age applied), so a reading that ages into `stale` is published too.

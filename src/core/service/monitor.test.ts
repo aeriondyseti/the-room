@@ -264,3 +264,19 @@ test('integration: observer cursors survive a service restart', { timeout: 20_00
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('TD-0023: stop() abandons a hung pass after the grace period; the abandoned pass then saves and publishes nothing', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const h = harness({ adapters: [adapter(async () => { await gate; return { liveness: 'online', activity: 'busy' }; })], stopGraceMs: 30 });
+  let cursorWrites = 0;
+  const m = new ParticipantMonitor({ ...h.deps, saveCursors: () => { cursorWrites++; } });
+  void m.refresh();
+  await new Promise((r) => setTimeout(r, 10));
+  const t0 = Date.now();
+  await m.stop();
+  assert.ok(Date.now() - t0 < 1_000, 'shutdown does not wait out a slow probe');
+  release();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual([h.saved.length, h.published.length, cursorWrites], [0, 0, 0], 'nothing is written after stop');
+});
