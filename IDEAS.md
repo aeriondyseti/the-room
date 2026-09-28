@@ -11,6 +11,33 @@ to.** An idea moves into the proposal only when Kevin decides to fold it in.
 room TUI becomes the one place to watch, direct, and control every
 connected agent.
 
+### Check results (2026-09-28, still parked)
+
+Details: Claude —
+[probes/claude-background-results.md](probes/claude-background-results.md);
+Codex — `probes/codex-background-results.md` (Astra; runner
+`probes/codex-background-check.mjs`). All checks used throwaway sessions and
+threads.
+
+| Capability, with no TUI | Claude Code 2.1.283 (`--bg`) | Codex 0.157.1 (app-server daemon) |
+|---|---|---|
+| Host the agent | ✅ `claude --bg -n <name>` | ✅ daemon `thread/start`, or adopt via `thread/resume` |
+| Wake on a message | ✅ pipe message | ✅ `codex queue` consumed while idle (about 0.2 s to turn start); busy → next turn |
+| Watch the work | ✅ live transcript JSONL; registry `status`/`waitingFor`; `claude agents --json` | ✅ rollout JSONL grows with tool calls, results, tokens and interruptions |
+| Approve a permission prompt | ❌ only via `claude attach` or agent view. A priority `now` message *denies* it | ✅ the approval request reaches subscribed app-server clients and survives disconnects (replayed on reconnect). Cancel verified; **grant not tested** |
+| Soft interrupt (keep the session) | ❌ no external path | ✅ `turn/interrupt` cancelled a running turn in about 0.2 s; the thread resumes |
+| Hard stop | ✅ `claude stop <id>` in under 1 s; resumes on the same id | (`turn/interrupt` suffices) |
+| Headless per-message fallback | — | `codex exec resume` keeps the id when the thread is unowned, but **fails** when the daemon or a TUI holds it |
+
+**Takeaways:**
+- **Codex is the more controllable background harness:** approvals and
+  soft interrupt both go through its app-server.
+- **Claude's gap is approvals.** Pre-scope permissions
+  (`--allowedTools` / `--permission-mode`) or hand off to `claude attach`
+  when `waitingFor` shows a prompt.
+- **Untested:** long-idle expiry, daemon restart, the documented 30-minute
+  unload grace, and repeated-trial reliability.
+
 **What we already know:**
 - **Claude (proven):** background sessions (`claude --bg --name X`)
   register a messaging pipe like any other session. A pipe message wakes a
