@@ -13,7 +13,7 @@ const LABEL: Record<Key, string> = {
 };
 const HELP: Record<Key, string> = {
   deliveryHoldMs: 'Ordinary messages wait this long, so a quick withdraw works. 0 = off.',
-  batchHeld: 'Messages from one sender to one recipient during the hold arrive as one delivery.',
+  batchHeld: 'Messages from one sender to one recipient during the hold arrive as one delivery (needs a hold above 0).',
   batchMaxHoldMs: 'Each batched message restarts the hold, but never beyond this from the first.',
 };
 export const MS_STEP = 100;
@@ -93,6 +93,8 @@ export function settingsLines(s: SettingsState, width: number): Line[] {
     else if (edited) status.push({ text: s.draft[k] === null ? '  reset to default (unsaved)' : '  unsaved', color: 'yellow' });
     else if (value !== s.view.defaults[k]) status.push({ text: `  changed · default ${show(k, s.view.defaults[k])}`, dim: true });
     else status.push({ text: '  default', dim: true });
+    // A hold of 0 turns batching (and its cap) off in the service, so say so rather than show them as active.
+    if (k !== 'deliveryHoldMs' && pending(s, 'deliveryHoldMs') === 0) status.push({ text: ' · no effect while the hold is off', dim: true, italic: true });
     out.push(fitLine([
       { text: sel ? '› ' : '  ', color: 'cyan', bold: true },
       { text: LABEL[k].padEnd(labelW), bold: sel },

@@ -80,3 +80,9 @@ test('an overridden row still shows its unsaved edit or reset', () => {
   assert.match(text(press(s, 'right')), /in effect: off \(set by environment\) · unsaved/);
   assert.match(text(press(s, 'reset')), /in effect: off \(set by environment\) · reset to default \(unsaved\)/);
 });
+test('with the hold off, batching and its cap say they have no effect', () => {
+  const t = text(initialSettings(view({ configured: { ...defaults, deliveryHoldMs: 0 }, effective: { ...defaults, deliveryHoldMs: 0 } })));
+  assert.match(t, /Batch held messages\s+on\s+default · no effect while the hold is off/);
+  assert.match(t, /Longest batch hold\s+2s\s+default · no effect while the hold is off/);
+  assert.doesNotMatch(text(initialSettings(view())), /no effect/);
+});
