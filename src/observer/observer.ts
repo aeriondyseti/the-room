@@ -1,7 +1,6 @@
 // Read-only usage observer (ROADMAP 2.5). Never writes harness files (invariant 8); never reports usage it
 // didn't observe (invariant 3): missing sources are `unavailable`, old readings are `stale`.
-import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { claudeTranscriptPaths, codexRolloutPath } from './locate.js';
 import type { Harness, TargetSnapshot, UsageSnapshot } from '../contracts/domain.js';
 import { readNew, type TailCursor } from './jsonl-tail.js';
 import { parseClaudeRecord, parseCodexRecord, type TokenCounters } from './parsers.js';
@@ -146,41 +145,12 @@ export class UsageObserver {
   }
 
   private async claudePaths(sessionId: string): Promise<string[]> {
-    if (!/^[A-Za-z0-9-]+$/.test(sessionId)) return [];
-    let dirs: string[];
-    try {
-      dirs = await readdir(this.options.claudeProjectsDir);
-    } catch {
-      return [];
-    }
-    const found: string[] = [];
-    for (const dir of dirs) {
-      const path = join(this.options.claudeProjectsDir, dir, `${sessionId}.jsonl`);
-      if (await isFile(path)) found.push(path);
-    }
-    return found;
+    return claudeTranscriptPaths(this.options.claudeProjectsDir, sessionId);
   }
 
   private async codexPaths(threadId: string): Promise<string[]> {
-    const cached = this.codexPathCache.get(threadId);
-    if (cached && (await isFile(cached))) return [cached];
-    if (!/^[A-Za-z0-9-]+$/.test(threadId)) return [];
-    const suffix = `-${threadId}.jsonl`;
-    // Newest dates first: the rollout for a live thread is almost always recent.
-    for (const year of await sortedDesc(this.options.codexSessionsDir)) {
-      for (const month of await sortedDesc(join(this.options.codexSessionsDir, year))) {
-        for (const day of await sortedDesc(join(this.options.codexSessionsDir, year, month))) {
-          const dir = join(this.options.codexSessionsDir, year, month, day);
-          const hit = (await safeReaddir(dir)).find((f) => f.startsWith('rollout-') && f.endsWith(suffix));
-          if (hit) {
-            const path = join(dir, hit);
-            this.codexPathCache.set(threadId, path);
-            return [path];
-          }
-        }
-      }
-    }
-    return [];
+    const path = await codexRolloutPath(this.options.codexSessionsDir, threadId, this.codexPathCache);
+    return path ? [path] : [];
   }
 }
 
@@ -227,24 +197,4 @@ function newestBy<T>(items: T[], at: (item: T) => string | null): T {
 
 function fileKey(harness: Harness, sessionId: string, path: string): string {
   return `${harness}\0${sessionId}\0${path}`;
-}
-
-async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function safeReaddir(dir: string): Promise<string[]> {
-  try {
-    return await readdir(dir);
-  } catch {
-    return [];
-  }
-}
-
-async function sortedDesc(dir: string): Promise<string[]> {
-  return (await safeReaddir(dir)).filter((d) => /^\d+$/.test(d)).sort((a, b) => b.localeCompare(a));
 }

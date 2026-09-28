@@ -73,6 +73,18 @@ export interface RoomConfig {
   tuiReconnectMaxMs: number;
   /** TUI: consecutive connection failures before the header says "disconnected" (it keeps retrying). */
   tuiFailuresBeforeDisconnected: number;
+  /** Activity view (6.1): cap on one item's detail text, in bytes (longer is cut and labelled "truncated"). */
+  activityDetailBytes: number;
+  /** Activity items retained per stream (older ones are evicted and reported as unavailable, never empty). */
+  activityWindowItems: number;
+  /** When a transcript is first observed, start this many bytes before its end (older history isn't loaded). */
+  activityStartBytes: number;
+  /** A single transcript line longer than this is skipped (counted as oversized; never parsed from its middle). */
+  activityMaxLineBytes: number;
+  /** Upper bound read from one transcript per poll (the rest is read later; the view shows "catching up"). */
+  activityReadBytes: number;
+  /** How often the service polls participants' transcripts for new activity. */
+  activityPollMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -111,6 +123,12 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   tuiReconnectMinMs: 250,
   tuiReconnectMaxMs: 5_000,
   tuiFailuresBeforeDisconnected: 3,
+  activityDetailBytes: 4_096,
+  activityWindowItems: 500,
+  activityStartBytes: 512 * 1024,
+  activityMaxLineBytes: 1024 * 1024,
+  activityReadBytes: 4 * 1024 * 1024,
+  activityPollMs: 2_000,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -148,6 +166,12 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   tuiReconnectMinMs: 'ROOM_TUI_RECONNECT_MIN_MS',
   tuiReconnectMaxMs: 'ROOM_TUI_RECONNECT_MAX_MS',
   tuiFailuresBeforeDisconnected: 'ROOM_TUI_FAILURES_BEFORE_DISCONNECTED',
+  activityDetailBytes: 'ROOM_ACTIVITY_DETAIL_BYTES',
+  activityWindowItems: 'ROOM_ACTIVITY_WINDOW_ITEMS',
+  activityStartBytes: 'ROOM_ACTIVITY_START_BYTES',
+  activityMaxLineBytes: 'ROOM_ACTIVITY_MAX_LINE_BYTES',
+  activityReadBytes: 'ROOM_ACTIVITY_READ_BYTES',
+  activityPollMs: 'ROOM_ACTIVITY_POLL_MS',
 };
 
 /** Doubling reconnect schedule from min to max (inclusive), e.g. 250, 500, 1000, 2000, 4000, 5000. */

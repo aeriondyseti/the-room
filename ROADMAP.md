@@ -222,7 +222,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint before execution.
 
-- [ ] **6.1 Full activity view** *(Claude)* — the transcript observer: tool calls and results in the TUI
+- [x] **6.1 Full activity view** *(Claude)* — the transcript observer: tool calls and results in the TUI
   (proposal "Minimal observation now; full output after MVP").
   **Done-when:** the TUI shows each agent's tool calls and results, expandable and filterable, from
   read-only transcript readers with cursors; large outputs stay responsive; unavailable coverage is

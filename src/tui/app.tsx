@@ -29,6 +29,7 @@ import {
 } from './composer.js';
 import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
 import { detailLines } from './detail.js';
+import { ActivityPane } from './activity.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { DEFAULT_CONFIG } from '../core/config.js';
@@ -59,7 +60,7 @@ const MIN_CONVERSATION_WIDTH = 30;
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
 
 type Feedback = { tone: 'ok' | 'info' | 'error'; text: string } | null;
-type Overlay = 'help' | 'who' | { detail: number } | null;
+type Overlay = 'help' | 'who' | { detail: number } | { activity: string } | null;
 
 export function App({ theme = COLOR_THEME, ...props }: AppProps) {
   return (
@@ -122,7 +123,7 @@ function Room({
 
   // Delivery detail overlay: its own line model and scroll offset (lines from the top).
   const [detailOffset, setDetailOffset] = useState(0);
-  const detailItem = overlay !== null && typeof overlay === 'object' ? view.items.find((i) => i.message.seq === overlay.detail) ?? null : null;
+  const detailItem = overlay !== null && typeof overlay === 'object' && 'detail' in overlay ? view.items.find((i) => i.message.seq === overlay.detail) ?? null : null;
   const detailAll = useMemo(
     () =>
       detailItem
@@ -212,6 +213,20 @@ function Room({
         finish(null);
         setOverlay('who');
         return;
+      case 'activity': {
+        const name = args.replace(/^@/, '').trim();
+        if (!name) {
+          setFeedback({ tone: 'error', text: 'Usage: /activity @name' });
+          return;
+        }
+        if (!names.includes(name)) {
+          setFeedback({ tone: 'error', text: `No participant named "${sanitize(name)}". /who lists them.` });
+          return;
+        }
+        finish(null);
+        setOverlay({ activity: name });
+        return;
+      }
       case 'detail': {
         const seq = args === '' ? (view.items.at(-1)?.message.seq ?? null) : parseSeqArg(args);
         if (seq === null) {
@@ -287,6 +302,7 @@ function Room({
   });
 
   useInput((input, key) => {
+    if (overlay !== null && typeof overlay === 'object' && 'activity' in overlay) return; // the activity pane owns its keys
     if (overlay) {
       if (key.escape || key.return || input === 'q' || input === '?') {
         setOverlay(null);
@@ -381,6 +397,8 @@ function Room({
             <HelpOverlay />
           ) : overlay === 'who' ? (
             <WhoOverlay participants={view.participants} />
+          ) : overlay !== null && 'activity' in overlay ? (
+            <ActivityPane source={source} participant={overlay.activity} width={convWidth - 1} height={viewportHeight} onClose={() => setOverlay(null)} />
           ) : overlay !== null ? (
             detail === null ? (
               <Text dimColor>Message #{overlay.detail} is no longer loaded. Esc to close.</Text>
@@ -823,6 +841,7 @@ function HelpOverlay() {
     ['/retry #N [@agent]', 're-send a failed or uncertain delivery'],
     ['/detail [#N]', 'delivery detail: attempts, evidence, errors'],
     ['/who', 'participants and their status'],
+    ['/activity @name', "an agent's tool calls, results and messages (read-only)"],
     ['/restart', 'restart the room service (e.g. after an upgrade); keeps queued messages'],
     ['/help or ?', 'this help'],
   ];
