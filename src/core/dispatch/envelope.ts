@@ -5,7 +5,7 @@ import { loadConfig } from '../config.js';
 export function buildEnvelope(root:string,message:RoomMessage,recipient:string,limit:number):{text:string;referenced:boolean}{
  const room=createHash('sha256').update(root).digest('hex').slice(0,12);
  const authority=message.from.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
- const header=`[room ${room} #${message.id} ${authority} from=${message.from.name} to=${recipient}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`;
+ const header=`[room ${room} #${message.id} ${authority} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`;
  const footer=`\n--\nReply through room_send (or room send) to ${message.from.name}, with reply_to=${message.id}. Kevin sees all room messages.`;
  const full=header+message.body+footer;
  if(full.length<=limit)return{text:full,referenced:false};

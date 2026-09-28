@@ -30,9 +30,11 @@ export class Dispatcher {
   try{
    for(const name of new Set(this.ledger.queued().filter(d=>!d.held).map(d=>d.recipient))){
     if(this.workers.has(name))continue;
-    const worker=this.run(name).catch(()=>{
-     const pending=this.ledger.queued(name).find(d=>!d.held);
-     if(!pending)return;
+    let processing:Delivery|undefined;
+    const worker=this.run(name,d=>{processing=d;}).catch(()=>{
+     if(!processing)return;
+     const pending=this.ledger.delivery(processing.messageId,processing.recipient);
+     if(pending.state!=='queued'||(pending.held&&pending.attempts.at(-1)?.outcome!=='in_flight'))return;
      const inFlight=pending.attempts.at(-1)?.outcome==='in_flight';
      this.change(pending,value=>{
       value.state=inFlight?'uncertain':'failed';
@@ -52,9 +54,9 @@ export class Dispatcher {
   if(previous){const participant={...previous,pending:this.ledger.queued(delivery.recipient).length};this.ledger.putParticipant(participant);this.emit({type:'participant.updated',participant});}
   return changed;
  }
- private async run(name:string):Promise<void>{
+ private async run(name:string,selected:(d:Delivery)=>void):Promise<void>{
   while(!this.stopped){
-   const next=this.ledger.queued(name).find(d=>!d.held);if(!next)return;
+   const next=this.ledger.queued(name).find(d=>!d.held);if(!next)return;selected(next);
    const registry=await readRegistry(this.root);const binding=registry[name];
    if(!binding||binding.harness!==next.target.harness||binding.session_id!==next.target.sessionId){
     this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;
@@ -87,7 +89,7 @@ export class Dispatcher {
    this.change(current,d=>{
     const a=d.attempts.at(-1)!;a.finishedAt=new Date().toISOString();
     if(result.status==='submitted'){a.outcome='submitted';a.evidence=result.evidence;if(d.state!=='replied')d.state='submitted';}
-    else if(result.status==='unavailable'){a.outcome='failed';a.error={code:'service_unavailable',message:'No native message submitted: '+result.detail};if(d.state!=='replied'){d.waiting=result.reason;if(result.reason==='rebind_needed')d.held=true;}}
+    else if(result.status==='unavailable'){a.outcome='failed';a.error={code:'service_unavailable',message:'No native message submitted: '+result.detail};if(d.state!=='replied'){d.waiting=result.reason;d.held=result.reason==='rebind_needed'||(this.ledger.roomState().paused&&message.kind!=='stop_request');}}
     else{a.outcome=result.status;a.error=result.error;if(d.state!=='replied')d.state=result.status;}
    });
    if(result.status==='unavailable')return;

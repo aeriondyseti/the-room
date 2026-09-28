@@ -84,7 +84,7 @@ export class RoomService {
         if(p.resendStopRequest!==undefined&&typeof p.resendStopRequest!=='boolean')throw new RoomError('bad_request','resendStopRequest must be boolean.');
         if(p.stopRequestBody!==undefined&&p.stopRequestBody!==null&&Buffer.byteLength(JSON.stringify(text(p.stopRequestBody,'stopRequestBody')))>MAX_FRAME_BYTES/2)throw new RoomError('message_too_large','Stop request exceeds the room IPC body budget.');
         const registry=await readRegistry(this.root);const existing=this.ledger.roomState();
-        if(existing.paused&&!p.resendStopRequest)return{room:existing,stopRequest:existing.stopRequestId?this.ledger.read(existing.stopRequestId):null};
+        if(existing.paused&&!p.resendStopRequest)return{room:existing,stopRequest:null};
         const result=this.ledger.transaction(()=>{
           const held=[];
           for(const d of this.ledger.queued())if(d.attempts.at(-1)?.outcome!=='in_flight'&&this.ledger.read(d.messageId).message.kind!=='stop_request')held.push(this.ledger.updateDelivery(d.messageId,d.recipient,value=>{value.held=true;}));
@@ -110,7 +110,7 @@ export class RoomService {
         if(!['failed','uncertain'].includes(prior.state))throw new RoomError('invalid_state','Only failed or uncertain deliveries can be explicitly retried.');
         const registry=await readRegistry(this.root);const target=registry[recipient];
         if(!target||target.harness!==prior.target.harness||target.session_id!==prior.target.sessionId)throw new RoomError('rebind_conflict','The original recipient binding changed; send a new linked message instead of redirecting this delivery.');
-        const delivery=this.ledger.updateDelivery(id,recipient,d=>{d.state='queued';d.waiting=null;d.held=this.ledger.roomState().paused&&this.ledger.read(id).message.kind!=='stop_request';});
+        const delivery=this.ledger.updateDelivery(id,recipient,d=>{if(!['failed','uncertain'].includes(d.state)||d.attempts.length!==prior.attempts.length)throw new RoomError('invalid_state','Delivery changed while retry was being prepared; refresh its state.');d.state='queued';d.waiting=null;d.held=this.ledger.roomState().paused&&this.ledger.read(id).message.kind!=='stop_request';});
         this.publish({type:'delivery.updated',delivery});void this.dispatcher.kick();return{delivery};
       }
       default:throw new RoomError('bad_request','This request is handled by the IPC connection.');

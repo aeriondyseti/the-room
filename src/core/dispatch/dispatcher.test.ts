@@ -42,7 +42,7 @@ test('pause holds ordinary deliveries but exempts one stop request; repeated pau
  const {room,adapter}=await setup(t);adapter.offline.add(a);
  const first=await send(room,'queued');await room.dispatcher.idle();
  const pause=await call(room,'pause',{caller:human});const again=await call(room,'pause',{caller:human});
- assert.equal(pause.stopRequest!.message.id,again.stopRequest!.message.id);
+ assert.equal(again.stopRequest,null);assert.equal(pause.stopRequest!.message.id,again.room.stopRequestId);
  const later=await send(room,'held');adapter.offline.clear();await room.dispatcher.idle();
  assert.equal(room.ledger.delivery(first.message.id,'astra').held,true);assert.equal(room.ledger.delivery(later.message.id,'astra').held,true);
  assert.equal(room.ledger.delivery(pause.stopRequest!.message.id,'astra').state,'submitted');
@@ -105,4 +105,34 @@ test('definite adapter failure and pre-submission probe exceptions surface witho
  adapter.probe=async()=>{throw Error('query failure');};const second=await send(room);await room.dispatcher.idle();
  const failed=room.ledger.delivery(second.message.id,'astra');assert.equal(failed.state,'failed');assert.match(failed.attempts[0]!.error!.message,/room doctor/);
  assert.equal(adapter.sent.length,1);
+});
+
+test('pause holds a previously in-flight ordinary delivery when it returns unavailable',async t=>{
+ const {room,adapter}=await setup(t);let release!:()=>void;const gate=new Promise<void>(r=>{release=r;});let firstAttempt=true;
+ adapter.action=async()=>{if(firstAttempt){firstAttempt=false;await gate;return{status:'unavailable',reason:'offline',detail:'closed before write'};}return{status:'submitted',evidence:{kind:'codex-queue',nativeId:'n'}};};
+ const first=await send(room);await until(()=>adapter.sent.length===1);const pause=await call(room,'pause',{caller:human});
+ release();await room.dispatcher.idle();await room.dispatcher.idle();
+ assert.equal(room.ledger.delivery(first.message.id,'astra').held,true);
+ assert.equal(adapter.sent.filter(r=>r.messageId===first.message.id).length,1);
+ assert.equal(room.ledger.delivery(pause.stopRequest!.message.id,'astra').state,'submitted');
+});
+test('concurrent retry requests cannot both reset the same delivery generation',async t=>{
+ const {room,adapter}=await setup(t);adapter.action=async()=>({status:'uncertain',error:{code:'internal',message:'unknown'}});
+ const first=await send(room);await room.dispatcher.idle();
+ const results=await Promise.allSettled([call(room,'retry',{caller:human,messageId:first.message.id,recipient:'astra'}),call(room,'retry',{caller:human,messageId:first.message.id,recipient:'astra'})]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);await room.dispatcher.idle();
+ assert.equal(adapter.sent.length,2);
+});
+test('a probe failure after pause never marks the exempt stop request failed',async t=>{
+ const {room,adapter}=await setup(t);let reject!:()=>void;let probing=false;let firstProbe=true;
+ const gate=new Promise<void>((_,fail)=>{reject=()=>fail(Error('old probe failed'));});
+ adapter.probe=async()=>{if(firstProbe){firstProbe=false;probing=true;await gate;}return{liveness:'online',activity:'unknown'};};
+ const first=await send(room);await until(()=>probing);const pause=await call(room,'pause',{caller:human});reject();
+ await room.dispatcher.idle();await room.dispatcher.idle();
+ assert.equal(room.ledger.delivery(first.message.id,'astra').held,true);
+ assert.equal(room.ledger.delivery(pause.stopRequest!.message.id,'astra').state,'submitted');
+});
+test('each native envelope lists the whole broadcast recipient snapshot',async t=>{
+ const {room,adapter}=await setup(t);await send(room,'coordinate',['all']);await room.dispatcher.idle();
+ assert.equal(adapter.sent.length,2);for(const sent of adapter.sent)assert.match(sent.envelope,/to=astra,other delivery_to=/);
 });
