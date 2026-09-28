@@ -51,7 +51,7 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 4.1 | Room end to end on live agents | Claude + Astra | 🟡 | Dogfood on the real room ✅ (probes/4.1-dogfood.md). Claude: 20/20 idle-wake trials + Done-when scenarios ✅, 2h soak running (sprint/4.1). Codex fixture trials blocked: room MCP tools need approval in disposable fixtures — awaiting Kevin |
+| 4.1 | Room end to end on live agents | Claude + Astra | ✅ | v0.0.23 · review: reviews/4.1.md · probes/4.1-acceptance.md: all Done-when items + evidence gates (20 wake trials each for Claude pipe and Codex queue, 2h mixed soak 80/80, four-agent scenarios 9/9 on re-run; all failures reported) · dogfood: probes/4.1-dogfood.md |
 | 4.2 | Failure and recovery qualification | Astra | ✅ | v0.0.16; 187 tests; bounded live checklist in probes/failure-recovery-results.md. |
 
 ## Milestone 5 — Ergonomics polish, then v0.1.0
@@ -72,4 +72,4 @@ their own rows**.
 
 ---
 
-**Summary:** 17 / 22 features complete (+2.5b follow-up) · **current version: v0.0.18** · last tag: v0.0.18
+**Summary:** 18 / 22 features complete (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.0.23** · last tag: v0.0.23

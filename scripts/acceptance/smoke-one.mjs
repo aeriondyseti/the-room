@@ -29,6 +29,9 @@ try {
   console.log(JSON.stringify({ state: d?.state, attempts: d?.attempts, turnStart: await fx.turnStartedAt(id, t0), t0, reply: reply && { at: reply.createdAt, body: reply.body, from: reply.from } }, null, 1));
   console.log('enqueue→submit ms', submitted ? Date.parse(submitted.finishedAt ?? submitted.at ?? submitted.startedAt) - t0 : null);
 } finally {
-  if (process.env.KEEP !== '1') await fx?.stop();
+  if (process.env.KEEP !== '1') {
+    await fx?.stop();
+    try { await client.request('shutdown', { caller: { kind: 'human' } }); } catch (e) { console.error('scratch room shutdown failed:', e.message); }
+  }
   client.close();
 }

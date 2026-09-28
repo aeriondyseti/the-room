@@ -26,17 +26,23 @@ export async function start({name,root,dist}) {
   const client=await new ProbeClient({executable,socketPath:path.join(home,'app-server-control','app-server-control.sock'),log}).connect();
   let sessionId;let rollout;let room;let stopped=false;
   async function stop(){
-    if(stopped)return;stopped=true;
+    if(stopped)return;
+    const errors=[];
     try {
       if(sessionId){
-        const read=await client.rpc('thread/read',{threadId:sessionId,includeTurns:true});
-        const active=read.thread?.turns?.find(t=>t.status==='inProgress');
-        if(active)await client.rpc('turn/interrupt',{threadId:sessionId,turnId:active.id});
+        // Read/interrupt failures must not skip the delete: each step is attempted and its error kept.
+        try{
+          const read=await client.rpc('thread/read',{threadId:sessionId,includeTurns:true});
+          const active=read.thread?.turns?.find(t=>t.status==='inProgress');
+          if(active)await client.rpc('turn/interrupt',{threadId:sessionId,turnId:active.id});
+        }catch(error){errors.push(`read/interrupt: ${error.message}`);}
         if(rollout)await fs.copyFile(rollout,path.join(root,`${name}-rollout.jsonl`)).catch(()=>{});
-        await client.rpc('thread/delete',{threadId:sessionId});
-        log('cleanup',{sessionId,deleted:true});
+        try{await client.rpc('thread/delete',{threadId:sessionId});log('cleanup',{sessionId,deleted:true});}
+        catch(error){errors.push(`thread/delete: ${error.message}`);log('cleanup-error',{sessionId,message:error.message});}
       }
     }finally{room?.close();client.close();}
+    stopped=true;
+    if(errors.some(e=>e.startsWith('thread/delete')))throw Error(`Codex fixture ${name} cleanup incomplete: ${errors.join('; ')}`);
   }
   try {
     // Disable unrelated user MCP servers in this thread's configuration only; no user config writes.

@@ -34,6 +34,7 @@ keep a sprint focused, and "good enough for now" decisions worth revisiting.
 | TD-0019 | 2026-09-28 | 2.5b | review (contract) | `unknown` liveness carries no reason: probe.detail and probe errors are dropped because ParticipantState has no field for them | 30/low | Usage already carries a reason; liveness reason needs a contract change | Add optional `livenessDetail` to ParticipantState; fill from probe.detail / error; show in /who and /detail (5.1) | 🔵 Open |
 | TD-0020 | 2026-09-28 | 2.5b | review (correctness) | Persisted usage-observer cursors are never pruned: sessions no longer bound after rebinds stay in the blob across restarts | 40/low | Bounded by sessions ever bound (small); writes now only happen on change | Prune cursors whose (harness, sessionId) is no longer a participant before exporting | 🔵 Open |
 | TD-0021 | 2026-09-28 | 5.1 | review (lean) | Code-fence handling is CommonMark-style but minimal: no indented code blocks, no inline `code` styling, and an unclosed fence runs to the end of the message | 30/low | Covers the fenced blocks agents actually send; nothing is ever dropped | Extend bodyLines if agents use other markdown forms | 🔵 Open |
+| TD-0022 | 2026-09-28 | 4.1 | review (lean) | Acceptance harness: a wake trial still counts OK if the fixture never became idle first (it is logged in results.errors, but the trial row isn't flagged) | 40/low | Every recorded run shows idle fixtures (errors: none), so no trial was affected | Mark such rows `not_idle` and exclude them from idle-wake stats | 🔵 Open |
 
 ---
 

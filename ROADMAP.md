@@ -164,7 +164,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 4 — MVP acceptance (dogfood)
 
-- [ ] **4.1 Room end to end on live agents** *(Claude, with Astra)*
+- [x] **4.1 Room end to end on live agents** *(Claude, with Astra)*
   - **Scope:** Claude and Astra switch from pair-poc to the real room via MCP (initial dogfood), then the
     proposal's **four-agent acceptance fixture** (two Codex and two Claude Code sessions, all
     throwaway except us).

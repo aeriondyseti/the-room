@@ -100,32 +100,40 @@ export async function start({ name, root, dist, model = 'haiku', joinTimeoutMs =
     record = registryRecords().find((r) => r.name === display) ?? null;
     if (!record) await sleep(500);
   }
-  // `claude stop|rm` take the short id (the session id's first 8 hex chars, as `claude agents` shows it).
-  const stopIds = async (id) => {
+  // `claude stop|rm` take the short id (the session id's first 8 hex chars, as `claude agents` shows it). Failures are
+  // reported, not swallowed: after both commands the session must be gone from the registry, else stop() throws.
+  const stopIds = async (id, sessionId) => {
+    const errors = [];
     for (const cmd of ['stop', 'rm']) {
-      try { await run('claude', [cmd, id], { windowsHide: true }); } catch { /* already stopped/removed */ }
+      try { await run('claude', [cmd, id], { windowsHide: true }); } catch (e) { errors.push(`claude ${cmd} ${id}: ${(e.stderr || e.message || '').toString().trim()}`); }
     }
+    const present = () => registryRecords().some((r) => (sessionId ? r.sessionId === sessionId : r.name === display));
+    for (let i = 0; i < 20 && present(); i++) await sleep(250); // the registry file goes away just after exit
+    if (present()) throw new Error(`fixture ${name} (${display}) still running after stop: ${errors.join('; ') || 'no error reported'}`);
   };
   if (!record) {
-    if (shortId) await stopIds(shortId);
-    throw new Error(`fixture ${name}: no registry record within ${joinTimeoutMs}ms (claude said: ${stdout.trim()})`);
+    if (shortId) await stopIds(shortId, null);
+    throw new Error(`fixture ${name}: no registry record within ${joinTimeoutMs}ms (display ${display}; claude said: ${stdout.trim()})`);
   }
   const id = record.sessionId.slice(0, 8);
-  // Wait until the room lists it (the fixture calls room_join itself, verified by MCP identity).
-  let joined = false;
-  while (!joined && Date.now() - started < joinTimeoutMs) {
-    joined = await whoIs(name, record.sessionId);
-    if (!joined) await sleep(1000);
-  }
-  if (!joined) {
-    await stopIds(id);
-    throw new Error(`fixture ${name}: did not join the room within ${joinTimeoutMs}ms`);
+  // Wait until the room lists it (the fixture calls room_join itself, verified by MCP identity). Any failure here
+  // stops the fixture before rethrowing, so a half-started session never outlives the run.
+  try {
+    let joined = false;
+    while (!joined && Date.now() - started < joinTimeoutMs) {
+      joined = await whoIs(name, record.sessionId);
+      if (!joined) await sleep(1000);
+    }
+    if (!joined) throw new Error(`fixture ${name}: did not join the room within ${joinTimeoutMs}ms`);
+  } catch (err) {
+    await stopIds(id, record.sessionId).catch((e) => { err.message += ` (and cleanup failed: ${e.message})`; });
+    throw err;
   }
   return {
     name, harness: 'claude', sessionId: record.sessionId, pid: record.pid, shortId: id, display,
     async turnStartedAt(messageId, sinceMs) { return transcriptTimes(record.sessionId, messageId, sinceMs).turnStartAt; },
     async times(messageId, sinceMs) { return transcriptTimes(record.sessionId, messageId, sinceMs); },
     status() { return registryRecords().find((r) => r.sessionId === record.sessionId)?.status ?? 'gone'; },
-    async stop() { await stopIds(id); },
+    async stop() { await stopIds(id, record.sessionId); },
   };
 }

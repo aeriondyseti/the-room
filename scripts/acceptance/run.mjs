@@ -203,7 +203,10 @@ try {
       const m = await send('scenario offline: reply ack'); const { replies, deliveries } = await awaitReplies(m, others);
       await sleep(20_000); // let the dispatcher attempt the offline recipient, so its final state is evidence too
       const vd = (await client.request('deliveries', { messageId: m.id })).deliveries.find((d) => d.recipient === victim.name);
-      record('offline instance does not block others', others.every((n) => replies[n]) && vd?.state !== 'replied', { messageId: m.id, offline: victim.name, offlineDelivery: vd ? { state: vd.state, waiting: vd.waiting, attempts: vd.attempts.map((a) => `${a.outcome}${a.error ? `:${a.error.code}` : ''}`) } : null, repliedBy: Object.keys(replies) });
+      // Positive evidence only: the others all replied AND the offline recipient's delivery is honestly held (queued,
+      // waiting: offline) — a missing, failed or uncertain row is a failure, never a pass.
+      const held = vd?.state === 'queued' && vd.waiting === 'offline';
+      record('offline instance does not block others', others.length > 0 && others.every((n) => replies[n]) && held, { messageId: m.id, offline: victim.name, offlineDelivery: vd ? { state: vd.state, waiting: vd.waiting, attempts: vd.attempts.map((a) => `${a.outcome}${a.error ? `:${a.error.code}` : ''}`) } : null, repliedBy: Object.keys(replies) });
       victim.stopped = true; }
     void byName;
   }
@@ -211,7 +214,7 @@ try {
   results.errors.push(`fatal: ${err.stack ?? err.message}`); log('fatal', err.message);
 } finally {
   for (const fx of fixtures) if (!fx.stopped) { try { await fx.stop(); } catch (e) { results.errors.push(`stop ${fx.name}: ${e.message}`); } }
-  try { await client.request('shutdown', { caller: human }); } catch { /* already down */ }
+  try { await client.request('shutdown', { caller: human }); } catch (e) { results.errors.push(`scratch room shutdown: ${e.message}`); }
   client.close();
   results.config.finishedAt = new Date().toISOString();
   const dir = resolve('probes/acceptance'); mkdirSync(dir, { recursive: true });
