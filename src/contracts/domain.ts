@@ -114,7 +114,15 @@ export interface ErrorInfo {
   hint?: string;
 }
 
+/** Allowlisted native context for reconciliation; never includes credentials or environment dumps. */
+export interface RuntimeContext {
+  harness: 'codex';
+  executable: string | null;
+  home: string;
+}
+
 export interface DeliveryAttempt {
+  runtimeContext?: RuntimeContext;
   /** 1-based attempt number; attempts are never overwritten (history is retained). */
   n: number;
   startedAt: string;

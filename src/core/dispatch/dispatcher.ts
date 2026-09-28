@@ -81,7 +81,7 @@ export class Dispatcher {
    try{envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);}catch(error){
     this.change(current,d=>{d.state='failed';d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error:{code:'message_too_large',message:(error as Error).message}});});continue;
    }
-   const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null});});
+   const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null,...(adapter.runtimeContext?{runtimeContext:{...adapter.runtimeContext}}:{})});});
    let result:SubmitResult;
    try {
     const received=await adapter.submit({target:current.target,envelope:envelope.text,messageId:message.id,recipient:name,attempt:attempting.attempts.length});

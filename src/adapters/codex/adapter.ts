@@ -1,8 +1,9 @@
 import { accessSync, constants, statSync } from 'node:fs';
 import path from 'node:path';
+import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
 import type { DeliveryAdapter, LivenessProbe, SubmitRequest, SubmitResult } from '../../contracts/adapter.js';
-import type {TargetSnapshot} from '../../contracts/domain.js';
+import type {RuntimeContext,TargetSnapshot} from '../../contracts/domain.js';
 import type { RoomConfig } from '../../core/config.js';
 
 const UUID='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -33,9 +34,12 @@ export function quoteWindowsArgument(value:string):string{
 }
 export function windowsCommandLineLength(executable:string,args:readonly string[]):number{return [executable,...args].map(quoteWindowsArgument).join(' ').length+1;}
 export class CodexAdapter implements DeliveryAdapter {
+ readonly runtimeContext:RuntimeContext;
  readonly harness='codex' as const;readonly maxEnvelopeChars:number;readonly executable:string|null;
  constructor(private options:CodexOptions){
+  this.options={...options,env:{...(options.env??process.env)}};
   this.executable=resolveCodexExecutable(options.executable,options.cwd,options.env);
+  this.runtimeContext=Object.freeze({harness:'codex',executable:this.executable,home:path.resolve(options.cwd,this.options.env?.CODEX_HOME||path.join(homedir(),'.codex'))});
   const prefix=options.prefixArgs??[];
   const overhead=windowsCommandLineLength(this.executable??'codex.exe',[...prefix,'queue','--thread','0'.repeat(36),'--message']);
   // Every UTF-16 unit may need doubling in the worst quote/backslash case. This deliberately

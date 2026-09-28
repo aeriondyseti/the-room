@@ -80,10 +80,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   codexHome: null,
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
-  contextLimits: Object.freeze({
-  codexCommandLineBudget: 30000,
-  codexMaxOutputBytes: 65536,
-  dispatchPollMs: 1000, 'claude-opus-5-5': 1_000_000 }),
+  contextLimits: Object.freeze({ 'claude-opus-5-5': 1_000_000 }),
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
