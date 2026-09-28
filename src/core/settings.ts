@@ -29,7 +29,14 @@ export class RoomSettings {
     try{const raw=readFileSync(path.join(root,'.room','settings.json'),'utf8');if(Buffer.byteLength(raw)>1024*1024)throw new Error('Oversized settings');const parsed:unknown=JSON.parse(raw);
       if(isObject(parsed)&&parsed.version===1){const values={...DELIVERY_DEFAULTS};for(const key of keys)if(Object.hasOwn(parsed,key))Object.assign(values,{[key]:parsed[key]});validate(values);initial=parsed;this.observedGood=true;}
     }catch{/* A bad file is recoverable; environment validation below is not. */}
-    this.lastGood=this.view(initial);
+    try{this.lastGood=this.view(initial);}
+    catch{
+      // A file and an environment override can each be valid yet conflict together.
+      // In that case the file is recoverable; an invalid environment on its own
+      // still fails construction so the service cannot start with a bad policy.
+      this.observedGood=false;
+      this.lastGood=this.view({version:1});
+    }
   }
   private async document():Promise<Record<string,unknown>> {
     try {
@@ -93,8 +100,11 @@ export class RoomSettings {
     }finally{
       try{await handle.close();}finally{
         if(temp)await unlink(temp).catch(e=>{if(code(e)!=='ENOENT')throw e;});
-        if(await readFile(lock,'utf8')===owner)await unlink(lock);
-        else throw new RoomError('invalid_state','Settings lock ownership changed; inspect .room/settings.lock before retrying.');
+        let stillOwned=false;
+        try{stillOwned=(await readFile(lock,'utf8'))===owner;}
+        catch(e){if(code(e)!=='ENOENT')throw e;}
+        if(!stillOwned)throw new RoomError('invalid_state','Settings lock disappeared or ownership changed; inspect .room/settings.lock before retrying.');
+        await unlink(lock);
       }
     }
   }
