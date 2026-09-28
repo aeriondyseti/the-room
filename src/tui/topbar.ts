@@ -131,6 +131,8 @@ export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: nu
     out.push({ text: '  ' }, ...pctSegments(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly, { mono: opts.mono, stale, now }));
   }
   if (a.fallback) out.push({ text: ' (via statusline, no model limits)', dim: true, italic: true });
+  // A shared source whose login can't be verified says so on screen, not only in the IPC payload.
+  if (/unverified/i.test(a.source)) out.push({ text: ' (ccstatusline, login unverified)', dim: true, italic: true });
   if (opts.disconnected) out.push({ text: ' (last known)', dim: true, italic: true });
   else if (a.status === 'stale') out.push({ text: ' (stale)', dim: true, italic: true });
   return out;

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { AccountUsage, AccountUsageProvider } from '../../contracts/account.js';
 import { bucketsFromCcstatusline, CCSTATUSLINE_SOURCE, ccstatuslineAccountKey, ccstatuslineCacheProvider, firstAvailable, isDefaultClaudeProfile } from './ccstatusline-cache.js';
 import { claudeUsageApiProvider, type UsageFetch } from './usage-api.js';
+import { AccountMonitor } from '../../core/service/accounts.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'vp-ccsl-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
@@ -43,7 +44,9 @@ test('provider: reads the cache (observedAt = mtime); never throws on null/array
   writeFileSync(path, JSON.stringify({ error: 'secret-ish upstream text' }));
   const err = await p.sample();
   assert.equal(err.reason, 'ccstatusline reported a usage fetch error');
-  assert.equal(err.account.key, ccstatuslineAccountKey('abc123'), 'a failure is attributed to the login last seen, not a guessed one');
+  assert.equal(err.account.key, 'k', 'no token hash seen: no identity (key = sourceKey), never the previously seen login');
+  writeFileSync(path, JSON.stringify({ ...CACHE, tokenHash: undefined }));
+  assert.deepEqual([(await p.sample()).status, (await p.sample()).account.key], ['ok', 'k'], 'a reading without a token hash is not stamped with a prior identity');
   assert.doesNotMatch(JSON.stringify(err), /secret-ish/, 'never echoes the cache error string');
 });
 
@@ -140,4 +143,43 @@ test('usage endpoint reservation: an empty (mid-write) lock is held while recent
   const p = make();
   await p.sample();
   assert.equal(calls, 1, 'cache reused');
+});
+test('through AccountMonitor: a fresh tap replacing an old full cache shows Fable as n/a (not retained); login change invalidates; read failure keeps stale', async () => {
+  const path = join(dir, 'mon-usage.json');
+  const tapBuckets = [{ id: 'claude', windows: [{ kind: 'five_hour', durationMinutes: 300, usedPercent: 9, resetsAt: null }, { kind: 'seven_day', durationMinutes: 10_080, usedPercent: 25, resetsAt: null }] }];
+  let tapOk = false;
+  const tap: AccountUsageProvider = { harness: 'claude', id: 'tap', sample: async () => (tapOk
+    ? { account: { harness: 'claude', scope: 'profile', key: 'k', sourceKey: 'k' }, buckets: tapBuckets, status: 'ok', source: 'claude statusline tap', checkedAt: null, observedAt: new Date().toISOString() }
+    : { account: { harness: 'claude', scope: 'profile', key: 'k', sourceKey: 'k' }, buckets: [], status: 'unavailable', reason: 'no tap', source: 'claude statusline tap', checkedAt: null, observedAt: null }) };
+  const chain = firstAvailable('claude:k', [ccstatuslineCacheProvider({ profileKey: 'k', path }), tap], { freshMs: 10 * 60_000 });
+  const m = new AccountMonitor({ providers: [chain], publish: () => {}, intervalMs: 60_000, staleAfterMs: 10 * 60_000 });
+  const view = async () => { await m.refresh(); return m.snapshot()[0]!; };
+  const fable = (a: AccountUsage) => a.buckets.find((b) => b.id === 'claude-fable')?.windows[0]?.usedPercent;
+
+  writeFileSync(path, JSON.stringify(CACHE));
+  let v = await view();
+  assert.deepEqual([v.status, fable(v), v.account.key], ['ok', 22, ccstatuslineAccountKey('abc123')]);
+
+  // A) the cache goes old; a fresh tap takes over → flagged fallback, Fable explicitly unavailable, never the old 22%.
+  const past = new Date(Date.now() - 60 * 60_000);
+  utimesSync(path, past, past);
+  tapOk = true;
+  v = await view();
+  assert.deepEqual([v.status, v.source, v.fallback, fable(v)], ['ok', 'claude statusline tap', true, null]);
+  assert.match(v.buckets.find((b) => b.id === 'claude-fable')?.windows[0]?.reason ?? '', /does not report model-specific limits/);
+
+  // B) the cache (login A) is good again; then it reports an error for a DIFFERENT login B → A's numbers are dropped.
+  tapOk = false;
+  writeFileSync(path, JSON.stringify(CACHE));
+  assert.equal(fable(await view()), 22);
+  writeFileSync(path, JSON.stringify({ error: 'x', tokenHash: 'login-b' }));
+  v = await view();
+  assert.deepEqual([v.status, v.buckets.length], ['unavailable', 0], 'another login\'s failure never shows login A as stale');
+
+  // A read failure carries no identity → login A's last reading stays, labelled stale.
+  writeFileSync(path, JSON.stringify(CACHE));
+  await view();
+  rmSync(path);
+  v = await view();
+  assert.deepEqual([v.status, fable(v)], ['stale', 22]);
 });

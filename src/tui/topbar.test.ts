@@ -56,6 +56,7 @@ test('disconnected → "(last known)" and no warning colour; a tap fallback is l
   assert.match(lineText(dis), /\(last known\)$/);
   assert.equal(dis.find((s) => s.text === '90%')?.color, undefined, 'no live warning colour for last-known values');
   assert.match(lineText(accountSegments(acct({ fallback: true }), { mono: false, now: NOW })), /\(via statusline, no model limits\)/);
+  assert.match(lineText(accountSegments(acct({ source: 'shared ccstatusline cache (login unverified)' }), { mono: false, now: NOW })), /\(ccstatusline, login unverified\)/);
   const reordered = acct({ buckets: [{ id: 'claude-fable', label: 'Fable', windows: [{ kind: 'x', durationMinutes: 10_080, usedPercent: 5, resetsAt: null }] }, ...acct().buckets] });
   assert.match(lineText(accountSegments(reordered, { mono: false, now: NOW })), /^Claude {2}5h 38%.* {2}Fable weekly 5%$/);
 });

@@ -48,23 +48,22 @@ export function bucketsFromCcstatusline(cache: Record<string, unknown>, observed
 }
 
 /** Opaque account key from ccstatusline's token hash (re-hashed: the hash itself is never exposed). */
-export function ccstatuslineAccountKey(tokenHash: unknown): string {
-  return typeof tokenHash === 'string' && tokenHash ? `ccstatusline-${createHash('sha256').update(`ccstatusline:${tokenHash}`).digest('hex').slice(0, 12)}` : 'ccstatusline-unknown';
+export function ccstatuslineAccountKey(tokenHash: string): string {
+  return `ccstatusline-${createHash('sha256').update(`ccstatusline:${tokenHash}`).digest('hex').slice(0, 12)}`;
 }
 
 export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: string; now?: () => Date }): AccountUsageProvider {
   const path = opts.path ?? CCSTATUSLINE_CACHE;
   const now = opts.now ?? (() => new Date());
   const profileKey = opts.profileKey;
-  // A read failure can't see the token hash: attribute it to the login this cache last showed (so the monitor keeps
-  // that login's last reading as stale), never to a guessed one.
-  let lastKey = 'ccstatusline-unknown';
   return {
     harness: 'claude',
     id: `claude:${profileKey}`,
     async sample(): Promise<AccountUsage> {
       const checkedAt = now().toISOString();
-      let key = lastKey;
+      // No token hash seen (read failure, or a cache without one) = no identity: key = sourceKey (the profile), which the
+      // AccountMonitor treats as "unidentified" — never stamped with a previously seen login.
+      let key = profileKey;
       const base = () => ({ account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: profileKey }, source: CCSTATUSLINE_SOURCE, checkedAt });
       const unavailable = (reason: string): AccountUsage => ({ ...base(), buckets: [], status: 'unavailable', reason, observedAt: null });
       try {
@@ -83,7 +82,7 @@ export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: str
         }
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return unavailable('the ccstatusline usage cache has an unexpected shape');
         const cache = parsed as Record<string, unknown>;
-        if (typeof cache.tokenHash === 'string' && cache.tokenHash) key = lastKey = ccstatuslineAccountKey(cache.tokenHash);
+        if (typeof cache.tokenHash === 'string' && cache.tokenHash) key = ccstatuslineAccountKey(cache.tokenHash);
         // Fixed text: never echo the cache's own error string.
         if (cache.error !== undefined && cache.error !== null && cache.error !== '') return unavailable('ccstatusline reported a usage fetch error');
         const observedAt = mtime.toISOString();
@@ -106,6 +105,10 @@ export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: str
  */
 export function firstAvailable(id: string, providers: readonly AccountUsageProvider[], opts: { freshMs: number; now?: () => Date }): AccountUsageProvider {
   const now = opts.now ?? (() => new Date());
+  // Model-scoped limits (e.g. Fable) seen from a fuller source. The tap can't report them and its login can't be matched
+  // to the cache's, so when it stands in they are shown explicitly as unavailable — never as retained old values.
+  const knownModels = new Map<string, string | undefined>();
+  const TAP = 'claude statusline tap';
   return {
     harness: 'claude',
     id,
@@ -114,10 +117,14 @@ export function firstAvailable(id: string, providers: readonly AccountUsageProvi
       let firstOk: AccountUsage | null = null;
       const mark = (a: AccountUsage): AccountUsage => {
         const replaced = firstOk && firstOk !== a ? { source: firstOk.source, reason: `last reading ${firstOk.observedAt ?? 'unknown'} is old` } : firstFailure;
-        return replaced && a.source === 'claude statusline tap' ? { ...a, fallback: true, reason: `${replaced.source}: ${replaced.reason ?? 'unavailable'}` } : a;
+        if (a.source !== TAP || !replaced) return a;
+        const missing = [...knownModels].filter(([bid]) => !a.buckets.some((b) => b.id === bid)).map(([bid, label]): UsageBucket => ({ id: bid, ...(label ? { label } : {}),
+          windows: [{ kind: 'weekly_scoped', durationMinutes: 10_080, usedPercent: null, resetsAt: null, reason: 'the statusline tap does not report model-specific limits' }] }));
+        return { ...a, buckets: [...a.buckets, ...missing], fallback: true, reason: `${replaced.source}: ${replaced.reason ?? 'unavailable'}` };
       };
       for (const p of providers) {
         const a = await p.sample();
+        if (a.status === 'ok' && a.source !== TAP) for (const b of a.buckets) if (b.id !== 'claude') knownModels.set(b.id, b.label);
         if (a.status !== 'ok') {
           firstFailure ??= a;
           continue;

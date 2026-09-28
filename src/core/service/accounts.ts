@@ -86,9 +86,9 @@ export class AccountMonitor {
     }
     const good = this.lastGood.get(id);
     if (!good) return sample; // never succeeded: unavailable, as reported
-    // The source identified a DIFFERENT account (e.g. the user switched logins): the old account's numbers must not
-    // be shown for it, even as stale. Fall back only for the same account, or a failure that learned no identity.
-    if (sample.account.scope === 'account' && sample.account.key !== good.account.key) {
+    // The source positively identified a DIFFERENT login (e.g. the user switched logins): the old login's numbers must
+    // not be shown for it, even as stale. Fall back only for the same identity, or a failure that learned no identity.
+    if (identified(sample) && sample.account.key !== good.account.key) {
       this.lastGood.delete(id);
       return sample;
     }
@@ -101,6 +101,11 @@ export class AccountMonitor {
     const age = this.now().getTime() - Date.parse(a.observedAt);
     return age > this.deps.staleAfterMs ? { ...a, status: 'stale', reason: `last reading is ${Math.round(age / 60_000)} min old` } : a;
   }
+}
+
+/** A sample carries identity evidence: a verified account, or a profile source's own identity key (key ≠ sourceKey). */
+function identified(a: AccountUsage): boolean {
+  return a.account.scope === 'account' || a.account.key !== a.account.sourceKey;
 }
 
 function unavailable(provider: AccountUsageProvider, reason: string, now: Date, known?: AccountUsage['account']): AccountUsage {
