@@ -15,6 +15,7 @@ export async function cliCaller(name: string | null, deps: IdentityDeps, note: (
   }
   let pid: number | null = deps.ownParentPid;
   let agentDetected = !!deps.env.CLAUDE_CODE_SESSION_ID;
+  let brokenAncestry = false;
   const seen = new Set<number>();
   for (let n = 0; pid && n < (deps.maxAncestors ?? 16); n++) {
     if (seen.has(pid)) break;
@@ -33,14 +34,15 @@ export async function cliCaller(name: string | null, deps: IdentityDeps, note: (
     }
     if (found.status === 'error' || found.status === 'stale') throw new RoomError('identity_unresolved', found.detail);
     if (info?.name && /^claude(\.exe)?$/i.test(info.name)) agentDetected = true;
-    pid = info?.ppid ?? null;
+    if(info===null){brokenAncestry=true;break;}
+    pid = info.ppid;
   }
   if(deps.env.CLAUDE_CODE_SESSION_ID) {
     const fallback=await resolveCaller(undefined,{...deps,allowEnvFallback:true});
     if(fallback.ok && fallback.native.source==='claude-env-verified') return {kind:'agent',native:fallback.native,declaredName:name};
   }
-  if(pid && !agentDetected) throw new RoomError('identity_unresolved','Process ancestry was truncated; cannot establish human context.');
   if (name) return { kind: 'agent', native: null, declaredName: name };
+  if(brokenAncestry || pid && !agentDetected) throw new RoomError('identity_unresolved','Process ancestry is incomplete; use a labelled --as fallback for agent messages or the human TUI for controls.');
   if (agentDetected) throw new RoomError('identity_unresolved', 'Agent context detected without a native identity; pass --as for a labelled declared fallback.');
   return { kind: 'human' };
 }

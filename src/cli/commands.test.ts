@@ -44,7 +44,7 @@ test('CLI commands round trip via IPC: join, all input sources, read, who, pause
   const read=await command('read',['#1']);assert.equal(read.value.items[0].message.id,sent.value.message.id);
   assert.equal((await command('read',['--after','0','--limit','1'])).value.items.length,1);
   assert.equal((await command('who')).value.participants.length,2);
-  assert.equal((await command('doctor')).code,0);
+  const doctor=await command('doctor');assert.equal(doctor.code,3);assert.match(doctor.value.codexError.hint,/ROOM_CODEX_EXECUTABLE/);
   assert.equal((await command('pause')).value.room.paused,true);
   assert.equal((await command('resume')).value.room.paused,false);
   const unsupported=await command('retry',[sent.value.message.id,'peer']);assert.equal(unsupported.code,2);

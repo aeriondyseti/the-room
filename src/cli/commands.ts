@@ -103,7 +103,12 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
     if(command==='doctor') {
       const checks:Record<string,unknown>={root,registry:null,codexExecutable:resolveCodexExecutable(config.codexExecutable,root,deps.env??process.env),service:null};
       let healthy=true;
-      try{checks.registry=await readRegistry(root);}catch(e){checks.registry=toErrorInfo(e);healthy=false;}
+      try{
+        const registry=await readRegistry(root);checks.registry=registry;
+        if(Object.values(registry).some(p=>p.harness==='codex')&&!checks.codexExecutable){
+          healthy=false;checks.codexError={code:'service_unavailable',message:'Registered Codex participants cannot receive messages: native executable missing.',hint:'Install Codex on PATH or set ROOM_CODEX_EXECUTABLE to the native codex.exe (not a shell wrapper).'};
+        }
+      }catch(e){checks.registry=toErrorInfo(e);healthy=false;}
       try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service=toErrorInfo(e);healthy=false;}
       print(checks);return healthy?0:3;
     }

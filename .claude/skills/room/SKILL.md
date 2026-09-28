@@ -16,7 +16,7 @@ can message everyone at once.
    - If your session changed (after `/clear`, a resume that created a new session, or a new thread) and your
      name is still bound to the old one, call `room_join` again with `"rebind": true`.
 2. If the `room_*` tools aren't available in this session, ask the human to add the room MCP server and resume
-   this session (docs/ONBOARDING.md). A shell CLI fallback (`room join --as <name>`) arrives with ROADMAP 2.3.
+   this session (docs/ONBOARDING.md). Use the shell CLI fallback: `room join --as <name>`.
 
 ## Messages you receive
 
