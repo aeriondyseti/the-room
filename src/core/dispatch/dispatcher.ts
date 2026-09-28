@@ -73,6 +73,9 @@ export class Dispatcher {
    this.ledger.putParticipant(participant);this.emit({type:'participant.updated',participant});
    // Pause may have happened while a probe was awaiting the native process query.
    const current=this.ledger.delivery(next.messageId,name);if(current.state!=='queued'||current.held)continue;
+   // Urgent work may have arrived during the asynchronous native probe. Claim
+   // the current lane head, not the stale selection from before that await.
+   if(this.ledger.queued(name).find(d=>!d.held)?.messageId!==current.messageId)continue;
    if(probe.liveness==='offline'||probe.liveness==='rebind_needed'){
     this.wait(current,probe.liveness==='offline'?'offline':'rebind_needed');return;
    }

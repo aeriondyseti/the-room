@@ -55,6 +55,19 @@ export class RoomService {
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
     switch(request.method) {
+      case 'withdraw': {
+        const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        const messageId=text(p.messageId,'messageId');
+        if(p.recipients!==undefined&&(!Array.isArray(p.recipients)||p.recipients.some(n=>typeof n!=='string')))throw new RoomError('bad_request','Withdraw recipients must be strings.');
+        const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
+        for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
+        // Recompute pending for existing bindings without changing their inbox coverage.
+        for(const participant of this.ledger.participants()){
+          const pending=this.ledger.queued(participant.name).length;
+          if(pending!==participant.pending){const updated={...participant,pending};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});}
+        }
+        return result;
+      }
       case 'inbox': {
         const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
         if(caller.sender.kind!=='agent')throw new RoomError('bad_request','Inbox snapshots belong to agent bindings.');
@@ -115,7 +128,7 @@ export class RoomService {
           let replyDelivery=null;
           if(!result.deduplicated&&result.message.replyTo&&caller.sender.kind==='agent'){
             const prior=this.ledger.deliveries(result.message.replyTo).find(d=>d.recipient===caller.sender.name&&`${d.target.harness}:${d.target.sessionId}`===caller.scope);
-            if(prior)replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
+            if(prior&&prior.state!=='withdrawn')replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
           }
           return{result,replyDelivery,rejected:null};
         });

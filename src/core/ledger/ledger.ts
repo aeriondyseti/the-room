@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantState, RoomMessage, RoomState, Sender, TargetSnapshot } from '../../contracts/domain.js';
 import { HUMAN } from '../../contracts/domain.js';
 import { loadConfig } from '../config.js';
+import type { WithdrawOutcome, WithdrawDisposition } from '../../contracts/crossing.js';
 import { RoomError } from '../../contracts/errors.js';
 
 export interface EnqueueInput {
@@ -41,8 +42,20 @@ export class Ledger {
       if (!Number.isSafeInteger(waitMs) || waitMs > 2_147_483_647) throw new RoomError('bad_request', 'SQLite busy timeout exceeds its supported range.');
       this.db.exec(`PRAGMA busy_timeout = ${waitMs}`);
       const version = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
-      if (version.user_version > 1) throw new RoomError('unsupported_version', 'Room database was created by a newer version.');
+      if (version.user_version > 2) throw new RoomError('unsupported_version', 'Room database was created by a newer version.');
       this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
+      if(version.user_version===1){
+        this.db.exec(`BEGIN IMMEDIATE;
+          CREATE TABLE deliveries_v2 (
+            message_id TEXT NOT NULL REFERENCES messages(id), recipient TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('queued','submitted','replied','failed','uncertain','withdrawn')),
+            held INTEGER NOT NULL CHECK(held IN (0,1)), payload TEXT NOT NULL, PRIMARY KEY(message_id,recipient));
+          INSERT INTO deliveries_v2 SELECT * FROM deliveries;
+          DROP TABLE deliveries;
+          ALTER TABLE deliveries_v2 RENAME TO deliveries;
+          PRAGMA user_version=2;
+          COMMIT;`);
+      }
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS messages (
           seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
@@ -51,7 +64,7 @@ export class Ledger {
         );
         CREATE TABLE IF NOT EXISTS deliveries (
           message_id TEXT NOT NULL REFERENCES messages(id), recipient TEXT NOT NULL,
-          state TEXT NOT NULL CHECK(state IN ('queued','submitted','replied','failed','uncertain')),
+          state TEXT NOT NULL CHECK(state IN ('queued','submitted','replied','failed','uncertain','withdrawn')),
           held INTEGER NOT NULL CHECK(held IN (0,1)), payload TEXT NOT NULL,
           PRIMARY KEY(message_id, recipient)
         );
@@ -62,7 +75,7 @@ export class Ledger {
         CREATE TABLE IF NOT EXISTS crossing_display (scope TEXT PRIMARY KEY, snapshot TEXT NOT NULL, checked_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS room_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
         INSERT OR IGNORE INTO room_state VALUES(1,'{"paused":false,"pausedAt":null,"stopRequestId":null}');
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
       `);
     } catch (error) { this.db.close(); throw error; }
   }
@@ -143,6 +156,7 @@ export class Ledger {
         const delivery: Delivery = {
           messageId: message.id, recipient: recipient.name, target: structuredClone(recipient.target),
           state: 'queued', held: input.held ?? false, waiting: null, repliedBy: null,
+          priority:input.crossing?.urgent?'urgent':'normal',
           referenced: false, attempts: [], updatedAt: now,
         };
         this.db.prepare('INSERT INTO deliveries(message_id,recipient,state,held,payload) VALUES(?,?,?,?,?)').run(message.id, recipient.name, delivery.state, Number(delivery.held), JSON.stringify(delivery));
@@ -191,7 +205,33 @@ export class Ledger {
     return (this.db.prepare("SELECT payload FROM deliveries WHERE json_extract(payload,'$.attempts[#-1].outcome')='in_flight'").all() as unknown as DeliveryRow[]).map(row=>JSON.parse(row.payload) as Delivery);
   }
   queued(recipient?: string): Delivery[] {
-    return (this.db.prepare(`SELECT d.payload FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.state='queued' ${recipient === undefined ? '' : 'AND d.recipient=?'} ORDER BY m.seq,d.recipient`).all(...(recipient === undefined ? [] : [recipient])) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
+    return (this.db.prepare(`SELECT d.payload FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.state='queued' ${recipient === undefined ? '' : 'AND d.recipient=?'} ORDER BY CASE WHEN json_type(m.payload,'$.crossing.urgent')='object' THEN 0 ELSE 1 END,m.seq,d.recipient`).all(...(recipient === undefined ? [] : [recipient])) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
+  }
+  withdraw(scope:string,messageId:string,recipients?:string[]):WithdrawOutcome {
+    return this.transaction(()=>{
+      const owner=this.db.prepare('SELECT sender_scope FROM messages WHERE id=?').get(messageId) as {sender_scope:string}|undefined;
+      if(!owner)throw new RoomError('not_found','Message not found.');
+      if(owner.sender_scope!==scope)throw new RoomError('identity_mismatch','Only the original sender can withdraw this message.');
+      const item=this.read(messageId);const targets=recipients??item.message.to;
+      if(!targets.length||new Set(targets).size!==targets.length||targets.some(n=>!item.message.to.includes(n)))throw new RoomError('bad_request','Withdraw recipients must be distinct original recipients.');
+      return {messageId,recipients:targets.map(recipient=>{
+        let disposition:WithdrawDisposition;
+        if(recipient===HUMAN)disposition='already_visible';
+        else{
+          const d=this.delivery(messageId,recipient);
+          if(d.state==='withdrawn')disposition='already_withdrawn';
+          else if(d.state==='replied')disposition='replied';
+          else if(d.attempts.at(-1)?.outcome==='in_flight')disposition='already_submitting';
+          else if(d.state==='submitted'||d.attempts.some(a=>a.outcome==='submitted'))disposition='submitted';
+          else if(d.state==='uncertain'||d.attempts.some(a=>a.outcome==='uncertain'))disposition='uncertain';
+          else{
+            this.updateDelivery(messageId,recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.held=false;value.waiting=null;});
+            disposition='withdrawn';
+          }
+        }
+        return {recipient,disposition};
+      })};
+    });
   }
   /** Update mutable state only; message, recipient and target snapshot cannot be replaced. */
   updateDelivery(messageId: string, recipient: string, update: (delivery: Delivery) => void): Delivery {
@@ -199,7 +239,9 @@ export class Ledger {
       const delivery = this.delivery(messageId, recipient);
       const frozen = JSON.stringify([delivery.messageId, delivery.recipient, delivery.target]);
       const oldAttempts = structuredClone(delivery.attempts);
+      const withdrawn=delivery.state==='withdrawn'?JSON.stringify(delivery):null;
       update(delivery);
+      if(withdrawn!==null&&JSON.stringify(delivery)!==withdrawn)throw new RoomError('invalid_state','Withdrawn deliveries are terminal.');
       if (frozen !== JSON.stringify([delivery.messageId, delivery.recipient, delivery.target])) throw new RoomError('invalid_state', 'Delivery target snapshots are immutable.');
       this.validateAttempts(oldAttempts, delivery.attempts);
       delivery.updatedAt = new Date().toISOString();

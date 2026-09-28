@@ -143,6 +143,8 @@ export interface Delivery {
   state: DeliveryState;
   /** Broker cancellation tombstone; absent on pre-M7 deliveries. */
   withdrawnAt?: string;
+  /** Room scheduling lane; absent on historical rows means normal. */
+  priority?: 'normal' | 'urgent';
   held: boolean;
   /** Set while the recipient is unreachable and the delivery waits (state stays `queued`). */
   waiting: UnavailableReason | null;
