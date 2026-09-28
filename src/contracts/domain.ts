@@ -95,12 +95,12 @@ export interface RoomMessage {
  * Per-recipient delivery lifecycle (proposal "Delivery states"):
  * queued -> submitted -> replied, with failed / uncertain outcomes. `held` is independent.
  */
-export const DELIVERY_STATES = ['queued', 'submitted', 'replied', 'failed', 'uncertain'] as const;
+export const DELIVERY_STATES = ['queued', 'submitted', 'replied', 'failed', 'uncertain', 'withdrawn'] as const;
 export type DeliveryState = (typeof DELIVERY_STATES)[number];
 
 /** States from which the dispatcher will not act again without an explicit human retry. */
 export function isSettledDeliveryState(state: DeliveryState): boolean {
-  return state === 'submitted' || state === 'replied' || state === 'failed' || state === 'uncertain';
+  return state === 'withdrawn' || state === 'submitted' || state === 'replied' || state === 'failed' || state === 'uncertain';
 }
 
 /** Evidence recorded when an adapter reports submission. Never includes secrets (invariant 6). */
@@ -141,6 +141,8 @@ export interface Delivery {
   recipient: string;
   target: TargetSnapshot;
   state: DeliveryState;
+  /** Broker cancellation tombstone; absent on pre-M7 deliveries. */
+  withdrawnAt?: string;
   held: boolean;
   /** Set while the recipient is unreachable and the delivery waits (state stays `queued`). */
   waiting: UnavailableReason | null;
