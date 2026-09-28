@@ -71,6 +71,22 @@ test('an unknown other agent is disclosed but does not block the authenticated p
   if(done.status==='executed')assert.deepEqual(done.proposal?.excluded,[{name:'fable',reason:'unknown'}]);
 });
 
+test('a unanimous proposal follows the target binding through a rename',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-target-rename-'));const room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'still addressed to the same binding'});
+  const opened=await call(room,'kick',{caller:agent(a),name:'target',reason:'approved removal'});
+  assert.equal(opened.status,'open');
+  await call(room,'rename',{caller:agent(c),newName:'newtarget'});
+  const done=await call(room,'kick',{caller:agent(b),name:'newtarget'});
+  assert.equal(done.status,'executed');
+  assert.equal(room.ledger.delivery(pending.message.id,'newtarget').withdrawalCause,'kick');
+  const registry=await readRegistry(root);
+  assert.equal(registry.target,undefined);
+  assert.equal(registry.newtarget,undefined);
+});
+
 test('startup finishes a unanimous proposal interrupted before registry removal',async t=>{
   const root=await mkdtemp(join(tmpdir(),'vp-kick-recover-'));let room=new RoomService(root);
   t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});

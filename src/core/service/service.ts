@@ -392,23 +392,14 @@ export class RoomService {
     const superseded=proposal?null:this.ledger.openKickProposal({harness:target.harness,sessionId:target.sessionId});
     let registry=await readRegistry(this.root);
     const same=(b:{harness:string;session_id:string})=>b.harness===target.harness&&b.session_id===target.sessionId;
-    // An explicit human decision follows the native binding if it was renamed
-    // while the service was down; a proposal's frozen target does not.
+    // A proposal and a human decision both target a native binding. A rename
+    // changes its label, never the subject of the already recorded decision.
     const currentName=Object.entries(registry).find(([,b])=>same(b))?.[0];
-    if(humanIntentId&&currentName)target={...target,name:currentName};
+    if(currentName)target={...target,name:currentName};
     let bound=registry[target.name];
-    if(bound&&!same(bound)){
-      if(proposal)await this.expireKickProposal(proposal);
-      if(!humanIntentId)throw new RoomError('rebind_conflict','Target binding changed during voting; open a new proposal.');
-      bound=undefined; // The intended binding is already absent; never remove its replacement.
-    }
-    if(!bound){
-      if(!proposal&&!humanIntentId)throw new RoomError('not_registered','The target is no longer registered.');
-      if(Object.values(registry).some(same)){
-        if(proposal)await this.expireKickProposal(proposal);
-        throw new RoomError('rebind_conflict','Target changed its name during voting; open a new proposal.');
-      }
-    }else registry=await removeRegistryParticipant(this.root,target.name,{harness:target.harness,session_id:target.sessionId});
+    if(bound&&!same(bound))bound=undefined; // An old label may have been reused; never remove its replacement.
+    if(!bound&&!proposal&&!humanIntentId)throw new RoomError('not_registered','The target is no longer registered.');
+    if(bound)registry=await removeRegistryParticipant(this.root,target.name,{harness:target.harness,session_id:target.sessionId});
     // The native handoff may already be underway. It settles under the old label;
     // only rows still queued afterward can receive a broker cancellation tombstone.
     if(this.serviceStarted)await this.dispatcher.settleRecipient(target.name);
