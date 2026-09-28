@@ -6,13 +6,14 @@ import path from 'node:path';
 import { FrameDecoder, FrameError, encodeFrame, MAX_FRAME_BYTES, PROTOCOL_VERSION, type ClientKind, type Frame, type RequestFrame, type RoomEvent } from '../contracts/ipc.js';
 import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import { RoomService } from '../core/service/service.js';
+import type { MonitorDeps } from '../core/service/monitor.js';
 import { integer, record } from '../core/service/validation.js';
 import { loadConfig } from '../core/config.js';
 import { VERSION } from '../version.js';
 import { endpointFor } from './endpoint.js';
 
 export interface RunningServer { service:RoomService; pid:number; close():Promise<void> }
-export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>;adapters?:DeliveryAdapter[]} = {}):Promise<RunningServer> {
+export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>;adapters?:DeliveryAdapter[];monitor?:{observer:MonitorDeps['observer'];intervalMs:number}} = {}):Promise<RunningServer> {
   await mkdir(path.join(root,'.room'),{recursive:true});
   const endpoint=endpointFor(root);const nonce=randomUUID();const lock=path.join(root,'.room','service.lock');
   const sockets=new Set<Socket>();const active=new Set<Promise<unknown>>();const subscribed=new Set<Socket>();const replaying=new Map<Socket,RoomEvent[]>();let service:RoomService;let closing:Promise<void>|null=null;let stopping=false;let startupError:unknown;let signalReady!:()=>void;const ready=new Promise<void>(resolve=>{signalReady=resolve;});
@@ -104,6 +105,7 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
   };
   try {
     service=new RoomService(root,options.adapters);
+    if(options.monitor)service.enableMonitor(options.monitor.observer,options.monitor.intervalMs);
     await options.beforeReady?.();
     await writeFile(lock,JSON.stringify({pid:process.pid,nonce,endpoint,startedAt:new Date().toISOString()}));
     service.onEvent(value=>{
