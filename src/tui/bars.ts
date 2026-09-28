@@ -1,5 +1,6 @@
 // Usage bars (6.8) with state colours (6.10), the percentage inside the bar (6.14) as one flat surface (6.15): 10 cells
-// (8 when the budget grid is tight), filled cells in reverse video, a dim ░ track, and the number (one decimal) centred.
+// (8 when the budget grid is tight): the fill a solid state-colour background, the track a solid dim background, and the
+// number (one decimal) drawn over both with no background of its own. Monochrome: reverse-video fill, ░ track.
 // Colour (Kevin, 6.10, mockup option "c"): a bar takes the colour of its STATE — green under 70%, amber 70–90%, red
 // above 90% — so a glance tells whether anything is close to a limit. Status is also carried by text ("!", "—",
 // "stale", "?") so it survives NO_COLOR.
@@ -35,6 +36,8 @@ export const TRACK_BG = 'ansi256(237)';
 export const STALE_FILL = 'ansi256(244)';
 /** Label text over a bright fill: dark, for contrast; over the track it keeps the default foreground. */
 export const TEXT_ON_FILL = 'black';
+/** Label text over the dim track: an explicit light foreground, so it's readable whatever the terminal's theme. */
+export const TEXT_ON_TRACK = 'ansi256(252)';
 
 /**
  * The bar with its percentage INSIDE it (Kevin, 6.14 option a; 6.15: one flat surface). `cells` cells: the first
@@ -69,13 +72,17 @@ export function shadedBar(percent: number, text: string, opts: { cells: number; 
  * with dark text, and the track a solid dim background with the default text colour; in monochrome (no backgrounds) a
  * fill is reverse video and the track plain, so the filled extent still shows without colour.
  */
-export function surfaceStyle(seg: Segment, mono: boolean): { color?: string; backgroundColor?: string; inverse?: boolean; dim?: boolean } {
+export function surfaceStyle(seg: Segment, mono: boolean): { color?: string; backgroundColor?: string; inverse?: boolean; dim?: boolean; blank?: string } {
   if (!seg.surface) return { color: seg.color, inverse: seg.inverse, dim: seg.dim };
   const fill = seg.surface.kind === 'fill';
-  if (mono) return { inverse: fill, dim: seg.dim };
+  // Monochrome has no backgrounds: the fill is reverse video and the track's blank cells show "░", so a bar's extent
+  // (and a 0% bar) stays visible without colour.
+  if (mono) return fill ? { inverse: true, dim: seg.dim } : { inverse: false, dim: seg.dim, blank: '░' };
+  // Colour: flat surfaces. Text on a (grey) stale fill isn't dimmed — the grey already says stale, and dim black on
+  // grey could vanish; text on the track has an explicit light foreground so it's readable on any terminal theme.
   return fill
-    ? { backgroundColor: seg.surface.color ?? STALE_FILL, color: TEXT_ON_FILL, dim: seg.dim }
-    : { backgroundColor: TRACK_BG, dim: seg.dim };
+    ? { backgroundColor: seg.surface.color ?? STALE_FILL, color: TEXT_ON_FILL }
+    : { backgroundColor: TRACK_BG, color: TEXT_ON_TRACK, dim: seg.dim };
 }
 /**
  * One metric: `label [bar with "21.0%" inside]` (label quiet; the bar in the state colour), or `label 21.0%` when

@@ -148,3 +148,15 @@ append; announce new ADRs over pair-poc.
   - The number no longer needs its own column, so a metric is about 6 cells narrower, and Fable fits on Claude's row in narrower panes.
   - Reverse video keeps the fill visible without colour.
   - Supersedes the "bar then number" form from ADR-0009 and ADR-0010; the state colours from ADR-0010 are unchanged.
+
+## ADR-0012 — Bars as one flat surface (amends ADR-0011's rendering)
+- **Date:** 2026-09-28   **Sprint:** 6.15   **Author:** Claude   **Status:** Accepted
+- **Context:** Kevin: the ░ track with a flat-backed label "reads as a patch pasted over a textured strip"; he wants a single flat surface.
+- **Decision:**
+  - A bar cell is a *surface* (`Segment.surface`).
+  - In colour: the fill is a solid background in the state colour (`STALE_FILL` grey when stale) with dark label text (`TEXT_ON_FILL`); the track is a solid dim background (`TRACK_BG`, ansi256 237) with an explicit light foreground (`TEXT_ON_TRACK`). Label glyphs have no background of their own.
+  - In monochrome (no backgrounds): a reverse-video fill and a ░ track, so the extent (and a 0% bar) stays visible.
+  - Rendering is centralised in `surfaceStyle` and the app's `SegmentText`.
+- **Consequences:**
+  - ADR-0011's layout is kept (the number inside, aligned, monotonic sizing); only the cell rendering changes.
+  - Tests assert bars through the monochrome rendering (`barText`), plus rendered colour and mono frames.
