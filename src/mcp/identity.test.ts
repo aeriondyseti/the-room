@@ -66,10 +66,30 @@ test('an unreadable process table is reported as such (retryable), not as "no se
   assert.match(!r.ok ? r.message : '', /Couldn't read the process table/);
 });
 
+test('broken chain (Git Bash): the env fallback is CLI-only, shell-only, verified, and must agree', async () => {
+  const records = [{ pid: 777, sessionId: CLAUDE }];
+  const env = { CLAUDE_PID: '777', CLAUDE_CODE_SESSION_ID: CLAUDE };
+  const shellChain = async (pid: number) => (pid === 5 ? { ppid: 6, name: 'bash.exe' } : pid === 6 ? { ppid: 99999, name: 'timeout.exe' } : null);
+  const ok = await resolveCaller({}, deps(records, { ownParentPid: 5, env, processInfo: shellChain, allowEnvFallback: true }));
+  assert.deepEqual(ok.ok && ok.native, { harness: 'claude', sessionId: CLAUDE, source: 'claude-env-verified' });
+
+  const mcpPath = await resolveCaller({}, deps(records, { ownParentPid: 5, env, processInfo: shellChain }));
+  assert.equal(mcpPath.ok, false, 'the MCP server never uses the inherited-env fallback');
+
+  const otherHarness = async (pid: number) => (pid === 5 ? { ppid: 6, name: 'node.exe' } : pid === 6 ? { ppid: 99999, name: 'bash.exe' } : null);
+  const viaUnknown = await resolveCaller({}, deps(records, { ownParentPid: 5, env, processInfo: otherHarness, allowEnvFallback: true }));
+  assert.equal(viaUnknown.ok, false, 'an unknown executable before the break could be the real caller');
+
+  const mismatch = await resolveCaller({}, deps(records, { ownParentPid: 5, env: { ...env, CLAUDE_CODE_SESSION_ID: 'someone-else-1234' }, processInfo: shellChain, allowEnvFallback: true }));
+  assert.equal(mismatch.ok, false, 'env pid and env session must agree with the registry');
+  const unverified = await resolveCaller({}, deps(records, { ownParentPid: 5, env, processInfo: shellChain, allowEnvFallback: true, claudeRegistry: { ...deps(records).claudeRegistry, processStartTime: async () => null } }));
+  assert.equal(unverified.ok, false, 'the env fallback requires a verified start time');
+});
+
 test('no evidence → unresolved with the CLI fallback; env alone is not enough', async () => {
   const r = await resolveCaller({}, deps([], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE } }));
   assert.equal(r.ok, false);
-  assert.match(!r.ok ? r.message : '', /room send --as <name>/);
+  assert.match(!r.ok ? r.message : '', /add the room MCP server/);
 });
 
 test('a reused pid (start time mismatch) is not accepted as the caller', async () => {
