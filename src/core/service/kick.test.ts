@@ -84,6 +84,8 @@ test('a unanimous proposal follows the target binding through a rename',async t=
   assert.equal(opened.status,'open');
   await call(room,'rename',{caller:agent(c),newName:'newtarget'});
   assert.equal(room.ledger.openKickProposal({harness:'codex',sessionId:c})?.target.name,'newtarget');
+  await call(room,'rename',{caller:agent(b),newName:'newfable'});
+  assert.deepEqual(room.ledger.openKickProposal({harness:'codex',sessionId:c})?.voters.map(v=>v.name),['astra','newfable']);
   const done=await call(room,'kick',{caller:agent(b),name:'newtarget'});
   assert.equal(done.status,'executed');
   assert.equal(room.ledger.delivery(pending.message.id,'newtarget').withdrawalCause,'kick');

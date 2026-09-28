@@ -33,6 +33,7 @@ export class RoomService {
   private requestTail:Promise<void>=Promise.resolve();
   private kickTimer:NodeJS.Timeout|null=null;
   private serviceStarted=false;
+  private closed=false;
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
@@ -91,7 +92,7 @@ export class RoomService {
     await this.recoverKickProposals();this.serviceStarted=true;
     this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();
   }
-  async close():Promise<void>{this.serviceStarted=false;if(this.kickTimer)clearTimeout(this.kickTimer);await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
+  async close():Promise<void>{this.closed=true;this.serviceStarted=false;if(this.kickTimer)clearTimeout(this.kickTimer);await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
   /** Rename spans a registry write and a ledger relabel. Serialize room requests
@@ -245,8 +246,12 @@ export class RoomService {
           const deliveries=this.ledger.relabelQueued(oldName,newName,target,this.ledger.roomState().paused);
           if(previous)this.ledger.putParticipant({...previous,name:newName,pending:this.ledger.queued(newName).length});
           this.ledger.recordParticipantAlias(oldName,target);
-          const openProposal=this.ledger.openKickProposal(target);
-          if(openProposal)this.ledger.putKickProposal({...openProposal,target:{...openProposal.target,name:newName}});
+          for(const openProposal of this.ledger.openKickProposals()){
+            const matching=(binding:TargetSnapshot)=>binding.harness===target.harness&&binding.sessionId===target.sessionId;
+            const renamedTarget=matching(openProposal.target)?{...openProposal.target,name:newName}:openProposal.target;
+            const renamedVoters=openProposal.voters.map(v=>matching(v.binding)?{...v,name:newName}:v);
+            if(renamedTarget!==openProposal.target||renamedVoters.some((v,i)=>v!==openProposal.voters[i]))this.ledger.putKickProposal({...openProposal,target:renamedTarget,voters:renamedVoters});
+          }
           return deliveries;
         });
         try{
@@ -362,6 +367,7 @@ export class RoomService {
     catch{return null;}
   }
   private scheduleKickExpiry():void {
+    if(this.closed)return;
     if(this.kickTimer)clearTimeout(this.kickTimer);
     const now=Date.now();
     const retryAt=now+Math.max(1000,loadConfig().dispatchPollMs);
@@ -370,7 +376,10 @@ export class RoomService {
       return Math.min(min,p.voters.every(v=>v.votedAt!==null)||deadline<=now?retryAt:deadline);
     },this.ledger.humanKickIntents().length?retryAt:Number.POSITIVE_INFINITY);
     if(!Number.isFinite(next)){this.kickTimer=null;return;}
-    this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.serialized(()=>this.recoverKickProposals()).catch(()=>this.scheduleKickExpiry());},Math.min(2_147_483_647,Math.max(1,next-Date.now())));
+    this.kickTimer=setTimeout(()=>{
+      this.kickTimer=null;if(this.closed)return;
+      void this.serialized(async()=>{if(!this.closed)await this.recoverKickProposals();}).catch(()=>{if(!this.closed)try{this.scheduleKickExpiry();}catch{/* The service is shutting down or its ledger is unavailable. */}});
+    },Math.min(2_147_483_647,Math.max(1,next-Date.now())));
     this.kickTimer.unref();
   }
   private async expireKickProposal(proposal:KickProposal):Promise<void> {
