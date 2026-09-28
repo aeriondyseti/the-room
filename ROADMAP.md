@@ -254,7 +254,7 @@ ergonomics first. Ownership agreed at the milestone boundary.
 
 - [ ] **7.1 Inbox snapshots and guarded send (core)** *(Astra)*
   **Done-when:** per-binding inbox revisions and opaque snapshot tokens bound to the content they cover. `room_send`
-  commits only when nothing new exists beyond its snapshot (atomically with persist-before-ack). A missing or stale token
+  commits only when every message addressed to the sender is covered by its snapshot (atomically with persist-before-ack). A missing or stale token
   is "not sent", with the delta, a fresh token and an attempt id. Blocked attempts are audited, not sent. Human
   messages count as new; human sends bypass the guard.
 - [ ] **7.2 Withdraw and urgent (core)** *(Astra)*
@@ -266,7 +266,7 @@ ergonomics first. Ownership agreed at the milestone boundary.
     under /pause), with a reason required and audited;
   - the ADR for the lane's exception to per-recipient order is logged.
 - [ ] **7.3 Tools and CLI** *(Claude)*
-  **Done-when:** `room_inbox`; `snapshot`, `urgent` + `reason` and `attempt_id` on `room_send`; `room_withdraw`; CLI
+  **Done-when:** `room_inbox`; `snapshot`, `urgent` + `reason` and `revisesAttemptId` on `room_send`; `room_withdraw`; CLI
   equivalents; envelopes carry a token covering their own content. Tool descriptions teach models to revise on
   "not sent" and to use the envelope token. Built against 7.1/7.2 contracts, with fakes first.
 - [ ] **7.4 TUI** *(Claude)*
