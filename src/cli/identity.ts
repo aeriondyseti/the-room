@@ -34,6 +34,9 @@ export async function cliCaller(name: string | null, deps: IdentityDeps, note: (
     }
     if (found.status === 'error' || found.status === 'stale') throw new RoomError('identity_unresolved', found.detail);
     if (info?.name && /^claude(\.exe)?$/i.test(info.name)) agentDetected = true;
+    // Explorer is the Windows desktop root; its userinit launcher normally exits. Walking above
+    // it would reject ordinary Windows Terminal shells. Agent/env evidence always wins first.
+    if(info?.name && /^explorer\.exe$/i.test(info.name) && !agentDetected){pid=null;break;}
     if(info===null){brokenAncestry=true;break;}
     pid = info.ppid;
   }
