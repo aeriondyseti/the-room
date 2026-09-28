@@ -73,7 +73,8 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
       inputSchema: {
         to: z
           .union([z.string(), z.array(z.string())])
-          .describe('Recipient name(s): "astra", "astra, claude", ["astra","claude"], "human", or "all".'),
+          .optional()
+          .describe('Recipient name(s): "astra", "astra, claude", ["astra","claude"], "human", or "all". Omit only when reply_to is supplied; defaults to that message\'s sender.'),
         text: z.string().min(1).describe('The message (markdown/plain text).'),
         reply_to: z.string().optional().describe('Message id or #number you are replying to.'),
         client_message_id: z
@@ -88,8 +89,14 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
       guard(async () => {
         const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
         const r = await room();
-        const to = parseRecipients(args.to);
         const replyTo = args.reply_to ? await resolveMessageRef(r, args.reply_to) : null;
+        let to: string[];
+        if(args.to!==undefined)to=parseRecipients(args.to);
+        else if(replyTo){
+          const original=(await r.request('read',{messageId:replyTo})).items[0];
+          if(!original)throw new RoomError('not_found','The message being replied to no longer exists.');
+          to=[original.message.from.name];
+        }else throw new RoomError('no_recipients','Provide to, or reply_to to address the original sender.');
         const result = await r.request('send', {
           caller,
           to,
@@ -235,7 +242,7 @@ async function resolveMessageRef(r: RoomLink, ref: string): Promise<string> {
 
 function sendSummary(result: MessageWithDeliveries & { deduplicated: boolean }, note: string | undefined): string {
   const { message, deliveries } = result;
-  const states = deliveries.map((d) => `${d.recipient} ${d.held ? 'held (room paused)' : d.waiting ? `waiting (${d.waiting.replace('_', ' ')})` : d.state}`);
+  const states = deliveries.map((d) => `${d.recipient} ${d.waiting ? `waiting (${d.waiting.replace('_', ' ')})` : d.held ? 'held (room paused)' : d.state}`);
   const lines = [
     result.deduplicated
       ? `Already sent as #${message.seq} (this retry was recognised; nothing was sent twice).`

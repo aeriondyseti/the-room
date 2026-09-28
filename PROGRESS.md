@@ -58,7 +58,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 5.1 | TUI polish | Claude | ⬜ | |
-| 5.2 | Agent ergonomics | Astra | ⬜ | |
+| 5.2 | Agent ergonomics | Astra | 🟡 | Readable CLI, reply shortcuts, actionable doctor hints. |
 | 5.3 | Human ergonomics and release | Claude + Astra | ⬜ | |
 
 ## Milestone 6 — Post-release

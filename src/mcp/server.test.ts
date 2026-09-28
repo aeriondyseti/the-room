@@ -56,6 +56,16 @@ test('tools are listed with descriptions', async () => {
   assert.deepEqual(tools, ['room_join', 'room_read', 'room_send', 'room_who']);
 });
 
+test('reply_to defaults to the original sender while a missing address still fails',async()=>{
+  const f=fakeLink({read:()=>({items:[msg(12,{from:{name:'claude',kind:'agent',identity:{mode:'verified',source:'claude-ancestry'}}})],lastSeq:12,hasMore:false}),send:p=>({...msg(13,{to:(p as Params<'send'>).to}),deduplicated:false})});
+  const{client,call}=await connectClient(f.link);
+  try{
+    const reply=await call('room_send',{reply_to:'m12',text:'ack'});assert.equal(reply.isError,false);
+    assert.deepEqual((f.requests.find(r=>r.method==='send')!.params as Params<'send'>).to,['claude']);
+    const missing=await call('room_send',{text:'unaddressed'});assert.equal(missing.isError,true);assert.match(missing.text,/Provide to|reply_to/);
+  }finally{await client.close();}
+});
+
 test('room_send resolves identity per call, parses recipients, resolves #N replies, and always sends a client_message_id', async () => {
   const f = fakeLink({
     read: () => ({ items: [msg(12)], lastSeq: 12, hasMore: false }),
