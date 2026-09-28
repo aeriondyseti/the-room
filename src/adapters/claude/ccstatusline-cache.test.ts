@@ -1,10 +1,10 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccountUsage, AccountUsageProvider } from '../../contracts/account.js';
-import { bucketsFromCcstatusline, CCSTATUSLINE_SOURCE, ccstatuslineCacheProvider, firstAvailable, isDefaultClaudeProfile } from './ccstatusline-cache.js';
+import { bucketsFromCcstatusline, CCSTATUSLINE_SOURCE, ccstatuslineAccountKey, ccstatuslineCacheProvider, firstAvailable, isDefaultClaudeProfile } from './ccstatusline-cache.js';
 import { claudeUsageApiProvider, type UsageFetch } from './usage-api.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'vp-ccsl-'));
@@ -32,6 +32,9 @@ test('provider: reads the cache (observedAt = mtime); never throws on null/array
   const ok = await p.sample();
   assert.deepEqual([ok.status, ok.source], ['ok', CCSTATUSLINE_SOURCE]);
   assert.doesNotMatch(JSON.stringify(ok), /abc123|tokenHash/);
+  assert.doesNotMatch(CCSTATUSLINE_SOURCE, /default/, 'never claims to be the default login');
+  assert.deepEqual([ok.account.scope, ok.account.key, ok.account.sourceKey], ['profile', ccstatuslineAccountKey('abc123'), 'k'], 'opaque login identity; stable per-profile row key');
+  assert.notEqual(ccstatuslineAccountKey('abc123'), ccstatuslineAccountKey('other'));
   for (const bad of ['null', '[1,2]', '42', '"x"']) {
     writeFileSync(path, bad);
     const r = await p.sample();
@@ -40,6 +43,7 @@ test('provider: reads the cache (observedAt = mtime); never throws on null/array
   writeFileSync(path, JSON.stringify({ error: 'secret-ish upstream text' }));
   const err = await p.sample();
   assert.equal(err.reason, 'ccstatusline reported a usage fetch error');
+  assert.equal(err.account.key, ccstatuslineAccountKey('abc123'), 'a failure is attributed to the login last seen, not a guessed one');
   assert.doesNotMatch(JSON.stringify(err), /secret-ish/, 'never echoes the cache error string');
 });
 
@@ -59,6 +63,9 @@ test('firstAvailable: first FRESH ok wins; an old ok never blocks a fresher sour
   assert.equal((await firstAvailable('x', [src('cache', 'ok', old), src('api', 'unavailable')], fresh).sample()).source, 'cache', 'nothing fresher: keep the stale reading (the monitor labels it)');
   const viaTap = await firstAvailable('x', [src('cache', 'unavailable'), src('claude statusline tap', 'ok')], fresh).sample();
   assert.equal(viaTap.fallback, true);
+  const oldCacheFreshTap = await firstAvailable('x', [src('cache', 'ok', old), src('claude statusline tap', 'ok')], fresh).sample();
+  assert.deepEqual([oldCacheFreshTap.source, oldCacheFreshTap.fallback], ['claude statusline tap', true], 'a fresh tap replacing an old FULL cache is still a reduced fallback');
+  assert.match(oldCacheFreshTap.reason ?? '', /^cache: last reading .* is old$/);
   const none = await firstAvailable('x', [src('cache', 'unavailable'), src('claude statusline tap', 'unavailable')], fresh).sample();
   assert.deepEqual([none.status, none.reason], ['unavailable', 'cache down']);
 });
@@ -102,5 +109,35 @@ test('usage endpoint: throttled per interval, single-flight in-process, one rese
   now += 30_000;
   await p.sample();
   assert.equal(calls, 3, 'errors are reused for errorRetryMs');
-  void utimesSync;
+});
+
+test('usage endpoint reservation: an empty (mid-write) lock is held while recent; old ones are taken over; release never removes a lock another service took over', async () => {
+  const home = join(dir, 'claude-lock');
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'tok' } }));
+  const cachePath = join(dir, 'lock-cache.json');
+  const lock = `${cachePath}.lock`;
+  let calls = 0;
+  let during: (() => void) | null = null;
+  const fetch: UsageFetch = async () => {
+    calls++;
+    during?.();
+    return { status: 200, body: JSON.stringify({ five_hour: { utilization: 5 }, seven_day: { utilization: 20 } }) };
+  };
+  const make = () => claudeUsageApiProvider({ claudeConfigDir: home, fetch, now: () => T0, throttle: { cachePath, minIntervalMs: 300_000, rateLimitBackoffMs: 300_000, errorRetryMs: 60_000, lockMs: 30_000 } });
+  writeFileSync(lock, ''); // another service created the lock but hasn't written it yet
+  assert.equal((await make().sample()).status, 'unavailable');
+  assert.equal(calls, 0, 'an empty lock with a recent mtime is held, not read as abandoned');
+  const past = new Date(Date.now() - 120_000);
+  utimesSync(lock, past, past);
+  // Another service takes the lock over while our fetch runs: our release must leave its lock alone.
+  during = () => writeFileSync(lock, JSON.stringify({ at: T0.getTime(), nonce: 'someone-else' }));
+  assert.equal((await make().sample()).status, 'ok');
+  assert.equal(calls, 1, 'an abandoned empty lock is taken over');
+  assert.match(readFileSync(lock, 'utf8'), /someone-else/, 'release only unlinks our own nonce');
+  rmSync(lock);
+  during = null;
+  const p = make();
+  await p.sample();
+  assert.equal(calls, 1, 'cache reused');
 });

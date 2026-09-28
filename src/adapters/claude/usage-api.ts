@@ -5,7 +5,8 @@
 // logged, returned or shown. The refresh token is never used: an expired token just reads as unavailable until Claude
 // Code refreshes it. Undocumented endpoint (as used by ccstatusline 2.2.30): shape changes degrade to unavailable.
 import { request } from 'node:https';
-import { mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { AccountUsage, AccountUsageProvider, UsageBucket, UsageWindow } from '../../contracts/account.js';
@@ -138,33 +139,62 @@ async function readCache(path: string): Promise<UsageCache | null> {
     return null;
   }
 }
-/** Take the reservation (exclusive create). An existing one older than `lockMs` is abandoned: replace it once. */
-async function reserve(lock: string, at: number, lockMs: number): Promise<boolean> {
+/**
+ * Take the reservation (exclusive create). The lock holds `{at, nonce}`; a lock that is empty or unreadable (a writer
+ * between create and write) counts as held while its file mtime is recent. One older than `lockMs` is abandoned and
+ * taken over once, only if it still holds exactly what we judged stale. Returns our nonce, or null if held elsewhere.
+ */
+async function reserve(lock: string, at: number, lockMs: number): Promise<string | null | 'uncoordinated'> {
   try {
     await mkdir(dirname(lock), { recursive: true });
   } catch {
-    return true; // can't coordinate across processes; in-process single-flight still applies
+    return 'uncoordinated'; // can't coordinate across processes; in-process single-flight still applies
   }
+  const nonce = randomUUID();
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const h = await open(lock, 'wx');
-      await h.writeFile(String(at));
-      await h.close();
-      return true;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return true;
       try {
-        const held = Number(await readFile(lock, 'utf8'));
-        if (Number.isFinite(held) && at - held < lockMs) return false;
+        await h.writeFile(JSON.stringify({ at, nonce }));
+      } finally {
+        await h.close();
+      }
+      return nonce;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return 'uncoordinated';
+      try {
+        const raw = await readFile(lock, 'utf8');
+        const held = lockData(raw);
+        if (held ? at - held.at < lockMs : Date.now() - (await stat(lock)).mtimeMs < lockMs) return null;
+        if ((await readFile(lock, 'utf8')) !== raw) return null; // replaced meanwhile: someone else took it over
         await unlink(lock);
       } catch {
-        return false;
+        return null;
       }
     }
   }
-  return false;
+  return null;
 }
 
+function lockData(raw: string): { at: number; nonce: string | null } | null {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (typeof v === 'number' && Number.isFinite(v)) return { at: v, nonce: null };
+    const o = v as { at?: unknown; nonce?: unknown } | null;
+    return o && typeof o.at === 'number' && Number.isFinite(o.at) ? { at: o.at, nonce: typeof o.nonce === 'string' ? o.nonce : null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Release only our own reservation: never unlink a lock another service has since taken over. */
+async function release(lock: string, nonce: string): Promise<void> {
+  try {
+    if (lockData(await readFile(lock, 'utf8'))?.nonce === nonce) await unlink(lock);
+  } catch {
+    // already gone, or unreadable: leave it; it is abandoned after lockMs
+  }
+}
 async function writeCache(path: string, cache: UsageCache): Promise<void> {
   try {
     await mkdir(dirname(path), { recursive: true });
@@ -197,20 +227,26 @@ export function claudeUsageApiProvider(opts: { claudeConfigDir: string; timeoutM
     if (cached && reuse(cached)) return { ...cached.result, checkedAt: new Date(at).toISOString() };
     // Cross-process reservation: only the holder calls; others serve what's cached (even if expired) meanwhile.
     const lock = cachePath ? `${cachePath}.lock` : null;
-    if (lock && !(await reserve(lock, at, lockMs))) {
+    const held = lock ? await reserve(lock, at, lockMs) : 'uncoordinated';
+    if (held === null) {
       return cached ? { ...cached.result, checkedAt: new Date(at).toISOString() }
         : { account: { harness: 'claude', scope: 'profile', key, sourceKey: key }, buckets: [], status: 'unavailable', reason: 'another room service is fetching Claude usage right now', source, checkedAt: new Date(at).toISOString(), observedAt: null };
     }
     try {
+      // Re-read under the reservation: another service may have fetched between our first read and taking the lock.
+      const latest = cachePath ? await readCache(cachePath) : null;
+      if (latest && reuse(latest)) {
+        memory = latest;
+        return { ...latest.result, checkedAt: new Date(at).toISOString() };
+      }
       const { result, backoffUntil } = await sampleNow();
       memory = { attemptedAt: at, result, ...(backoffUntil !== undefined ? { backoffUntil } : {}) };
       if (cachePath) await writeCache(cachePath, memory);
       return result;
     } finally {
-      if (lock) await unlink(lock).catch(() => {});
+      if (lock && held !== 'uncoordinated') await release(lock, held);
     }
-  };
-  const sampleNow = async (): Promise<{ result: AccountUsage; backoffUntil?: number }> => {
+  };  const sampleNow = async (): Promise<{ result: AccountUsage; backoffUntil?: number }> => {
       const at = now();
       const base = { account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: key }, source, checkedAt: at.toISOString() };
       const unavailable = (reason: string): AccountUsage => ({ ...base, buckets: [], status: 'unavailable', reason, observedAt: null });

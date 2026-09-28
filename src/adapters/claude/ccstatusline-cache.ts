@@ -3,16 +3,20 @@
 // writes the parsed numbers to ~/.cache/ccstatusline/usage.json with a token HASH (never the token). Reading that file
 // costs zero endpoint calls and touches no credentials. Read-only; we never write it.
 //
-// Attribution (Astra's review): the cache is GLOBAL — ccstatusline reads the DEFAULT Claude login — so it is only
-// used for the default Claude profile (no custom CLAUDE_CONFIG_DIR), and labelled as that shared source. Freshness
-// comes from the file mtime (ccstatusline refreshes it only while a Claude statusline renders).
+// Attribution (Astra's reviews): the cache is one GLOBAL file written by whichever ccstatusline ran last, so which login
+// it reflects is NOT verified. It is used only for the default Claude profile (no custom CLAUDE_CONFIG_DIR), labelled
+// as an unverified shared source, and gets its own opaque identity derived from the cache's token hash (scope 'profile': a
+// token hash is not a verified account id, and it rotates with the token). sourceKey stays the profile key so the top
+// bar keeps one Claude row whichever source is serving it. Freshness comes from the
+// file mtime (ccstatusline refreshes it only while a Claude statusline renders).
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { AccountUsage, AccountUsageProvider, UsageBucket, UsageWindow } from '../../contracts/account.js';
 
 export const CCSTATUSLINE_CACHE = join(homedir(), '.cache', 'ccstatusline', 'usage.json');
-export const CCSTATUSLINE_SOURCE = 'ccstatusline cache (default Claude login)';
+export const CCSTATUSLINE_SOURCE = 'shared ccstatusline cache (login unverified)';
 
 /** True when `claudeConfigDir` is the default profile ccstatusline reads (~/.claude). */
 export function isDefaultClaudeProfile(claudeConfigDir: string, home: string = homedir()): boolean {
@@ -43,17 +47,26 @@ export function bucketsFromCcstatusline(cache: Record<string, unknown>, observed
   return buckets;
 }
 
+/** Opaque account key from ccstatusline's token hash (re-hashed: the hash itself is never exposed). */
+export function ccstatuslineAccountKey(tokenHash: unknown): string {
+  return typeof tokenHash === 'string' && tokenHash ? `ccstatusline-${createHash('sha256').update(`ccstatusline:${tokenHash}`).digest('hex').slice(0, 12)}` : 'ccstatusline-unknown';
+}
+
 export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: string; now?: () => Date }): AccountUsageProvider {
   const path = opts.path ?? CCSTATUSLINE_CACHE;
   const now = opts.now ?? (() => new Date());
-  const key = opts.profileKey;
+  const profileKey = opts.profileKey;
+  // A read failure can't see the token hash: attribute it to the login this cache last showed (so the monitor keeps
+  // that login's last reading as stale), never to a guessed one.
+  let lastKey = 'ccstatusline-unknown';
   return {
     harness: 'claude',
-    id: `claude:${key}`,
+    id: `claude:${profileKey}`,
     async sample(): Promise<AccountUsage> {
       const checkedAt = now().toISOString();
-      const base = { account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: key }, source: CCSTATUSLINE_SOURCE, checkedAt };
-      const unavailable = (reason: string): AccountUsage => ({ ...base, buckets: [], status: 'unavailable', reason, observedAt: null });
+      let key = lastKey;
+      const base = () => ({ account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: profileKey }, source: CCSTATUSLINE_SOURCE, checkedAt });
+      const unavailable = (reason: string): AccountUsage => ({ ...base(), buckets: [], status: 'unavailable', reason, observedAt: null });
       try {
         let text: string;
         let mtime: Date;
@@ -70,12 +83,13 @@ export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: str
         }
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return unavailable('the ccstatusline usage cache has an unexpected shape');
         const cache = parsed as Record<string, unknown>;
+        if (typeof cache.tokenHash === 'string' && cache.tokenHash) key = lastKey = ccstatuslineAccountKey(cache.tokenHash);
         // Fixed text: never echo the cache's own error string.
         if (cache.error !== undefined && cache.error !== null && cache.error !== '') return unavailable('ccstatusline reported a usage fetch error');
         const observedAt = mtime.toISOString();
         const buckets = bucketsFromCcstatusline(cache, observedAt);
         if (!buckets.some((b) => b.windows.some((x) => x.usedPercent !== null))) return unavailable('the ccstatusline usage cache has no values yet');
-        return { ...base, buckets, status: 'ok', observedAt };
+        return { ...base(), buckets, status: 'ok', observedAt };
       } catch {
         return unavailable('the ccstatusline usage cache could not be read');
       }
@@ -87,7 +101,8 @@ export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: str
  * Source selection with freshness (Astra's review): the first FRESH ok reading wins. If every ok reading is older than
  * `freshMs`, the first ok one is returned anyway (the AccountMonitor ages it into `stale`, keeping e.g. Fable visible
  * and labelled) — so an old ccstatusline cache never blocks a fresher opted-in source. When all fail, the first
- * failure's reason is kept. Only the statusline tap is flagged as a reduced fallback (it lacks model limits).
+ * failure's reason is kept. The statusline tap (no model limits) is flagged as a reduced fallback whenever it stands in
+ * for a fuller source that was tried first — failed, or ok but old.
  */
 export function firstAvailable(id: string, providers: readonly AccountUsageProvider[], opts: { freshMs: number; now?: () => Date }): AccountUsageProvider {
   const now = opts.now ?? (() => new Date());
@@ -97,8 +112,10 @@ export function firstAvailable(id: string, providers: readonly AccountUsageProvi
     async sample(): Promise<AccountUsage> {
       let firstFailure: AccountUsage | null = null;
       let firstOk: AccountUsage | null = null;
-      const mark = (a: AccountUsage) =>
-        firstFailure && a.source === 'claude statusline tap' ? { ...a, fallback: true, reason: `${firstFailure.source}: ${firstFailure.reason ?? 'unavailable'}` } : a;
+      const mark = (a: AccountUsage): AccountUsage => {
+        const replaced = firstOk && firstOk !== a ? { source: firstOk.source, reason: `last reading ${firstOk.observedAt ?? 'unknown'} is old` } : firstFailure;
+        return replaced && a.source === 'claude statusline tap' ? { ...a, fallback: true, reason: `${replaced.source}: ${replaced.reason ?? 'unavailable'}` } : a;
+      };
       for (const p of providers) {
         const a = await p.sample();
         if (a.status !== 'ok') {
