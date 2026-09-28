@@ -1,0 +1,128 @@
+{
+ "config": {
+  "claude": 2,
+  "codex": 0,
+  "trials": 2,
+  "scenarios": true,
+  "soakMinutes": 0,
+  "label": "dry",
+  "replyTimeoutMs": 180000,
+  "root": "C:\\Users\\Kevin\\.claude\\jobs\\67b7bc1e\\tmp\\vpfix-dry-c6cQfc",
+  "startedAt": "2026-09-28T07:04:54.287Z",
+  "finishedAt": "2026-09-28T07:06:26.738Z"
+ },
+ "fixtures": [
+  {
+   "name": "fxa",
+   "harness": "claude",
+   "sessionId": "ba761b8c-6d1a-4291-9264-0da08ecd8f48",
+   "pid": 76072
+  },
+  {
+   "name": "fxb",
+   "harness": "claude",
+   "sessionId": "c006a95e-1cd3-40a3-8e40-3cc6fe072efd",
+   "pid": 65268
+  }
+ ],
+ "trials": [
+  {
+   "fixture": "fxa",
+   "harness": "claude",
+   "messageId": "m-mukwkpnp-b3200be3-0c58-4b14-9ba9-c86efc5b8698",
+   "createdAt": "2026-09-28T07:05:17.797Z",
+   "state": "replied",
+   "attempts": 1,
+   "lastOutcome": "submitted",
+   "lastError": null,
+   "enqueueMs": 322,
+   "receivedMs": 14,
+   "promptMs": 29,
+   "turnStartMs": 2953,
+   "replyMs": 3922,
+   "replyIdentity": {
+    "mode": "verified",
+    "source": "claude-mcp-registry"
+   },
+   "outcome": "ok"
+  },
+  {
+   "fixture": "fxb",
+   "harness": "claude",
+   "messageId": "m-mukwkxlg-af347986-ba34-4019-b0dd-b04ccbc80b95",
+   "createdAt": "2026-09-28T07:05:28.084Z",
+   "state": "replied",
+   "attempts": 1,
+   "lastOutcome": "submitted",
+   "lastError": null,
+   "enqueueMs": 327,
+   "receivedMs": 15,
+   "promptMs": 28,
+   "turnStartMs": 2366,
+   "replyMs": 7282,
+   "replyIdentity": {
+    "mode": "verified",
+    "source": "claude-mcp-registry"
+   },
+   "outcome": "ok"
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "broadcast reaches all",
+   "pass": true,
+   "messageId": "m-mukwl7yr-61dd3454-114a-491c-8aeb-4fe6ec94967b",
+   "recipients": [
+    "fxa:replied",
+    "fxb:replied"
+   ],
+   "repliedBy": [
+    "fxb",
+    "fxa"
+   ]
+  },
+  {
+   "name": "@name reaches only the target",
+   "pass": true,
+   "messageId": "m-mukwlei4-07b2927b-73a9-49e7-baec-e11cc3280e27",
+   "deliveries": [
+    "fxa"
+   ],
+   "repliedBy": [
+    "fxa"
+   ]
+  },
+  {
+   "name": "same-harness reply (claude→claude)",
+   "pass": true,
+   "trigger": "m-mukwlrwa-d1b4457c-5dfd-4cd2-964c-9b691f275743",
+   "ping": "m-mukwltkh-04e15b3c-bf08-408c-83db-536c62b40681",
+   "pingIdentity": {
+    "mode": "verified",
+    "source": "claude-mcp-registry"
+   },
+   "ack": "m-mukwly5d-a55c4021-86e1-4387-8bb2-cae5d1a19a9c",
+   "ackIdentity": {
+    "mode": "verified",
+    "source": "claude-mcp-registry"
+   },
+   "pingDelivery": "replied"
+  },
+  {
+   "name": "offline instance does not block others",
+   "pass": true,
+   "messageId": "m-mukwm1he-9c87ab54-67a4-4e8a-a9c6-0e32bc36bc68",
+   "offline": "fxb",
+   "offlineDelivery": {
+    "state": "queued",
+    "waiting": null,
+    "attempts": []
+   },
+   "repliedBy": [
+    "fxa"
+   ]
+  }
+ ],
+ "soak": [],
+ "errors": []
+}
