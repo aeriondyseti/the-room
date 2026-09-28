@@ -7,7 +7,7 @@ import type { Caller, Method, Params, RequestFrame, Result, RoomEvent } from '..
 import { RoomService } from './service.js';
 import { openKickProposal } from './kick-vote.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
-import { readRegistry, removeRegistryParticipant, renameParticipant } from '../registry/registry.js';
+import { joinParticipant, readRegistry, removeRegistryParticipant, renameParticipant } from '../registry/registry.js';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const a='00000000-0000-4000-8000-00000000000a',b='00000000-0000-4000-8000-00000000000b',c='00000000-0000-4000-8000-00000000000c';
@@ -125,6 +125,20 @@ test('a pending human kick follows its binding if the name changes during downti
   assert.equal(room.ledger.delivery(pending.message.id,'newtarget').withdrawalCause,'kick');
   assert.deepEqual(room.ledger.humanKickIntents(),[]);
   assert.deepEqual((await call(room,'who',{})).participants.map(p=>p.name).sort(),['astra','fable']);
+});
+
+test('recovering a human kick never removes a replacement binding at the old name',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-human-rebind-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'old binding only'});
+  room.ledger.putHumanKickIntent({id:'interrupted-before-rebind',target:{name:'target',harness:'codex',sessionId:c},reason:'remove the old binding',createdAt:new Date().toISOString()});
+  await removeRegistryParticipant(root,'target',{harness:'codex',session_id:c});
+  await joinParticipant(root,'target',{harness:'codex',session_id:'00000000-0000-4000-8000-00000000000d'});
+  await room.close();room=new RoomService(root);await room.start();
+  assert.equal(room.ledger.delivery(pending.message.id,'target').withdrawalCause,'kick');
+  assert.deepEqual(room.ledger.humanKickIntents(),[]);
+  assert.equal((await readRegistry(root)).target?.session_id,'00000000-0000-4000-8000-00000000000d');
 });
 
 test('kick waits for an accepted native handoff and cancels only the still-queued delivery',async t=>{
