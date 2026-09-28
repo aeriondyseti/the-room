@@ -202,3 +202,17 @@ test('integration: two Codex agents join and message each other through the real
   assert.equal(spoof.isError, true, 'an unregistered thread cannot send');
   (cached as RoomClient | null)?.close();
 });
+
+
+test('room_send missing or invalid text explains the field without dispatching', async () => {
+  const f = fakeLink({});
+  const {client,call}=await connectClient(f.link);
+  try {
+    for (const args of [{to:'claude',body:'ack'},{to:'claude',text:42},{to:'claude',text:''}]) {
+      const result=await call('room_send',args);
+      assert.equal(result.isError,true);
+      assert.match(result.text,/message.*text field/);
+    }
+    assert.equal(f.requests.length,0);
+  } finally {await client.close();}
+});

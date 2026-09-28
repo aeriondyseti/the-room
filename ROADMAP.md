@@ -239,3 +239,7 @@ Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint bef
   **Done-when:** inherited Git repository variables cannot redirect discovery into another repo;
   linked worktrees remain shared; bare repositories require explicit ROOM_ROOT; existing human-only
   service/CLI/MCP guard tests remain green and trusted-local limitations are documented.
+
+- [ ] **6.3c MCP text-field remediation** *(Astra)* — missing, non-string and empty room_send text
+  identifies the required field; canonical schema and delivery behavior unchanged; SDK regression
+  proves invalid requests never dispatch.
