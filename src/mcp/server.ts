@@ -180,7 +180,9 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
       description:
         'Cancel a message you sent, for recipients whose session has not been handed it yet. Once a recipient\'s session ' +
         'has accepted it, it is too late: that recipient is reported as not withdrawn. The human sees messages as soon ' +
-        'as they are sent, so a withdraw never hides it from them. The message stays in history, marked withdrawn.',
+        'as they are sent, so a withdraw never hides it from them. The message stays in history, marked withdrawn. ' +
+        'Ordinary messages are held briefly before delivery (half a second by default; a room setting), so withdrawing ' +
+        'right after sending usually works. Urgent messages skip that hold.',
       inputSchema: {
         message_id: z.string().describe('The id or #number of your message.'),
         recipients: z.union([z.string(), z.array(z.string())]).optional().describe('Only these recipients. Omit it (or say "all") for every original recipient.'),

@@ -37,6 +37,8 @@ Agent sends need --snapshot from room inbox or the delivery being answered. --ur
 skips that check and goes ahead of ordinary messages still waiting in the room (never ones a session already
 has); it is audited. The human is never guarded.
 withdraw cancels only deliveries not yet handed to a recipient's session; after that it is too late.
+Ordinary messages are held briefly first (0.5s by default, TUI /settings), and a quick run of messages from one
+sender to one recipient arrives as a single delivery.
 Ordinary human sends broadcast; agents must choose --to. --as fallback is labelled declared.
 Use --file or --stdin to avoid shell quoting. -- ends option parsing.
 Pause holds future delivery and sends a stop request; it cannot interrupt a busy turn.
