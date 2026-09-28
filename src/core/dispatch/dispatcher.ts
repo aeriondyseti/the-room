@@ -11,7 +11,7 @@ import { buildEnvelope } from './envelope.js';
 export class Dispatcher {
  private adapters=new Map<Harness,DeliveryAdapter>();private workers=new Map<string,Promise<void>>();
  private timer:NodeJS.Timeout|null=null;private stopped=false;private scheduling=false;private started=false;
- constructor(private root:string,private ledger:Ledger,adapters:DeliveryAdapter[],private emit:(event:RoomEvent)=>void){for(const adapter of adapters)this.adapters.set(adapter.harness,adapter);}
+ constructor(private root:string,private ledger:Ledger,adapters:DeliveryAdapter[],private emit:(event:RoomEvent)=>void,private snapshotFor?:(scope:string,messageId:string)=>string){for(const adapter of adapters)this.adapters.set(adapter.harness,adapter);}
  start():void {
   if(this.started)return;this.started=true;this.recover();this.timer=setInterval(()=>{void this.kick();},loadConfig().dispatchPollMs);this.timer.unref();void this.kick();
  }
@@ -78,7 +78,15 @@ export class Dispatcher {
    }
    const message=this.ledger.read(current.messageId).message;
    let envelope;
-   try{envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);}catch(error){
+   try{
+    envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);
+    if(!envelope.referenced&&this.snapshotFor){
+     const snapshot=this.snapshotFor(`${current.target.harness}:${current.target.sessionId}`,message.id);
+     envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars,{snapshot});
+     // An omitted token has no authority effect: issuing it never advances a
+     // global reviewed watermark. Only its eventual explicit use can authorize.
+    }
+   }catch(error){
     this.change(current,d=>{d.state='failed';d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error:{code:'message_too_large',message:(error as Error).message}});});continue;
    }
    const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null,...(adapter.runtimeContext?{runtimeContext:{...adapter.runtimeContext}}:{})});});

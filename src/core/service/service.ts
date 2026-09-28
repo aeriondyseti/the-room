@@ -29,7 +29,7 @@ export class RoomService {
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
-  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.inbox=new InboxStore(this.ledger);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
+  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.inbox=new InboxStore(this.ledger);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event),(scope,messageId)=>this.inbox.envelopeToken(scope,messageId)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   /** With a workspace provider, every participant reports workspace (null = not observed yet), so /who can say so. */
   private workspaceEnabled=false;

@@ -151,3 +151,13 @@ test('native context is persisted before submission and survives uncertain outco
  const first=await send(room);await room.dispatcher.idle();
  assert.deepEqual(room.ledger.delivery(first.message.id,'astra').attempts[0]!.runtimeContext,original);
 });
+
+test('dispatcher envelope snapshot covers its own body only, never all prior addressed history',async t=>{
+ const {room,adapter}=await setup(t);
+ await send(room,'older');await room.dispatcher.idle();
+ await send(room,'newer');await room.dispatcher.idle();
+ const token=adapter.sent.at(-1)!.envelope.match(/snapshot: ([A-Za-z0-9_-]+)/)?.[1];
+ assert.ok(token,'full native envelope carries a service-issued token');
+ assert.equal(room.inbox.uncovered('codex:'+a,token),1,'older body is not implicitly credited');
+ assert.equal(room.inbox.uncovered('codex:'+b,token),null,'another native binding cannot use it');
+});
