@@ -36,6 +36,7 @@ import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, li
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
+import { leftPanelFits, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { DEFAULT_CONFIG } from '../core/config.js';
@@ -53,6 +54,13 @@ export interface AppProps {
   catchUpMaxPages?: number;
   /** Colour or monochrome (NO_COLOR / --no-color). */
   theme?: Theme;
+  /** Starting layout (6.8): top bar or left panel; /layout or Ctrl+B switches it. */
+  layout?: TuiLayout;
+  /** Left panel width, and the terminal width it needs (config: tuiPanelWidth / tuiPanelBreakpoint). */
+  panelWidth?: number;
+  panelBreakpoint?: number;
+  /** Remember a layout switch (resolves false if it couldn't be saved). Absent = not remembered (e.g. demo). */
+  onLayoutChange?: (layout: TuiLayout) => Promise<boolean>;
 }
 
 const MAX_DRAFT_ROWS = 5;
@@ -84,6 +92,10 @@ function Room({
   height,
   historyLimit = DEFAULT_CONFIG.tuiHistoryLimit,
   catchUpMaxPages = DEFAULT_CONFIG.tuiCatchUpMaxPages,
+  layout: initialLayout = 'top',
+  panelWidth = DEFAULT_CONFIG.tuiPanelWidth,
+  panelBreakpoint = DEFAULT_CONFIG.tuiPanelBreakpoint,
+  onLayoutChange,
 }: Omit<AppProps, 'theme'>) {
   const t = useTheme();
   const { exit } = useApp();
@@ -114,13 +126,32 @@ function Room({
     timer.unref?.();
     return () => clearInterval(timer);
   }, []);
-  // Top bar (6.6): participants as chips and subscription usage across the top; the conversation gets the full width.
+  // Layout (6.8): the top bar (6.6: chips + usage across the top, full-width conversation) or the left panel (the same
+  // information stacked in a column). The left panel yields to the top bar, with a notice, when the terminal is too
+  // narrow for a readable conversation beside it; the preference itself is kept.
+  const [layout, setLayout] = useState<TuiLayout>(initialLayout);
+  const leftFits = leftPanelFits(colsTotal, panelWidth, panelBreakpoint);
+  const showLeft = layout === 'left' && leftFits;
   const stale = view.connection.state !== 'connected';
-  const topLines = useMemo(
-    () => [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale })],
-    [view.participants, view.accounts, colsTotal, stale, t.mono, clock],
-  );
-  const convWidth = colsTotal - 1;
+  const topLines = useMemo((): Line[] => {
+    if (showLeft) return [];
+    const lines = [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale })];
+    if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${Math.max(panelBreakpoint, panelWidth + 51)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
+    return lines;
+  }, [showLeft, layout, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
+  const convWidth = colsTotal - (showLeft ? panelWidth + 1 : 0) - 1;
+  const switchLayout = (next: TuiLayout): Feedback => {
+    setLayout(next);
+    const fits = next === 'top' || leftFits;
+    const what = next === 'top' ? 'top bar' : 'left panel';
+    const note = fits ? '' : ` The terminal is too narrow for it right now, so the top bar shows until it's wider.`;
+    if (onLayoutChange) {
+      void onLayoutChange(next).then((ok) => {
+        if (!ok) setFeedback({ tone: 'error', text: `Layout: ${what} for now — the choice couldn't be saved, so the next launch uses the default.` });
+      });
+    }
+    return { tone: 'ok', text: `Layout: ${what}${onLayoutChange ? ' (remembered)' : ''}.${note} /layout or Ctrl+B switches back.` };
+  };
   const banner = view.connection.state !== 'connected' || (view.notice !== null && view.loaded);
   const loadFailed = !view.loaded && view.notice !== null;
   const names = useMemo(() => view.participants.map((p) => p.name), [view.participants]);
@@ -265,6 +296,15 @@ function Room({
       case 'quit':
         exit();
         return;
+      case 'layout': {
+        const arg = args.trim().toLowerCase();
+        if (arg !== '' && arg !== 'top' && arg !== 'left') {
+          setFeedback({ tone: 'error', text: 'Usage: /layout [top|left] — no argument switches between them.' });
+          return;
+        }
+        setFeedback(finish(switchLayout(arg === '' ? (layout === 'top' ? 'left' : 'top') : arg)));
+        return;
+      }
       case 'pause':
         void run('Pause failed', async () => {
           const r = await source.request('pause', { caller: { kind: 'human' }, stopRequestBody: args || null });
@@ -422,6 +462,7 @@ function Room({
     if (key.backspace) return edit(backspace(draft));
     if (key.delete) return edit(del(draft));
     if (input === '?' && draft.text === '') return setOverlay('help');
+    if (key.ctrl && input === 'b') return setFeedback(switchLayout(layout === 'top' ? 'left' : 'top'));
     if (key.ctrl || key.meta || input === '') return;
     edit(insert(draft, input));
   });
@@ -437,6 +478,7 @@ function Room({
       ))}
       <Text dimColor>{'─'.repeat(colsTotal)}</Text>
       <Box flexDirection="row" height={viewportHeight}>
+        {showLeft && <SidePanel view={view} width={panelWidth} height={viewportHeight} stale={stale} now={clock} humanName={humanName} />}
         <Box flexDirection="column" width={convWidth} paddingLeft={1} justifyContent={overlay ? 'flex-start' : 'flex-end'} overflow="hidden">
           {overlay === 'help' ? (
             <HelpOverlay />
@@ -484,6 +526,22 @@ function Room({
         suggestIdx={suggestIdx}
       />
       <StatusBar offset={scroll.offset} unseen={scroll.unseen} width={colsTotal} />
+    </Box>
+  );
+}
+
+/** The left panel: the side-panel line model in a fixed-width column with a rule on its right. */
+function SidePanel({ view, width, height, stale, now, humanName }: { view: RoomView; width: number; height: number; stale: boolean; now: number; humanName: string }) {
+  const t = useTheme();
+  const lines = useMemo(
+    () => sidePanelLines(view.participants, view.accounts, { width: width - 2, height, stale, mono: t.mono, now, humanName }),
+    [view.participants, view.accounts, width, height, stale, t.mono, now, humanName],
+  );
+  return (
+    <Box flexDirection="column" width={width} height={height} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} paddingRight={1} flexShrink={0}>
+      {lines.map((line, i) => (
+        <LineView key={i} line={line} />
+      ))}
     </Box>
   );
 }
@@ -835,6 +893,7 @@ function HelpOverlay() {
     ['Esc', 'clear the draft (never interrupts an agent)'],
     ['PgUp / PgDn, Shift+↑/↓', 'scroll the conversation'],
     ['End (empty draft), Ctrl+End', 'back to live'],
+    ['Ctrl+B', 'switch between the top bar and the left panel'],
     ['Ctrl+C', 'quit'],
   ];
   const commands: Array<[string, string]> = [
