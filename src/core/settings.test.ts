@@ -5,6 +5,25 @@ import os from 'node:os';
 import path from 'node:path';
 import { RoomSettings } from './settings.js';
 
+test('a startup file that conflicts with a valid env falls back, while an invalid env fails startup',async t=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
+ t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
+ const dir=path.join(root,'.room');await mkdir(dir);
+ const file=path.join(dir,'settings.json');
+ await writeFile(file,JSON.stringify({version:1,batchMaxHoldMs:1000}));
+ const settings=new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'1500'});
+ const fallback=await settings.get();
+ assert.equal(fallback.problem?.fallback,'defaults');
+ assert.equal(fallback.effective.deliveryHoldMs,1500);
+ assert.equal(fallback.effective.batchMaxHoldMs,2000);
+ assert.deepEqual(fallback.overridden,['deliveryHoldMs']);
+ const repaired=await settings.update({});
+ assert.equal(repaired.problem,undefined);
+ assert.equal(repaired.configured.batchMaxHoldMs,2000);
+ assert.equal(JSON.parse(await readFile(file,'utf8')).batchMaxHoldMs,2000);
+ assert.throws(()=>new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'3000'}));
+});
+
 test('bad runtime file retains good values, cold fallback uses defaults, repair backs up raw bytes',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
  t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
