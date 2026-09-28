@@ -184,13 +184,14 @@ test('both layouts show the same values; several agents on one subscription stil
   assert.equal(top.filter((l) => l.startsWith('Claude')).length, 1);
   assert.equal(left.filter((l) => /^Claude\b/.test(l)).length, 1);
 });
-test('review fixes: a short panel degrades usage (no bars/reset rows) then says "more usage", never silently; qualifiers stay on the account row', () => {
+test('review fixes: a short panel ends usage with "more usage" (never silently); qualifiers stay on the account row', () => {
   const stale = (harness: 'claude' | 'codex'): AccountUsage => ({ ...claude, status: 'stale', source: 's', account: { ...claude.account, harness, sourceKey: harness },
     buckets: [{ id: harness, windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 38, resetsAt: '2026-09-28T18:00:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 71, resetsAt: '2026-10-02T09:00:00Z' }] }] });
   const tall = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.ok(tall.some((l) => /^Claude +stale$/.test(l)) && tall.some((l) => /^Codex +stale$/.test(l)), 'the staleness qualifier rides on the account heading (right-aligned)');
   assert.ok(tall.some((l) => l.includes('░')), 'room to spare: bars');
-  // 6.16: resets never wrap, so there is nothing to compact row-wise: a short panel ends with the marker.
+  // 6.16: compact mode only shortens notes (resets are inline here; they take their own row only when too wide), so a
+  // short panel ends with the marker. Folding reset rows away in compact mode is TD-0033.
   const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 11, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.equal(short.length, 11);
   assert.ok(short.includes('+ more usage · /layout top'), 'short: the cut is announced');
