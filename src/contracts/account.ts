@@ -12,6 +12,10 @@ export interface UsageWindow {
   usedPercent: number | null;
   /** When this window resets (ISO); null when not reported. */
   resetsAt: string | null;
+  /** Why this window has no value (e.g. "provider reports no 5h window"); lets one missing window not hide others. */
+  reason?: string;
+  /** When this window's value was observed, if it differs from the snapshot's observedAt. */
+  observedAt?: string | null;
 }
 
 export interface UsageBucket {

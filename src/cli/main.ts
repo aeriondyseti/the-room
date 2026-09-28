@@ -53,6 +53,9 @@ if (isEntryPoint(process.argv[1], import.meta.url)) {
   if (argv[0] === 'mcp') {
     const { runMcpServer } = await import('../mcp/main.js');
     await runMcpServer(); // runs until stdin closes
+  } else if (argv[0] === 'statusline-tap') {
+    const { runStatuslineTap } = await import('./statusline-tap.js');
+    process.exitCode = await runStatuslineTap(argv.slice(1));
   } else if (argv[0] === 'tui') {
     const { runTuiCommand } = await import('./tui-command.js');
     process.exitCode = await runTuiCommand(argv.slice(1));
