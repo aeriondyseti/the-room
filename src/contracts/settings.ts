@@ -11,6 +11,7 @@ export type DeliverySettingsPatch = {
 };
 
 export interface RoomSettingsView {
+  problem?: {source:'file';code:string;message:string;fallback:'last_good'|'defaults'};
   defaults: DeliverySettings;
   /** Defaults merged with the room file, before environment overrides. */
   configured: DeliverySettings;

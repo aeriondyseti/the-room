@@ -129,7 +129,7 @@ export class Ledger {
     } finally { this.transactionDepth--; }
   }
 
-  enqueue(input: EnqueueInput): MessageWithDeliveries & { deduplicated: boolean } {
+  enqueue(input: EnqueueInput): MessageWithDeliveries & { deduplicated: boolean; updatedDeliveries?:Delivery[] } {
     if (!input.senderScope || !input.body.trim()) throw new RoomError('bad_request', 'Sender scope and message body are required.');
     const key = input.clientMessageId ?? null;
     if (key !== null && !key.trim()) throw new RoomError('bad_request', 'client_message_id cannot be empty.');
@@ -154,6 +154,7 @@ export class Ledger {
       const inserted = this.db.prepare('INSERT INTO messages(id,sender_scope,client_key,fingerprint,payload) VALUES(?,?,?,?,?)').run(message.id, input.senderScope, key, fingerprint, JSON.stringify(message));
       message.seq = Number(inserted.lastInsertRowid);
       this.db.prepare('UPDATE messages SET payload=? WHERE id=?').run(JSON.stringify(message), message.id);
+      const updatedDeliveries:Delivery[]=[];
       for (const recipient of input.recipients) {
         if (!recipient.target) {
           if (recipient.name !== HUMAN) throw new RoomError('bad_request', 'Only the human recipient may omit a native delivery target.');
@@ -178,7 +179,7 @@ export class Ledger {
             burst=prior.burst;
             notBefore=new Date(Math.min(Date.parse(now)+holdMs,Date.parse(burst.startedAt)+maxHoldMs)).toISOString();
             for(const sibling of this.queued(recipient.name))if(sibling.burst?.id===burst.id&&!sibling.attempts.length){
-              this.updateDelivery(sibling.messageId,sibling.recipient,d=>{d.notBefore=notBefore;});
+              updatedDeliveries.push(this.updateDelivery(sibling.messageId,sibling.recipient,d=>{d.notBefore=notBefore;}));
             }
           }else burst={id:randomUUID(),startedAt:now,holdMs,maxHoldMs};
         }
@@ -191,7 +192,7 @@ export class Ledger {
         };
         this.db.prepare('INSERT INTO deliveries(message_id,recipient,state,held,payload) VALUES(?,?,?,?,?)').run(message.id, recipient.name, delivery.state, Number(delivery.held), JSON.stringify(delivery));
       }
-      return { ...this.read(message.id), deduplicated: false };
+      return { ...this.read(message.id), deduplicated: false, updatedDeliveries };
     });
   }
 

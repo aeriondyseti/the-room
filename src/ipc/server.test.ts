@@ -14,7 +14,9 @@ async function fixture(t:TestContext){const root=await mkdtemp(path.join(tmpdir(
 async function setup(t:TestContext){const root=await fixture(t);const server=await startServer(root);const client=await RoomClient.connect(root,{client:'cli',autoStart:false});t.after(async()=>{client.close();await server.close();await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});});return{root,server,client};}
 const send={caller:{kind:'human' as const},to:['astra'],body:'first'};
 test('real IPC join/send/read/who, identity and delivery events are ordered',async t=>{
- const {server,client}=await setup(t);const events:RoomEvent[]=[];client.onEvent(event=>events.push(event));
+ const {server,client}=await setup(t);
+ await client.request('settings_update',{caller:{kind:'human'},patch:{batchHeld:false}});
+ const events:RoomEvent[]=[];client.onEvent(event=>events.push(event));
  await client.request('subscribe',{});
  await client.request('join',{name:'astra',native});
  const first=await client.request('send',send);

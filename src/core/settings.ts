@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, unlink, copyFile } from 'node:fs/promises';
 import path from 'node:path';
+import { constants, readFileSync } from 'node:fs';
 import type { DeliverySettings, RoomSettingsView } from '../contracts/settings.js';
 import { RoomError } from '../contracts/errors.js';
 import { renameWithRetry } from './registry/registry.js';
@@ -18,7 +19,18 @@ function validate(value:DeliverySettings):void {
 /** File reads are live; environment is captured for this service instance. */
 export class RoomSettings {
   private readonly env:NodeJS.ProcessEnv;
-  constructor(private readonly root:string,env:NodeJS.ProcessEnv=process.env){this.env={...env};}
+  private lastGood:RoomSettingsView;
+  private observedGood=false;
+  constructor(private readonly root:string,env:NodeJS.ProcessEnv=process.env){
+    this.env={...env};
+    // Validate the captured environment before a service can accept requests.
+    // A valid room file may supply the companion cap for a larger env hold.
+    let initial:Record<string,unknown>={version:1};
+    try{const raw=readFileSync(path.join(root,'.room','settings.json'),'utf8');if(Buffer.byteLength(raw)>1024*1024)throw new Error('Oversized settings');const parsed:unknown=JSON.parse(raw);
+      if(isObject(parsed)&&parsed.version===1){const values={...DELIVERY_DEFAULTS};for(const key of keys)if(Object.hasOwn(parsed,key))Object.assign(values,{[key]:parsed[key]});validate(values);initial=parsed;this.observedGood=true;}
+    }catch{/* A bad file is recoverable; environment validation below is not. */}
+    this.lastGood=this.view(initial);
+  }
   private async document():Promise<Record<string,unknown>> {
     try {
       const raw=await readFile(path.join(this.root,'.room','settings.json'),'utf8');
@@ -47,7 +59,10 @@ export class RoomSettings {
     }
     validate(effective);return {defaults:{...DELIVERY_DEFAULTS},configured,effective,overridden};
   }
-  async get():Promise<RoomSettingsView>{return this.view(await this.document());}
+  async get():Promise<RoomSettingsView>{
+    try{const view=this.view(await this.document());this.lastGood=view;this.observedGood=true;return structuredClone(view);}
+    catch{return {...structuredClone(this.lastGood),problem:{source:'file',code:'invalid_state',message:'Room settings file is unreadable, unsupported, or invalid for this service environment.',fallback:this.observedGood?'last_good':'defaults'}};}
+  }
   async update(patch:unknown):Promise<RoomSettingsView>{
     if(!isObject(patch)||Object.keys(patch).some(k=>!keys.includes(k as keyof DeliverySettings)))throw new RoomError('bad_request','Unknown room delivery setting.');
     const dir=path.join(this.root,'.room');await mkdir(dir,{recursive:true});
@@ -57,18 +72,29 @@ export class RoomSettings {
     let temp:string|undefined;
     try {
       await handle.writeFile(owner);
-      const doc=await this.document();
+      let doc:Record<string,unknown>;
+      let repair=false;
+      try{doc=await this.document();try{this.view(doc);}catch{repair=true;doc={...doc,...this.lastGood.configured};}}
+      catch{
+        const file=path.join(dir,'settings.json');
+        // Never downgrade a schema owned by a future binary.
+        let parsed:unknown;try{parsed=JSON.parse(await readFile(file,'utf8'));}catch{/* Back up the raw file below. */}
+        if(isObject(parsed)&&typeof parsed.version==='number'&&parsed.version>1)throw new RoomError('unsupported_version','Settings were created by a newer version; repair with that version.');
+        doc={...(isObject(parsed)?parsed:{}),version:1,...this.lastGood.configured};repair=true;
+      }
       for(const [key,value] of Object.entries(patch)){if(value===null)delete doc[key];else doc[key]=value;}
       const view=this.view(doc);
+      if(repair)await copyFile(path.join(dir,'settings.json'),path.join(dir,`settings.backup.${randomUUID()}.json`),constants.COPYFILE_EXCL).catch(e=>{if(code(e)!=='ENOENT')throw e;});
       temp=path.join(dir,`settings.${randomUUID()}.tmp`);
       const file=await open(temp,'wx');
       try{await file.writeFile(JSON.stringify(doc,null,2)+'\n');await file.sync();}finally{await file.close();}
       await renameWithRetry(temp,path.join(dir,'settings.json'));
-      return view;
+      this.lastGood=view;this.observedGood=true;return structuredClone(view);
     }finally{
       try{await handle.close();}finally{
         if(temp)await unlink(temp).catch(e=>{if(code(e)!=='ENOENT')throw e;});
         if(await readFile(lock,'utf8')===owner)await unlink(lock);
+        else throw new RoomError('invalid_state','Settings lock ownership changed; inspect .room/settings.lock before retrying.');
       }
     }
   }

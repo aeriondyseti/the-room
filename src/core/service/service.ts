@@ -130,7 +130,7 @@ export class RoomService {
           }
           const result=this.ledger.enqueue({sender:caller.sender,senderScope:caller.scope,crossing,body,requestedRecipients:broadcast?null:requested,
             recipients:targets,addressing:broadcast?'broadcast':'direct',replyTo:optionalText(p.replyTo,'replyTo'),
-            clientMessageId:optionalText(p.clientMessageId,'clientMessageId'),holdMs:this.options.sendHoldMs??deliverySettings.deliveryHoldMs,batchHeld:deliverySettings.batchHeld,batchMaxHoldMs:deliverySettings.batchMaxHoldMs,held:this.ledger.roomState().paused});
+            clientMessageId:optionalText(p.clientMessageId,'clientMessageId'),holdMs:this.options.sendHoldMs??deliverySettings.deliveryHoldMs,batchHeld:deliverySettings.batchHeld,batchMaxHoldMs:Math.max(deliverySettings.batchMaxHoldMs,this.options.sendHoldMs??0),held:this.ledger.roomState().paused});
           let replyDelivery=null;
           if(!result.deduplicated&&result.message.replyTo&&caller.sender.kind==='agent'){
             const prior=this.ledger.deliveries(result.message.replyTo).find(d=>d.recipient===caller.sender.name&&`${d.target.harness}:${d.target.sessionId}`===caller.scope);
@@ -143,10 +143,12 @@ export class RoomService {
         if(!result.deduplicated){
           this.refreshInboxDisplay();
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
+          for(const delivery of result.updatedDeliveries??[])this.publish({type:'delivery.updated',delivery});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
         }
-        return guarded?{status:'sent',result,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:result;
+        const {updatedDeliveries:_,...publicResult}=result;
+        return guarded?{status:'sent',result:publicResult,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:publicResult;
       }
       case 'read': {
         const id=optionalText(p.messageId,'messageId');
