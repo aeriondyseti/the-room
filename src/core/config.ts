@@ -85,6 +85,11 @@ export interface RoomConfig {
   accountsPollMs: number;
   /** A usage reading older than this is shown as stale (values kept, labelled). */
   accountsStaleMs: number;
+  /**
+   * 'on' to read Claude plan usage (incl. model-specific weekly limits such as Fable) from Anthropic's usage endpoint
+   * with the signed-in Claude Code login (read per request, memory only). 'off' (default) uses only the statusline tap.
+   */
+  claudeUsageApi: string;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -129,6 +134,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   activityPollMs: 2_000,
   accountsPollMs: 120_000,
   accountsStaleMs: 15 * 60_000,
+  claudeUsageApi: 'off',
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -172,6 +178,7 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   activityPollMs: 'ROOM_ACTIVITY_POLL_MS',
   accountsPollMs: 'ROOM_ACCOUNTS_POLL_MS',
   accountsStaleMs: 'ROOM_ACCOUNTS_STALE_MS',
+  claudeUsageApi: 'ROOM_CLAUDE_USAGE_API',
 };
 
 /** Doubling reconnect schedule from min to max (inclusive), e.g. 250, 500, 1000, 2000, 4000, 5000. */
