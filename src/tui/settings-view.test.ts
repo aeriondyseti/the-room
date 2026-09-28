@@ -87,7 +87,7 @@ test('with the hold off, batching and its cap say they have no effect', () => {
   assert.doesNotMatch(text(initialSettings(view())), /no effect/);
 });
 test('a broken settings file is explained, with the fallback in use and the repair key', () => {
-  const problem = { source: 'file', code: 'invalid_json', message: 'Unexpected token } at 12', fallback: 'last_good' as const };
+  const problem = { source: 'file' as const, code: 'invalid_json', message: 'Unexpected token } at 12', fallback: 'last_good' as const };
   const s = initialSettings({ ...view(), problem });
   const t = text(s);
   assert.match(t, /The settings file can't be used \(invalid_json\): Unexpected token \} at 12/);
