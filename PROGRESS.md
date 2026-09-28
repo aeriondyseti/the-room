@@ -76,6 +76,7 @@ their own rows**.
 | 6.11 | Space after the reset arrow | Claude | ✅ | **v0.6.1** · review: reviews/6.11.md · `↻ 1h53m` (the arrow renders ~1.5 cells wide in some terminals) |
 | 6.12 | Model limits as columns on their account's row | Claude | ✅ | **v0.6.2** · review: reviews/6.12.md · Fable weekly (and any model window, e.g. Spark 5h) as column pairs on the account row; bars 10 → 8 → numbers to fit |
 | 6.13 | Composer keys + growing composer | Claude (+ Astra: spec, key probe) | ✅ | **v0.7.0** · review: reviews/6.13.md · Ctrl+Left/Right, Ctrl+Backspace/Ctrl+W, Ctrl+Enter newline (per terminal); composer grows to 12 visual rows and scrolls, never over the bottom bar |
+| 6.14 | Percentage inside the bar | Claude | ✅ | **v0.7.1** · review: reviews/6.14.md · ADR-0011 · htop/btop-style bars: reverse-video fill in the state colour, dim track, centred aligned number; monotonic bar sizing |
 | 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
 | 6.3 | Tech-debt triage | both | ⬜ | |
 

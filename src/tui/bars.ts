@@ -1,5 +1,5 @@
-// Usage bars (6.8) with state colours (6.10). Bars keep the ccstatusline `slider` format from Kevin's statusline
-// (Astra's research): 10 cells, U+2593 filled / U+2591 empty, no brackets, then the percentage to one decimal.
+// Usage bars (6.8) with state colours (6.10) and the percentage inside the bar (6.14, Kevin's option a): 10 cells
+// (8 when the budget grid is tight), filled cells in reverse video, a dim ░ track, and the number (one decimal) centred.
 // Colour (Kevin, 6.10, mockup option "c"): a bar takes the colour of its STATE — green under 70%, amber 70–90%, red
 // above 90% — so a glance tells whether anything is close to a limit. Status is also carried by text ("!", "—",
 // "stale", "?") so it survives NO_COLOR.
@@ -31,8 +31,38 @@ export function usageColor(percent: number): string {
 }
 
 /**
- * One metric: `label ▓▓░░░░░░░░ 21.0%` (label quiet; bar and number in the state colour), or `label 21.0%` when `bar`
- * is false (tight widths), or a bare cell when `label` is empty (the budget grid names its columns once).
+ * The bar with its percentage INSIDE it (Kevin, 6.14, "option a" — htop/btop style): `cells` cells, the first
+ * round(pct/100 × cells) of them filled in reverse video (the state colour as a block), the rest a dim ░ track, and the
+ * number centred over it. Reverse video survives NO_COLOR, so the fill never depends on colour alone. `text` must fit
+ * the bar (callers pass cells ≥ 8; "100.0%!" is 7).
+ */
+export function shadedBar(percent: number, text: string, opts: { cells: number; color: string | undefined; stale: boolean; bold: boolean }): Line {
+  const cells = Math.max(text.length, opts.cells);
+  const filled = Math.round((Math.max(0, Math.min(100, percent)) / 100) * cells);
+  const start = Math.floor((cells - text.length) / 2);
+  const out: Segment[] = [];
+  for (let i = 0; i < cells; i++) {
+    // Padding spaces in `text` (column alignment) are layout, not content: they show the bar cell beneath them, so only
+    // the number's own glyphs cover the bar and the fill/track read stays intact (6.14 review).
+    const inText = i >= start && i < start + text.length && text[i - start] !== ' ';
+    const ch = inText ? text[i - start]! : i < filled ? ' ' : '░';
+    const seg: Segment =
+      i < filled
+        ? { text: ch, color: opts.color, inverse: true, dim: opts.stale, bold: inText && opts.bold }
+        : inText
+          ? { text: ch, color: opts.color, dim: opts.stale, bold: opts.bold }
+          : { text: ch, dim: true };
+    const prev = out.at(-1);
+    // Merge runs with the same style (fewer segments to render).
+    if (prev && prev.color === seg.color && prev.inverse === seg.inverse && prev.dim === seg.dim && prev.bold === seg.bold) prev.text += ch;
+    else out.push(seg);
+  }
+  return out;
+}
+
+/**
+ * One metric: `label [bar with "21.0%" inside]` (label quiet; the bar in the state colour), or `label 21.0%` when
+ * `bar` is false (tight widths), or a bare cell when `label` is empty (the budget grid names its columns once).
  * Unknown → `label —` / `—`, no bar (never an empty 0% bar). Stale → dim and colourless (the caller labels it).
  * A fresh reading at or above 70% gets a bold "!" — never colour alone.
  */
@@ -42,15 +72,14 @@ export function usageBar(label: string, percent: number | null, opts: { stale: b
   const high = !opts.stale && percent >= WARN_PERCENT;
   const c = opts.stale ? undefined : usageColor(percent);
   const out: Segment[] = label ? [{ text: `${label} `, dim: true }] : [];
-  // cells: the bar's width (10 by default; the budget grid may shrink it to 8 to fit — the fill is recomputed for it).
-  if (opts.bar !== false) out.push({ text: `${sliderBar(percent, opts.cells)} `, color: c, dim: opts.stale });
-  // numberWidth: right-align the percentage to its column's widest number (grids), so decimals line up down a column
+  // numberWidth: pad to the column's widest number so, centred in equal bars, decimals line up down a column
   // (" 9.0%" under "38.0%", and under "100.0%" when a limit is hit).
-  const num = percent.toFixed(1).padStart(opts.numberWidth ?? 0);
-  out.push({ text: `${num}%${high ? '!' : ''}`, color: c, bold: high, dim: opts.stale });
+  const text = `${percent.toFixed(1).padStart(opts.numberWidth ?? 0)}%${high ? '!' : ''}`;
+  // cells: the bar's width (10 by default; the budget grid may shrink it to 8 to fit — the fill is recomputed for it).
+  if (opts.bar !== false) out.push(...shadedBar(percent, text.padEnd(text.length + (high ? 0 : opts.numberWidth ? 1 : 0)), { cells: opts.cells ?? BAR_CELLS, color: c, stale: opts.stale, bold: high }));
+  else out.push({ text, color: c, bold: high, dim: opts.stale });
   return out;
 }
-
 /**
  * An agent's context reading as a metric (`ctx ▓▓▓▓░░░░░░ 42.0%`). Tokens without a known limit show as `ctx 12k`
  * (no bar: no percentage was observed); a stale snapshot is dim with "?"; unavailable is `ctx —`.

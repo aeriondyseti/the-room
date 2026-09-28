@@ -155,7 +155,7 @@ const BAR_STEPS = [{ bars: true, cells: 10 }, { bars: true, cells: 8 }, { bars: 
  * (Kevin): values, reset times and caveats each have their own measured column, percentages right-aligned; a column
  * that is empty on every row takes no space. "—" where a limit has no reading; blank where an account has no such limit
  * at all (Codex has no Fable limit). Caveats go at the end of the row, or wrap onto a continuation row; never cut. Bars
- * shrink from 10 to 8 cells, then become numbers, to fit, preferring the largest size at which caveats stay inline.
+ * shrink from 10 to 8 cells, then become numbers, to fit (the largest size whose values fit).
  * Null if even numbers don't fit (the caller falls back to wrapped metric lines).
  */
 export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: number; now?: number; disconnected?: boolean }): Line[] | null {
@@ -175,9 +175,8 @@ export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: num
   const wW = numberWidth(rows.map((r) => r.weekly?.usedPercent));
   const wM = models.map((m) => numberWidth(rows.map((r) => r.models.get(m.key)?.usedPercent)));
   const available = rows.filter((r) => !r.unavailable);
-  // Prefer the largest bars at which every caveat also fits on its row; else the largest at which the values fit (the
-  // caveats then wrap onto continuation rows).
-  let valuesOnly: Line[] | null = null;
+  // The largest bars at which the values fit (6.14: monotonic — a narrower terminal never gets bigger bars); caveats sit
+  // at the end of their row when they fit, else wrap onto a continuation row.
   for (const step of BAR_STEPS) {
     const v = (w: UsageWindow | null, r: BudgetRow, width: number) => valueCell(w, { stale: r.stale, bars: step.bars, cells: step.cells, numberWidth: width });
     const allValues = (r: BudgetRow): Line[] => [
@@ -199,7 +198,6 @@ export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: num
     const indent = widths[0]! + GAP.length;
     const out: Line[] = [join(trim(kept(allHeader)), widths)];
     let fits = lineCols(out[0]!) <= opts.width;
-    let notesInline = true;
     for (const r of rows) {
       if (r.unavailable) {
         const line: Line = [...pad(labelCell(r), widths[0]!), { text: GAP }, { text: `usage unavailable — ${sanitize(r.unavailable)}`, dim: true }];
@@ -213,15 +211,11 @@ export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: num
       if (!note.length) out.push(bare);
       // The caveat goes in its own column (aligned across rows) when it fits; else on a continuation row, never cut.
       else if (noteCol + lineCols(note) <= opts.width) out.push(join([...cells, note], widths));
-      else {
-        notesInline = false;
-        out.push(bare, ...wrapQuiet([{ text: ' '.repeat(indent) }, ...note], opts.width, indent));
-      }
+      else out.push(bare, ...wrapQuiet([{ text: ' '.repeat(indent) }, ...note], opts.width, indent));
     }
-    if (fits && notesInline) return out;
-    if (fits) valuesOnly ??= out;
+    if (fits) return out;
   }
-  return valuesOnly;
+  return null;
 }
 /** Word-wrap a (dim) line onto continuation rows indented by `indent`; never drops words. */
 function wrapQuiet(line: Line, width: number, indent: number): Line[] {

@@ -43,9 +43,9 @@ test('side panel: name + ctx, status, model · branch per agent; usage one windo
   const text = lines.map(lineText);
   assert.equal(lines.length, 26, 'padded to the panel height');
   assert.ok(lines.every((l) => lineCols(l) <= 32), 'no line exceeds the panel width');
-  assert.deepEqual(text.slice(1, 6), ['● claude', '  busy · 1 queued', '  ctx ▓▓▓▓░░░░░░ 42.0%', '  opus-5-5 · sprint/6.8*2', '● astra']);
+  assert.deepEqual(text.slice(1, 6), ['● claude', '  busy · 1 queued', '  ctx   42.0%░░░', '  opus-5-5 · sprint/6.8*2', '● astra']);
   const u = text.indexOf('PLAN USAGE');
-  assert.deepEqual(text.slice(u + 1, u + 5), ['Claude', '  5h ▓░░░░░░░░░ 7.0%', '  weekly ▓▓░░░░░░░░ 21.0%', '  Fable weekly ▓▓░░░░░░░░ 22.0%'], 'no \"login unverified\" note (hidden, 6.10)');
+  assert.deepEqual(text.slice(u + 1, u + 5), ['Claude', '  5h  ░░7.0%░░░', '  weekly   21.0%░░░', '  Fable weekly   22.0%░░░'], 'no \"login unverified\" note (hidden, 6.10)');
   assert.ok(text.includes('you: Kevin'));
 });
 
@@ -56,7 +56,7 @@ test('side panel: agents that do not fit become "+N more · /who"; plan usage st
   assert.ok(more, 'overflow is summarised, never silently dropped');
   const shown = text.filter((l) => /^● agent/.test(l)).length;
   assert.equal(Number(more!.match(/\d+/)![0]) + shown, 8);
-  assert.ok(text.includes('  Fable weekly ▓▓░░░░░░░░ 22.0%'), 'usage is kept whole');
+  assert.ok(text.includes('  Fable weekly   22.0%░░░'), 'usage is kept whole');
   const stale = sidePanelLines([agent('astra')], [], { width: 32, height: 8, stale: true, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
   assert.equal(stale[0], 'AGENTS · last known');
   assert.equal(stale[1], '◌ astra', 'no live liveness or usage while disconnected');
@@ -142,18 +142,18 @@ test('bars: ccstatusline slider (10 cells, round(clamp)) with one-decimal percen
   assert.deepEqual([0, 4, 5, 43, 95, 100, 130, -5].map((p) => sliderBar(p)), [
     '░░░░░░░░░░', '░░░░░░░░░░', '▓░░░░░░░░░', '▓▓▓▓░░░░░░', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '░░░░░░░░░░',
   ]);
-  assert.equal(lineText(usageBar('weekly', 43, { stale: false })), 'weekly ▓▓▓▓░░░░░░ 43.0%');
-  assert.equal(lineText(usageBar('weekly', 4, { stale: false })), 'weekly ░░░░░░░░░░ 4.0%', 'a low non-zero reading keeps its number');
+  assert.equal(lineText(usageBar('weekly', 43, { stale: false })), 'weekly   43.0%░░░', '6.14: the number sits inside the bar');
+  assert.equal(lineText(usageBar('weekly', 4, { stale: false })), 'weekly ░░░4.0%░░░', 'a low non-zero reading keeps its number');
   assert.equal(lineText(usageBar('5h', null, { stale: false })), '5h —', 'unknown: no bar, never an empty 0% bar');
   const high = usageBar('5h', 95, { stale: false });
-  assert.equal(lineText(high), '5h ▓▓▓▓▓▓▓▓▓▓ 95.0%!');
-  assert.deepEqual(high.map((s) => s.color), [undefined, STATE_COLOR.critical, STATE_COLOR.critical], 'quiet label; bar and number in the state colour (red > 90%)');
+  assert.equal(lineText(high), '5h   95.0%!  ');
+  assert.ok(high[0]!.color === undefined && high.slice(1).every((s) => s.color === STATE_COLOR.critical && s.inverse), 'quiet label; the bar is a red block (> 90%) with the number over it');
   assert.equal(usageBar('5h', 43, { stale: false })[1]?.color, STATE_COLOR.ok, 'green under 70%');
   assert.equal(usageBar('5h', 70, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber from 70%');
   assert.equal(usageBar('5h', 90, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber up to 90%');
   assert.equal(lineText(usageBar('', null, { stale: false })), '—', 'a bare grid cell with no reading is a dash, never 0');
   const stale = usageBar('5h', 95, { stale: true });
-  assert.equal(lineText(stale), '5h ▓▓▓▓▓▓▓▓▓▓ 95.0%', 'stale: no warning emphasis');
+  assert.equal(lineText(stale), '5h   95.0%   ', 'stale: no warning emphasis');
   assert.ok(stale.every((s) => s.color === undefined && s.dim));
   assert.equal(lineText(usageBar('5h', 43, { stale: false, bar: false })), '5h 43.0%');
   assert.equal(lineText(contextBar(null, { stale: false })), 'ctx —');
@@ -174,10 +174,11 @@ test('review fixes: a short panel degrades usage (no bars/reset rows) then says 
     buckets: [{ id: harness, windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 38, resetsAt: '2026-09-28T18:00:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 71, resetsAt: '2026-10-02T09:00:00Z' }] }] });
   const tall = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
   assert.ok(tall.includes('Claude (stale)') && tall.includes('Codex (stale)'), 'the staleness qualifier rides on the account heading');
-  assert.ok(tall.some((l) => l.includes('▓')), 'room to spare: bars');
-  const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 12, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
-  assert.equal(short.length, 12);
-  assert.ok(short.every((l) => !l.includes('▓')), 'short: numbers only');
+  assert.ok(tall.some((l) => l.includes('░')), 'room to spare: bars');
+  // 6.14: bars carry their number inside, so the full form is shorter; 11 rows is where this panel must degrade.
+  const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 11, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  assert.equal(short.length, 11);
+  assert.ok(short.every((l) => !l.includes('░')), 'short: numbers only');
   assert.ok(short.includes('Codex (stale)'), 'compact form keeps both accounts whole here');
   const tiny = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 8, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
   assert.ok(tiny.includes('+ more usage · /layout top'), 'anything cut is announced');

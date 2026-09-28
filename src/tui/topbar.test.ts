@@ -36,9 +36,9 @@ test('participant chips wrap within the width, at most maxLines, with an honest 
 test('accounts show pinned 5h + weekly, other buckets as their own weekly, n/a never 0, and reset hints', () => {
   const a = acct({ buckets: [...acct().buckets, { id: 'claude-fable', label: 'Fable', windows: [{ kind: 'seven_day_fable', durationMinutes: 10_080, usedPercent: 22, resetsAt: null }] }] });
   const text = lineText(accountSegments(a, { mono: false, now: NOW }));
-  assert.match(text, /^Claude {2}5h ▓▓▓▓░{6} 38\.0% ↻ 2h12m {2}weekly ▓{9}░ 90\.0%! ↻ \w{3} \d\d:\d\d {2}Fable weekly ▓▓░{8} 22\.0%$/);
+  assert.match(text, /^Claude {2}5h {3}38\.0%░{3} ↻ 2h12m {2}weekly {3}90\.0%! ░ ↻ \w{3} \d\d:\d\d {2}Fable weekly {3}22\.0%░{3}$/);
   const noShort = lineText(accountSegments(acct({ buckets: [{ id: 'codex', windows: [{ kind: 'primary', durationMinutes: 10_080, usedPercent: 16, resetsAt: null }] }], account: { harness: 'codex', scope: 'account', key: 'c', sourceKey: 'c' } }), { mono: false, now: NOW }));
-  assert.match(noShort, /Codex {2}5h — {2}weekly ▓▓░{8} 16\.0%/, 'a missing pinned window is — with no bar, never an empty 0% bar');
+  assert.match(noShort, /Codex {2}5h — {2}weekly {3}16\.0%░{3}/, 'a missing pinned window is — with no bar, never an empty 0% bar');
   const nullPct = lineText(accountSegments(acct({ buckets: [{ id: 'claude', windows: [{ kind: 'five_hour', durationMinutes: 300, usedPercent: null, resetsAt: null }] }] }), { mono: false, now: NOW }));
   assert.match(nullPct, /5h —/);
 });
@@ -50,19 +50,20 @@ test('stale readings keep values but are labelled; unavailable says why; monochr
   const colour = accountSegments(acct(), { mono: false, now: NOW });
   const high = colour.find((s) => s.text === '90.0%!');
   assert.deepEqual([high?.color, high?.bold], [STATE_COLOR.warn, true], 'a high reading is amber (70–90%) with a bold \"!\"');
-  assert.equal(colour.find((s) => s.text === '38.0%')?.color, STATE_COLOR.ok);
-  assert.match(lineText(accountSegments(acct(), { mono: true, now: NOW })), /weekly ▓{9}░ 90\.0%!/);
+  const low = colour.find((s) => s.inverse && s.text.includes('38'));
+  assert.deepEqual([low?.color, low?.inverse], [STATE_COLOR.ok, true], '6.14: the filled part of the bar is a green block (reverse video) with the number over it');
+  assert.match(lineText(accountSegments(acct(), { mono: true, now: NOW })), /weekly {3}90\.0%! ░/);
 });
 
 test('disconnected → "(last known)" and no warning colour; a tap fallback is labelled; main bucket chosen by id, not position', () => {
   const dis = accountSegments(acct(), { mono: false, now: NOW, disconnected: true });
   assert.match(lineText(dis), /\(last known\)$/);
-  const last = dis.find((s) => s.text.startsWith('90.0%'));
-  assert.deepEqual([last?.text, last?.color, last?.dim], ['90.0%', undefined, true], 'last-known values: dim, no colour, no warning');
+  const last = dis.find((s) => s.text.includes('90.0%'));
+  assert.deepEqual([last?.color, last?.dim, last?.text.includes('!')], [undefined, true, false], 'last-known values: dim, no colour, no warning');
   assert.match(lineText(accountSegments(acct({ fallback: true }), { mono: false, now: NOW })), /\(via statusline, no model limits\)/);
   assert.doesNotMatch(lineText(accountSegments(acct({ source: 'shared ccstatusline cache (login unverified)' }), { mono: false, now: NOW })), /unverified/, 'hidden (Kevin, 6.10): almost always true, so no information');
   const reordered = acct({ buckets: [{ id: 'claude-fable', label: 'Fable', windows: [{ kind: 'x', durationMinutes: 10_080, usedPercent: 5, resetsAt: null }] }, ...acct().buckets] });
-  assert.match(lineText(accountSegments(reordered, { mono: false, now: NOW })), /^Claude {2}5h \S+ 38\.0%.* {2}Fable weekly \S+ 5\.0%$/);
+  assert.match(lineText(accountSegments(reordered, { mono: false, now: NOW })), /^Claude {2}5h .*38\.0%.* {2}Fable weekly .*5\.0%.*$/);
 });
 
 test('accounts share one line when they fit, else one line each (never wider than the terminal)', () => {

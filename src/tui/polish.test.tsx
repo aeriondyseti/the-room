@@ -38,7 +38,10 @@ test('monochrome: no colour escapes at all, but the cursor (inverse), states and
   assert.deepEqual(colourCodes, [], 'no colour codes in monochrome');
   assert.match(frame, /\u001B\[7m/, 'inverse (the composer cursor) survives');
   const text = plain(frame);
-  assert.match(text, /ctx (▓+░* )?88\.0%!/, 'high usage is marked without colour');
+  assert.match(text, /ctx .*88\.0%!/, 'high usage is marked without colour');
+  // 6.14: the bar's fill is reverse video, so it still shows as a block with colour off.
+  const builderRow = frame.split('\n').find((l) => l.includes('claude_builder')) ?? '';
+  assert.match(builderRow, /\u001B\[7m[^\n]*88\.0%!/, 'the filled part of the ctx bar is inverse in monochrome');
   assert.match(text, /\? astra uncertain/, 'delivery states keep glyph + word');
   assert.match(text, /○ codex_review/, 'offline liveness keeps its glyph');
 });
