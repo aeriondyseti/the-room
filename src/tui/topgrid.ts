@@ -97,6 +97,7 @@ interface BudgetRow {
 interface ModelColumn {
   key: string;
   header: string;
+  bucket: string;
 }
 
 /** "5h" / "weekly" for the pinned windows, else the duration in hours or days (nothing when unknown). */
@@ -118,11 +119,16 @@ function budgetRow(a: AccountUsage, disconnected: boolean, columns: Map<string, 
   const models = new Map<string, UsageWindow>();
   for (const b of a.buckets.filter((x) => x !== main)) {
     const name = sanitize(b.label ?? b.id);
+    // Columns are keyed by the bucket's stable id (labels are presentation, not identity — Astra's cross-review), the
+    // window's duration and, for same-duration windows, their position; so no two readings ever share a cell.
+    const seen = new Map<string, number>();
     for (const w of [...b.windows].sort((x, y) => (x.durationMinutes ?? Infinity) - (y.durationMinutes ?? Infinity))) {
-      const key = `${name}\u0000${w.durationMinutes}`;
-      if (models.has(key)) continue;
+      const dur = String(w.durationMinutes);
+      const nth = (seen.get(dur) ?? 0) + 1;
+      seen.set(dur, nth);
+      const key = `${b.id}\u0000${dur}\u0000${nth}`;
       models.set(key, w);
-      if (!columns.has(key)) columns.set(key, { key, header: `${name} ${durationLabel(w.durationMinutes)}`.trim() });
+      if (!columns.has(key)) columns.set(key, { key, header: `${name} ${durationLabel(w.durationMinutes)}${nth > 1 ? ` (${nth})` : ''}`.trim(), bucket: b.id });
     }
   }
   return { label, fiveHour: byMinutes(main, 300), weekly: byMinutes(main, 10_080), models, notes, stale };
@@ -158,6 +164,10 @@ export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: num
   const columns = new Map<string, ModelColumn>();
   const rows = accounts.map((a) => budgetRow(a, !!opts.disconnected, columns));
   const models = [...columns.values()];
+  // Two different buckets with the same label (and duration) get visibly distinct headers: the bucket id is appended.
+  const counts = new Map<string, number>();
+  for (const m of models) counts.set(m.header, (counts.get(m.header) ?? 0) + 1);
+  for (const m of models) if (counts.get(m.header)! > 1) m.header = `${m.header} [${sanitize(m.bucket)}]`;
   const labelCell = (r: BudgetRow): Line => [{ text: ' ' }, { text: r.label, bold: true }];
   const noteCell = (r: BudgetRow): Line => (r.notes.length ? [{ text: r.notes.join(' · '), dim: true, italic: true }] : []);
   // Each value column right-aligns its percentages to its own widest number.

@@ -211,3 +211,13 @@ test('6.12 review: empty columns take no space; inline caveats are preferred ove
   assert.ok(tight.some((l) => l.includes('▓')) || tight.every((l) => !l.includes('░')), 'values still shown');
   assert.ok(tight.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole');
 });
+test('6.12 cross-review: two distinct buckets with the same label are both shown, under visibly distinct headers', () => {
+  const twoSparks: AccountUsage = { ...codex, status: 'ok', buckets: [
+    { id: 'codex', windows: [{ kind: 's', durationMinutes: 10_080, usedPercent: 18, resetsAt: null }] },
+    { id: 'model-a', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 10, resetsAt: null }] },
+    { id: 'model-b', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 80, resetsAt: null }] },
+  ] };
+  const text = budgetGrid([twoSparks], { width: 200, now: NOW })!.map(lineText);
+  assert.ok(text[1]!.includes('10.0%') && text[1]!.includes('80.0%'), `both readings survive:\n${text.join('\n')}`);
+  assert.match(text[0]!, /Spark 5h \[model-a\] +Spark 5h \[model-b\]/);
+});
