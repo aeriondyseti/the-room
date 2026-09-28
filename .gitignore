@@ -6,3 +6,6 @@ session.toml
 .claude/worktrees/
 # pair-poc message log
 .room-poc/
+# Build output and dependencies
+node_modules/
+dist/
