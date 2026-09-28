@@ -11,7 +11,9 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage } from '../contracts/account.js';
 import { App } from './app.js';
 import { demoSource } from './demo.js';
-import { lineCols, lineText } from './format.js';
+import { lineCols } from './format.js';
+// 6.15: bar assertions use the monochrome rendering (track = "░"); colour frames are checked separately (layout.test).
+import { barText } from './test-utils.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
 import { stateDot } from './topbar.js';
 import { STATE_COLOR } from './bars.js';
@@ -43,7 +45,7 @@ const colOf = (line: string, needle: string) => line.indexOf(needle);
 
 test('AGENTS: a quiet section label, then one aligned row per agent; only the state word is loud; model and branch quiet', () => {
   const rows = agentGrid([agent('astra', withWs('gpt-6-astra', 'main')), agent('claude', { activity: 'busy', ...withWs('claude-opus-5-5', 'sprint/6.9', 3) })], { width: 100, stale: false, maxRows: 6 })!;
-  const text = rows.map(lineText);
+  const text = rows.map(barText);
   assert.equal(text[0], 'AGENTS');
   assert.match(text[1]!, /^ ● astra +idle +ctx {3}59\.0%░░░ +gpt-6-astra +main$/);
   assert.match(text[2]!, /^ ● claude +busy +ctx .* +opus-5-5 +sprint\/6\.9\*3$/);
@@ -56,21 +58,21 @@ test('AGENTS: a quiet section label, then one aligned row per agent; only the st
 
 test('AGENTS: sheds bars, then model, then branch to fit; overflow is "+N more · /who"; disconnected says last known; null when nothing fits', () => {
   const two = [agent('astra', withWs('gpt-6-astra', 'main')), agent('claude', withWs('claude-opus-5-5', 'sprint/6.9'))];
-  const narrow = agentGrid(two, { width: 44, stale: false, maxRows: 6 })!.map(lineText);
+  const narrow = agentGrid(two, { width: 44, stale: false, maxRows: 6 })!.map(barText);
   assert.ok(narrow.every((l) => l.length <= 44 && !l.includes('░')), narrow.join('\n'));
   assert.ok(narrow.some((l) => l.includes('59.0%')), 'the number is kept');
   const many = Array.from({ length: 9 }, (_, i) => agent(`agent${i}`));
-  const capped = agentGrid(many, { width: 100, stale: false, maxRows: 4 })!.map(lineText);
+  const capped = agentGrid(many, { width: 100, stale: false, maxRows: 4 })!.map(barText);
   assert.equal(capped.at(-1), ' +6 more · /who');
   assert.equal(capped.filter((l) => /^ ● agent/.test(l)).length, 3);
-  const stale = agentGrid([agent('astra')], { width: 100, stale: true, maxRows: 6 })!.map(lineText);
+  const stale = agentGrid([agent('astra')], { width: 100, stale: true, maxRows: 6 })!.map(barText);
   assert.deepEqual(stale, ['AGENTS · last known', ' ◌ astra  last known: idle']);
   assert.equal(agentGrid([agent('a-very-long-agent-name-indeed')], { width: 20, stale: false, maxRows: 6 }), null);
 });
 
 test('BUDGETS: one row per account; 5h / weekly / Fable weekly named once; model limits as columns on their own account (6.12); "—" for no reading, blank for no such limit', () => {
   const rows = budgetGrid([claude, codex], { width: 120, now: NOW })!;
-  const text = rows.map(lineText);
+  const text = rows.map(barText);
   assert.equal(text.length, 3, 'header + one row per account (no separate Fable row)');
   assert.match(text[0]!, /^BUDGETS +5h +weekly +Fable weekly$/);
   assert.match(text[1]!, /^ Claude +29\.0%░░░ +↻ 1h53m +24\.0%░░░ +27\.0%░░░$/);
@@ -90,7 +92,7 @@ test('6.12: as the width shrinks, bars go 10 → 8 cells (fill recomputed) → p
   const kind = (width: number): string => {
     const g = budgetGrid([claude, codex], { width, now: NOW });
     if (!g) return 'fallback';
-    const t = g.map(lineText).join('\n');
+    const t = g.map(barText).join('\n');
     return t.includes('29.0%░░░') ? '10' : t.includes('29.0%░░') ? '8' : /░/.test(t) ? '?' : 'numbers';
   };
   const seen: string[] = [];
@@ -101,12 +103,12 @@ test('6.12: as the width shrinks, bars go 10 → 8 cells (fill recomputed) → p
   assert.deepEqual(seen, ['10', '8', 'numbers', 'fallback'], 'each step appears, never out of order (round(29/100×8) = 2 cells)');
 });
 test('BUDGETS: caveats wrap to a continuation row rather than being cut; bars go before that; unavailable says why; null when it cannot fit', () => {
-  const mid = budgetGrid([{ ...claude, fallback: true }], { width: 56, now: NOW })!.map(lineText);
+  const mid = budgetGrid([{ ...claude, fallback: true }], { width: 56, now: NOW })!.map(barText);
   assert.ok(mid.every((l) => l.length <= 56), mid.join('\n'));
   assert.ok(mid.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole (wrapped, not cut)');
   assert.ok(mid.join('\n').includes('29.0%') && mid.join('\n').includes('27.0%'), 'no value is cut');
   const down: AccountUsage = { ...claude, status: 'unavailable', reason: 'no ccstatusline usage cache', buckets: [] };
-  assert.match(budgetGrid([down], { width: 120, now: NOW })!.map(lineText)[1]!, /^ Claude +usage unavailable — no ccstatusline usage cache$/);
+  assert.match(budgetGrid([down], { width: 120, now: NOW })!.map(barText)[1]!, /^ Claude +usage unavailable — no ccstatusline usage cache$/);
   assert.equal(budgetGrid([claude], { width: 20, now: NOW }), null, 'too narrow for a grid: the caller falls back to wrapped metric lines');
   assert.deepEqual(budgetGrid([], { width: 80 }), []);
 });
@@ -146,7 +148,7 @@ test('like pieces line up (Kevin): reset times, caveats and percentages each hav
     { id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: '2026-09-28T17:53:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: '2026-10-04T08:59:00Z' }] },
     { id: 'claude-fable', label: 'Fable', windows: [{ kind: 'c', durationMinutes: 10_080, usedPercent: 7, resetsAt: '2026-10-04T08:59:00Z' }] }] };
   const other = { ...codex, buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 18, resetsAt: '2026-10-03T15:09:00Z' }] }] };
-  const text = budgetGrid([withResets, other], { width: 160, now: NOW })!.map(lineText);
+  const text = budgetGrid([withResets, other], { width: 160, now: NOW })!.map(barText);
   const resets = (l: string) => [...l.matchAll(/↻/g)].map((m) => m.index);
   assert.equal(resets(text[1]!)[1], resets(text[2]!)[0], `weekly resets share a column:\n${text.join('\n')}`);
   assert.equal(colOf(text[1]!, 'via statusline'), colOf(text[2]!, 'stale'), 'caveats share a column');
@@ -175,11 +177,11 @@ test('the grid yields to the wrapping chips on a short terminal and while an ove
 test('review fix: a limit that was hit (100.0%) still lines up its decimal with the other rows', () => {
   const full: AccountUsage = { ...codex, status: 'ok', buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 100, resetsAt: null }] }] };
   const low: AccountUsage = { ...claude, buckets: [{ id: 'claude', windows: [{ kind: 'b', durationMinutes: 10_080, usedPercent: 7, resetsAt: null }] }] };
-  const text = budgetGrid([low, full], { width: 120, now: NOW })!.map(lineText);
+  const text = budgetGrid([low, full], { width: 120, now: NOW })!.map(barText);
   assert.equal(text[1]!.indexOf('7.0%') + 1, text[2]!.indexOf('100.0%') + 3, `decimal points share a column:\n${text.join('\n')}`);
 });
 test('6.11: the reset arrow is followed by a space (it renders wider than one cell in some terminals)', () => {
-  const text = budgetGrid([claude], { width: 120, now: NOW })!.map(lineText).join('\n');
+  const text = budgetGrid([claude], { width: 120, now: NOW })!.map(barText).join('\n');
   assert.ok(text.includes('↻ 1h53m'));
   assert.doesNotMatch(text, /↻\S/, 'never glued to the time');
 });
@@ -188,20 +190,20 @@ test('6.12 review: every window of a model bucket gets a column — a Codex mode
     { id: 'codex', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 20, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 18, resetsAt: null }] },
     { id: 'spark', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 61, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 12, resetsAt: null }] },
   ] };
-  const text = budgetGrid([claude, spark], { width: 200, now: NOW })!.map(lineText);
+  const text = budgetGrid([claude, spark], { width: 200, now: NOW })!.map(barText);
   assert.match(text[0]!, /Fable weekly +Spark 5h +Spark weekly$/, text.join('\n'));
   assert.ok(text[2]!.includes('61.0%') && text[2]!.includes('12.0%'), 'the Spark 5h reading is shown, not dropped');
   assert.equal(text[2]!.indexOf('61.0%') - text[0]!.indexOf('Spark 5h') < 12, true, 'under its own header');
 });
 
 test('6.12 review / 6.14: empty columns take no space; bar size is monotonic in width (a narrower terminal never gets bigger bars); caveats wrap whole', () => {
-  const g = budgetGrid([claude, codex], { width: 200, now: NOW })!.map(lineText);
+  const g = budgetGrid([claude, codex], { width: 200, now: NOW })!.map(barText);
   assert.match(g[1]!, /24\.0%░░░ {4}27\.0%/, `one gap (plus the bar's two filled cells) between columns, none doubled by an all-empty reset column:\n${g.join('\n')}`);
   const long: AccountUsage = { ...claude, fallback: true };
   const size = (w: number) => {
     const t = budgetGrid([long, codex], { width: w, now: NOW });
     if (!t) return 0;
-    const s = t.map(lineText).join('\n');
+    const s = t.map(barText).join('\n');
     return s.includes('29.0%░░░') ? 10 : s.includes('29.0%░░') ? 8 : 1;
   };
   let prev = Infinity;
@@ -210,7 +212,7 @@ test('6.12 review / 6.14: empty columns take no space; bar size is monotonic in 
     assert.ok(s <= prev, `width ${w}: bars grew from ${prev} to ${s} cells as the terminal narrowed`);
     prev = s;
   }
-  const tight = budgetGrid([long], { width: 72, now: NOW })!.map(lineText);
+  const tight = budgetGrid([long], { width: 72, now: NOW })!.map(barText);
   assert.ok(tight.join('\n').includes('29.0%'), 'values still shown');
   assert.ok(tight.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole');
 });
@@ -220,7 +222,7 @@ test('6.12 cross-review: two distinct buckets with the same label are both shown
     { id: 'model-a', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 10, resetsAt: null }] },
     { id: 'model-b', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 80, resetsAt: null }] },
   ] };
-  const text = budgetGrid([twoSparks], { width: 200, now: NOW })!.map(lineText);
+  const text = budgetGrid([twoSparks], { width: 200, now: NOW })!.map(barText);
   assert.ok(text[1]!.includes('10.0%') && text[1]!.includes('80.0%'), `both readings survive:\n${text.join('\n')}`);
   assert.match(text[0]!, /Spark 5h \[model-a\] +Spark 5h \[model-b\]/);
 });

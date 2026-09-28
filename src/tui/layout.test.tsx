@@ -10,11 +10,14 @@ import { render, cleanup } from 'ink-testing-library';
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage } from '../contracts/account.js';
 import { App } from './app.js';
+import { MONO_THEME } from './theme.js';
 import { demoSource } from './demo.js';
-import { lineCols, lineText } from './format.js';
+import { lineCols } from './format.js';
+// 6.15: bar assertions use the monochrome rendering (track = "░"); colour frames are checked separately (layout.test).
+import { barText } from './test-utils.js';
 import { leftPanelFits, sidePanelLines } from './sidepanel.js';
 import { accountLines, participantLines } from './topbar.js';
-import { STATE_COLOR, contextBar, sliderBar, usageBar } from './bars.js';
+import { STATE_COLOR, STALE_FILL, TEXT_ON_FILL, TEXT_ON_TRACK, TRACK_BG, contextBar, sliderBar, surfaceStyle, usageBar } from './bars.js';
 import { readSavedLayout, saveLayout, startingLayout, tuiPrefsPath } from './prefs.js';
 import { layoutFlag } from '../cli/tui-command.js';
 
@@ -40,7 +43,7 @@ test('side panel: name + ctx, status, model · branch per agent; usage one windo
   const p = agent('claude', { harness: 'claude', activity: 'busy', pending: 1, workspace: { model: 'claude-opus-5-5', cwd: null, cwdSource: null, observedAt: null,
     git: { status: 'ok', root: 'X:/r', worktree: null, branch: 'sprint/6.8', detached: false, head: 'abc', dirty: 2, staged: 0, modified: 2, untracked: 0, ahead: null, behind: null, checkedAt: null } } });
   const lines = sidePanelLines([p, agent('astra')], [claude], { width: 32, height: 26, stale: false, mono: false, now: NOW, humanName: 'Kevin' });
-  const text = lines.map(lineText);
+  const text = lines.map(barText);
   assert.equal(lines.length, 26, 'padded to the panel height');
   assert.ok(lines.every((l) => lineCols(l) <= 32), 'no line exceeds the panel width');
   assert.deepEqual(text.slice(1, 6), ['● claude', '  busy · 1 queued', '  ctx   42.0%░░░', '  opus-5-5 · sprint/6.8*2', '● astra']);
@@ -51,13 +54,13 @@ test('side panel: name + ctx, status, model · branch per agent; usage one windo
 
 test('side panel: agents that do not fit become "+N more · /who"; plan usage stays whole; disconnected says last known', () => {
   const many = Array.from({ length: 8 }, (_, i) => agent(`agent${i}`));
-  const text = sidePanelLines(many, [claude], { width: 32, height: 18, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  const text = sidePanelLines(many, [claude], { width: 32, height: 18, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   const more = text.find((l) => /^\+\d+ more · \/who$/.test(l));
   assert.ok(more, 'overflow is summarised, never silently dropped');
   const shown = text.filter((l) => /^● agent/.test(l)).length;
   assert.equal(Number(more!.match(/\d+/)![0]) + shown, 8);
   assert.ok(text.includes('  Fable weekly   22.0%░░░'), 'usage is kept whole');
-  const stale = sidePanelLines([agent('astra')], [], { width: 32, height: 8, stale: true, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  const stale = sidePanelLines([agent('astra')], [], { width: 32, height: 8, stale: true, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.equal(stale[0], 'AGENTS · last known');
   assert.equal(stale[1], '◌ astra', 'no live liveness or usage while disconnected');
   assert.equal(stale[2], '  last known: idle');
@@ -142,29 +145,30 @@ test('bars: ccstatusline slider (10 cells, round(clamp)) with one-decimal percen
   assert.deepEqual([0, 4, 5, 43, 95, 100, 130, -5].map((p) => sliderBar(p)), [
     '░░░░░░░░░░', '░░░░░░░░░░', '▓░░░░░░░░░', '▓▓▓▓░░░░░░', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '░░░░░░░░░░',
   ]);
-  assert.equal(lineText(usageBar('weekly', 43, { stale: false })), 'weekly   43.0%░░░', '6.14: the number sits inside the bar');
-  assert.equal(lineText(usageBar('weekly', 4, { stale: false })), 'weekly ░░░4.0%░░░', 'a low non-zero reading keeps its number');
-  assert.equal(lineText(usageBar('5h', null, { stale: false })), '5h —', 'unknown: no bar, never an empty 0% bar');
+  assert.equal(barText(usageBar('weekly', 43, { stale: false })), 'weekly   43.0%░░░', '6.14: the number sits inside the bar');
+  assert.equal(barText(usageBar('weekly', 4, { stale: false })), 'weekly ░░░4.0%░░░', 'a low non-zero reading keeps its number');
+  assert.equal(barText(usageBar('5h', null, { stale: false })), '5h —', 'unknown: no bar, never an empty 0% bar');
   const high = usageBar('5h', 95, { stale: false });
-  assert.equal(lineText(high), '5h   95.0%!  ');
-  assert.ok(high[0]!.color === undefined && high.slice(1).every((s) => s.color === STATE_COLOR.critical && s.inverse), 'quiet label; the bar is a red block (> 90%) with the number over it');
-  assert.equal(usageBar('5h', 43, { stale: false })[1]?.color, STATE_COLOR.ok, 'green under 70%');
-  assert.equal(usageBar('5h', 70, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber from 70%');
-  assert.equal(usageBar('5h', 90, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber up to 90%');
-  assert.equal(lineText(usageBar('', null, { stale: false })), '—', 'a bare grid cell with no reading is a dash, never 0');
+  assert.equal(barText(high), '5h   95.0%!  ');
+  assert.ok(high[0]!.color === undefined && high.slice(1).every((s) => s.surface?.kind === 'fill' && s.surface.color === STATE_COLOR.critical), 'quiet label; the bar is a red surface (> 90%) with the number over it');
+  assert.equal(usageBar('5h', 43, { stale: false })[1]?.surface?.color, STATE_COLOR.ok, 'green under 70%');
+  assert.equal(usageBar('5h', 70, { stale: false })[1]?.surface?.color, STATE_COLOR.warn, 'amber from 70%');
+  assert.equal(usageBar('5h', 90, { stale: false })[1]?.surface?.color, STATE_COLOR.warn, 'amber up to 90%');
+  assert.equal(barText(usageBar('', null, { stale: false })), '—', 'a bare grid cell with no reading is a dash, never 0');
   const stale = usageBar('5h', 95, { stale: true });
-  assert.equal(lineText(stale), '5h   95.0%   ', 'stale: no warning emphasis');
-  assert.ok(stale.every((s) => s.color === undefined && s.dim));
-  assert.equal(lineText(usageBar('5h', 43, { stale: false, bar: false })), '5h 43.0%');
-  assert.equal(lineText(contextBar(null, { stale: false })), 'ctx —');
-  assert.equal(lineText(contextBar({ source: 'codex-token-count', status: 'ok', observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } }, { stale: false })), 'ctx 12k', 'tokens without a limit: no bar');
+  assert.equal(barText(stale), '5h   95.0%   ', 'stale: no warning emphasis');
+  assert.ok(stale.every((s) => s.color === undefined && (!s.surface || s.surface.kind === 'track' || s.surface.color === undefined)), 'stale: no state colour anywhere (the fill is drawn grey)');
+  assert.ok(stale.filter((s) => /\S/.test(s.text)).every((s) => s.dim), 'stale text is dim');
+  assert.equal(barText(usageBar('5h', 43, { stale: false, bar: false })), '5h 43.0%');
+  assert.equal(barText(contextBar(null, { stale: false })), 'ctx —');
+  assert.equal(barText(contextBar({ source: 'codex-token-count', status: 'ok', observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } }, { stale: false })), 'ctx 12k', 'tokens without a limit: no bar');
 });
 
 test('both layouts show the same values; several agents on one subscription still give one account row', () => {
   const two = [agent('claude', { harness: 'claude' }), agent('claude-ui', { harness: 'claude' })];
   const pct = (lines: string[]) => lines.join('\n').match(/\d+\.\d%/g)?.sort();
-  const top = [...participantLines(two, { width: 200, stale: false, mono: false, maxLines: 2 }), ...accountLines([claude], { width: 200, mono: false, now: NOW })].map(lineText);
-  const left = sidePanelLines(two, [claude], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  const top = [...participantLines(two, { width: 200, stale: false, mono: false, maxLines: 2 }), ...accountLines([claude], { width: 200, mono: false, now: NOW })].map(barText);
+  const left = sidePanelLines(two, [claude], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.deepEqual(pct(left), pct(top), 'same percentages in both layouts');
   assert.equal(top.filter((l) => l.startsWith('Claude')).length, 1);
   assert.equal(left.filter((l) => l === 'Claude').length, 1);
@@ -172,19 +176,19 @@ test('both layouts show the same values; several agents on one subscription stil
 test('review fixes: a short panel degrades usage (no bars/reset rows) then says "more usage", never silently; qualifiers stay on the account row', () => {
   const stale = (harness: 'claude' | 'codex'): AccountUsage => ({ ...claude, status: 'stale', source: 's', account: { ...claude.account, harness, sourceKey: harness },
     buckets: [{ id: harness, windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 38, resetsAt: '2026-09-28T18:00:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 71, resetsAt: '2026-10-02T09:00:00Z' }] }] });
-  const tall = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  const tall = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.ok(tall.includes('Claude (stale)') && tall.includes('Codex (stale)'), 'the staleness qualifier rides on the account heading');
   assert.ok(tall.some((l) => l.includes('░')), 'room to spare: bars');
   // 6.14: bars carry their number inside, so the full form is shorter; 11 rows is where this panel must degrade.
-  const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 11, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 11, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.equal(short.length, 11);
   assert.ok(short.every((l) => !l.includes('░')), 'short: numbers only');
   assert.ok(short.includes('Codex (stale)'), 'compact form keeps both accounts whole here');
-  const tiny = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 8, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  const tiny = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 8, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.ok(tiny.includes('+ more usage · /layout top'), 'anything cut is announced');
   for (const [i, l] of tiny.entries()) if (/^\s+(5h|weekly)/.test(l)) assert.ok(tiny.slice(0, i).some((h) => /\(stale\)$/.test(h)), 'every shown value has its qualifier above it');
   const token = { source: 'claude-transcript' as const, status: 'stale' as const, observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } };
-  assert.equal(lineText(contextBar(token, { stale: false })), 'ctx 12k?', 'a stale token-only reading keeps its "?"');
+  assert.equal(barText(contextBar(token, { stale: false })), 'ctx 12k?', 'a stale token-only reading keeps its "?"');
 });
 
 test('review fixes: quick successive saves persist the latest choice', async () => {
@@ -195,9 +199,54 @@ test('review fixes: quick successive saves persist the latest choice', async () 
 });
 test('cross-review (Astra): on a very short panel a shown value never loses its source qualifier', () => {
   for (const height of [7, 8, 9, 10, 11, 12]) {
-    const text = sidePanelLines([], [{ ...claude, fallback: true }], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+    const text = sidePanelLines([], [{ ...claude, fallback: true }], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
     const firstValue = text.findIndex((l) => /\d+\.\d%/.test(l));
     if (firstValue < 0) continue;
     assert.ok(text.slice(0, firstValue).some((l) => /statusline/.test(l)), `height ${height}: "${text.join(' | ')}"`);
   }
+});
+test('6.15: a bar is one flat surface — fill = solid bright background, track = solid dim background, label with no background of its own; mono: inverse fill, ░ track', () => {
+  const bar = usageBar('', 43, { stale: false });
+  assert.ok(bar.every((s) => s.surface), 'every cell is surface');
+  assert.ok(!bar.some((s) => s.text.includes('░')), 'no stipple glyph in the model');
+  const fill = bar.find((s) => s.surface?.kind === 'fill')!;
+  const track = bar.find((s) => s.surface?.kind === 'track')!;
+  assert.deepEqual(surfaceStyle(fill, false), { backgroundColor: STATE_COLOR.ok, color: TEXT_ON_FILL });
+  assert.deepEqual(surfaceStyle(track, false), { backgroundColor: TRACK_BG, color: TEXT_ON_TRACK }, 'track text has an explicit light foreground');
+  const staleTrack = usageBar('', 43, { stale: true }).find((s) => s.surface?.kind === 'track' && /\S/.test(s.text))!;
+  assert.equal(surfaceStyle(staleTrack, false).dim, undefined, 'a stale label reads as one on both surfaces (not dimmed on either)');
+  assert.deepEqual(surfaceStyle(fill, true), { inverse: true, dim: fill.dim }, 'monochrome: the fill is reverse video');
+  assert.deepEqual(surfaceStyle(track, true), { inverse: false, dim: track.dim, blank: '░' }, 'monochrome: the track shows ░ so the extent (and a 0% bar) stays visible');
+  const staleFill = usageBar('', 43, { stale: true }).find((s) => s.surface?.kind === 'fill')!;
+  const st = surfaceStyle(staleFill, false);
+  assert.deepEqual([st.backgroundColor, st.color, st.dim], [STALE_FILL, TEXT_ON_FILL, undefined], 'stale: grey fill, never a state colour; its text is not dimmed into the grey');
+  assert.equal(bar.map((s) => s.text).join('').replace(/ /g, ''), '43.0%', 'the label is the only text, drawn over the surface');
+});
+
+test('6.15: rendered colour frames (top/left × full/compact) — no stipple, a flat dim track background, dark label text on the fill', async () => {
+  for (const layout of ['top', 'left'] as const) {
+    for (const topBar of ['full', 'compact'] as const) {
+      const ui = render(<App source={demoSource()} humanName="Kevin" width={130} height={34} layout={layout} topBar={topBar} />);
+      await tick();
+      const frame = ui.lastFrame() ?? '';
+      const where = `${layout}/${topBar}`;
+      assert.doesNotMatch(plain(frame), /░/, `${where}: no ░ anywhere`);
+      assert.match(frame, /\u001B\[48;5;237m/, `${where}: the track is a 256-colour background`);
+      assert.match(frame, /\u001B\[30m/, `${where}: label text on a fill is dark`);
+      assert.match(frame, /\u001B\[(4[1-3]|48;5;214)m/, `${where}: a fill is drawn as a state-colour background`);
+      cleanup();
+    }
+  }
+});
+
+test('6.15: the rendered monochrome frame — reverse-video fill, no background colours, a visible ░ track (a 0% bar stays visible)', async () => {
+  const ui = render(<App source={demoSource()} humanName="Kevin" width={130} height={34} theme={MONO_THEME} />);
+  await tick();
+  const frame = ui.lastFrame() ?? '';
+  assert.doesNotMatch(frame, /\u001B\[4[0-9](;|m)|\u001B\[10[0-7]m/, 'no background colour codes in monochrome');
+  const builder = frame.split('\n').find((l) => l.includes('claude_builder')) ?? '';
+  assert.match(builder, /\u001B\[7m/, 'the fill is reverse video');
+  assert.match(plain(builder), /░/, 'the track shows as ░ in monochrome');
+  const zero = usageBar('', 0, { stale: false });
+  assert.ok(zero.some((s) => s.surface?.kind === 'track') && surfaceStyle(zero.at(-1)!, true).blank === '░', 'a 0% bar is all track: visible as ░ in monochrome');
 });

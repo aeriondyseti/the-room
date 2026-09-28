@@ -43,6 +43,7 @@ import { ActivityPane } from './activity.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
+import { surfaceStyle } from './bars.js';
 import { bsIsCtrlBackspaceIn, classifyRawKey, useRawKey } from './raw-keys.js';
 import type { TopBarMode } from './prefs.js';
 import type { RoomSource } from './source.js';
@@ -1081,14 +1082,22 @@ function StatusBar({ offset, unseen, width }: { offset: number; unseen: number; 
   );
 }
 
-function LineView({ line }: { line: Line }) {
+/** One segment, including bar surfaces (6.15: flat fill/track backgrounds; reverse video in monochrome). */
+function SegmentText({ seg }: { seg: Line[number] }) {
   const t = useTheme();
+  const s = surfaceStyle(seg, t.mono);
+  return (
+    <Text color={t.color(s.color)} backgroundColor={t.color(s.backgroundColor)} bold={seg.bold} dimColor={s.dim} italic={seg.italic} inverse={s.inverse}>
+      {s.blank ? seg.text.replace(/ /g, s.blank) : seg.text}
+    </Text>
+  );
+}
+
+function LineView({ line }: { line: Line }) {
   return (
     <Text wrap="truncate">
       {line.map((seg, i) => (
-        <Text key={i} color={t.color(seg.color)} bold={seg.bold} dimColor={seg.dim} italic={seg.italic} inverse={seg.inverse}>
-          {seg.text}
-        </Text>
+        <SegmentText key={i} seg={seg} />
       ))}
     </Text>
   );
