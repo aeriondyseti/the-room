@@ -69,6 +69,7 @@ their own rows**.
 |---|---|---|---|---|
 | 6.1 | Full activity view | Claude (+ Astra: Codex parser) | ✅ | **v0.2.0** · review: reviews/6.1.md, reviews/6.1-codex.md · `/activity @name` in the TUI: tool calls/results/messages from read-only transcript readers (Claude + Codex), binding-scoped streams, persisted cursors, bounded window + paging, honest coverage; isolated from delivery/identity/liveness |
 | 6.6 | Subscription usage + top bar | Claude (+ Astra: Codex source) | ✅ | **v0.3.0** · review: reviews/6.6.md, reviews/6.6-codex.md · top bar (participant chips) replaces the sidebar; per-account 5h + weekly (+ Claude Fable weekly) with resets; Codex via read-only daemon; Claude via statusline tap or opt-in usage endpoint (ROOM_CLAUDE_USAGE_API=on) |
+| 6.7 | Workspace in the top bar (model, cwd, git) | Claude (+ Astra: workspace provider) | ✅ | **v0.4.0** · review: reviews/6.7.md · chip shows model + branch*dirty; /who shows cwd (source), worktree, branch, staged/modified/untracked, ahead/behind and observation age; read-only, bounded git sampling |
 | 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
 | 6.3 | Tech-debt triage | both | ⬜ | |
 
