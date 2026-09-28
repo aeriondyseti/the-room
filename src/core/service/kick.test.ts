@@ -7,7 +7,7 @@ import type { Caller, Method, Params, RequestFrame, Result, RoomEvent } from '..
 import { RoomService } from './service.js';
 import { openKickProposal } from './kick-vote.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
-import { readRegistry, removeRegistryParticipant } from '../registry/registry.js';
+import { readRegistry, removeRegistryParticipant, renameParticipant } from '../registry/registry.js';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const a='00000000-0000-4000-8000-00000000000a',b='00000000-0000-4000-8000-00000000000b',c='00000000-0000-4000-8000-00000000000c';
@@ -110,6 +110,19 @@ test('a human kick interrupted after registry removal completes its queued tombs
   await removeRegistryParticipant(root,'target',{harness:'codex',session_id:c});
   await room.close();room=new RoomService(root);await room.start();
   assert.equal(room.ledger.delivery(pending.message.id,'target').withdrawalCause,'kick');
+  assert.deepEqual(room.ledger.humanKickIntents(),[]);
+  assert.deepEqual((await call(room,'who',{})).participants.map(p=>p.name).sort(),['astra','fable']);
+});
+
+test('a pending human kick follows its binding if the name changes during downtime',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-human-rename-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'cancel for binding'});
+  room.ledger.putHumanKickIntent({id:'interrupted-before-rename',target:{name:'target',harness:'codex',sessionId:c},reason:'human requested removal',createdAt:new Date().toISOString()});
+  await renameParticipant(root,'target','newtarget',{harness:'codex',session_id:c});
+  await room.close();room=new RoomService(root);await room.start();
+  assert.equal(room.ledger.delivery(pending.message.id,'newtarget').withdrawalCause,'kick');
   assert.deepEqual(room.ledger.humanKickIntents(),[]);
   assert.deepEqual((await call(room,'who',{})).participants.map(p=>p.name).sort(),['astra','fable']);
 });
