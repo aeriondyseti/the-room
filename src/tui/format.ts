@@ -214,9 +214,7 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   lines.push(fitLine(candidates.find((l) => lineCols(l) <= ctx.width) ?? candidates.at(-1)!, ctx.width));
 
   const bodyStyle: Segment = message.kind === 'system' ? { text: '', dim: true, italic: true } : { text: '' };
-  for (const text of wrapText(message.body, ctx.width - INDENT.length)) {
-    lines.push([{ text: INDENT }, { ...bodyStyle, text }]);
-  }
+  lines.push(...bodyLines(message.body, ctx.width, bodyStyle));
 
   // Delivery marks wrap onto more lines rather than hiding a state behind an ellipsis (invariant 3).
   let marks: Line = [{ text: INDENT }];
@@ -236,6 +234,65 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   });
   if (item.deliveries.length > 0) lines.push(fitLine(marks, ctx.width));
   return lines;
+}
+
+const FENCE = /^\s*(```|~~~)\s*([^\s`]*)/;
+
+/**
+ * Message body → lines. Prose is word-wrapped; fenced code blocks (``` or ~~~) keep their indentation, are
+ * hard-wrapped (never re-flowed) and sit behind a gutter, so code stays readable and copyable at any width.
+ * An unclosed fence runs to the end of the message.
+ */
+export function bodyLines(body: string, width: number, style: Segment = { text: '' }): Line[] {
+  const out: Line[] = [];
+  const text = body.replace(/\r\n?/g, '\n');
+  let prose: string[] = [];
+  const flushProse = () => {
+    if (prose.length) for (const t of wrapText(prose.join('\n'), width - INDENT.length)) out.push([{ text: INDENT }, { ...style, text: t }]);
+    prose = [];
+  };
+  let fence: string | null = null;
+  for (const raw of text.split('\n')) {
+    const m = FENCE.exec(raw);
+    if (fence === null && m) {
+      flushProse();
+      fence = m[1]!;
+      out.push([{ text: INDENT }, { text: `┌ ${sanitize(m[2] || 'code')}`, dim: true }]);
+      continue;
+    }
+    if (fence !== null) {
+      if (m && m[1] === fence && raw.trim() === fence) {
+        out.push([{ text: INDENT }, { text: '└', dim: true }]);
+        fence = null;
+        continue;
+      }
+      for (const chunk of hardWrap(sanitize(raw.replace(/\t/g, '  ')), width - INDENT.length - 2)) {
+        out.push([{ text: INDENT }, { text: '│ ', dim: true }, { text: chunk }]);
+      }
+      continue;
+    }
+    prose.push(raw);
+  }
+  flushProse();
+  if (fence !== null) out.push([{ text: INDENT }, { text: '└', dim: true }]);
+  return out;
+}
+
+/** Split into ≤ width-column pieces by grapheme, keeping leading spaces (code indentation). Empty → one blank. */
+function hardWrap(line: string, width: number): string[] {
+  const w = Math.max(1, width);
+  if (line === '') return [' '];
+  const out: string[] = [];
+  let cur = '';
+  for (const { segment } of graphemes.segment(line)) {
+    if (cols(cur) + cols(segment) > w && cur !== '') {
+      out.push(cur);
+      cur = '';
+    }
+    cur += segment;
+  }
+  out.push(cur);
+  return out;
 }
 
 // ---- participants & usage ----------------------------------------------------------------------------------

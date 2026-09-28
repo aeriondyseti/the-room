@@ -30,6 +30,7 @@ import {
 import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
 import { detailLines } from './detail.js';
 import type { RoomSource } from './source.js';
+import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { INITIAL_VIEW, reduceView, type RoomView, type ViewAction } from './state.js';
 
 export interface AppProps {
@@ -40,12 +41,16 @@ export interface AppProps {
   height?: number;
   /** Messages loaded on first connect. */
   historyLimit?: number;
+  /** Participant panel width and the terminal width at which it appears (config: tuiPanelWidth / tuiPanelBreakpoint). */
+  panelWidth?: number;
+  panelBreakpoint?: number;
+  /** Max pages read when catching up after a reconnect (config: tuiCatchUpMaxPages). */
+  catchUpMaxPages?: number;
+  /** Colour or monochrome (NO_COLOR / --no-color). */
+  theme?: Theme;
 }
 
-const PANEL_WIDTH = 26;
-const WIDE_ENOUGH_FOR_PANEL = 90;
 const MAX_DRAFT_ROWS = 5;
-const CATCH_UP_MAX_PAGES = 50;
 
 /** Errors that prove a send never reached the service (so "Not sent" is true). Anything else is an unknown outcome. */
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
@@ -53,14 +58,23 @@ const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_rec
 type Feedback = { tone: 'ok' | 'info' | 'error'; text: string } | null;
 type Overlay = 'help' | 'who' | { detail: number } | null;
 
-export function App({ source, humanName, width, height, historyLimit = 500 }: AppProps) {
+export function App({ theme = COLOR_THEME, ...props }: AppProps) {
+  return (
+    <ThemeContext.Provider value={theme}>
+      <Room {...props} />
+    </ThemeContext.Provider>
+  );
+}
+
+function Room({ source, humanName, width, height, historyLimit = 500, panelWidth = 26, panelBreakpoint = 90, catchUpMaxPages = 50 }: Omit<AppProps, 'theme'>) {
+  const t = useTheme();
   const { exit } = useApp();
   const [view, dispatch] = useReducer(reduceView, INITIAL_VIEW, (v): RoomView => ({ ...v, connection: source.status() }));
   const lastSeqRef = useRef(0);
   lastSeqRef.current = view.lastSeq;
   const firstSeqRef = useRef(0);
   firstSeqRef.current = view.items[0]?.message.seq ?? 0;
-  const reload = useRoomSync(source, dispatch, historyLimit, lastSeqRef, firstSeqRef);
+  const reload = useRoomSync(source, dispatch, historyLimit, catchUpMaxPages, lastSeqRef, firstSeqRef);
 
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [history, setHistory] = useState<History>(EMPTY_HISTORY);
@@ -75,8 +89,8 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
   const window = useWindowSize();
   const colsTotal = Math.max(20, width ?? window.columns);
   const rows = Math.max(12, height ?? window.rows);
-  const showPanel = colsTotal >= WIDE_ENOUGH_FOR_PANEL;
-  const convWidth = colsTotal - (showPanel ? PANEL_WIDTH + 1 : 0) - 1;
+  const showPanel = colsTotal >= panelBreakpoint;
+  const convWidth = colsTotal - (showPanel ? panelWidth + 1 : 0) - 1;
   const banner = view.connection.state !== 'connected' || (view.notice !== null && view.loaded);
   const loadFailed = !view.loaded && view.notice !== null;
   const names = useMemo(() => view.participants.map((p) => p.name), [view.participants]);
@@ -331,7 +345,7 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
       {banner && <Banner view={view} width={colsTotal} />}
       <Box flexDirection="row" height={viewportHeight}>
         {showPanel && (
-          <Participants participants={view.participants} humanName={humanName} height={viewportHeight} stale={view.connection.state !== 'connected'} />
+          <Participants participants={view.participants} humanName={humanName} height={viewportHeight} stale={view.connection.state !== 'connected'} panelWidth={panelWidth} />
         )}
         <Box flexDirection="column" width={convWidth} paddingLeft={1} justifyContent={overlay ? 'flex-start' : 'flex-end'} overflow="hidden">
           {overlay === 'help' ? (
@@ -347,19 +361,19 @@ export function App({ source, humanName, width, height, historyLimit = 500 }: Ap
                   <LineView key={i} line={line} />
                 ))}
                 {detail.below > 0 && (
-                  <Text color="cyan">↓ {detail.below} more line{detail.below === 1 ? '' : 's'} · PgDn</Text>
+                  <Text color={t.color('cyan')}>↓ {detail.below} more line{detail.below === 1 ? '' : 's'} · PgDn</Text>
                 )}
               </Box>
             )
           ) : loadFailed ? (
             <Box flexDirection="column">
-              <Text color="red" bold>Couldn't load the room.</Text>
+              <Text color={t.color('red')} bold>Couldn't load the room.</Text>
               <Text dimColor>Press r to try again, or run `room doctor` to check the service.</Text>
             </Box>
           ) : !view.loaded ? (
             <Text dimColor>Loading room…</Text>
           ) : view.items.length === 0 ? (
-            <EmptyState />
+            <EmptyState participants={view.participants} />
           ) : (
             visible.map((line, i) => <LineView key={i} line={line} />)
           )}
@@ -406,6 +420,7 @@ function useRoomSync(
   source: RoomSource,
   dispatch: React.Dispatch<ViewAction>,
   historyLimit: number,
+  catchUpMaxPages: number,
   lastSeqRef: React.RefObject<number>,
   firstSeqRef: React.RefObject<number>,
 ): () => void {
@@ -439,7 +454,7 @@ function useRoomSync(
           // subscribe doesn't replay those) plus everything new, page by page.
           let after = Math.max(0, firstShown - 1);
           for (let page = 0; ; page++) {
-            if (page >= CATCH_UP_MAX_PAGES) {
+            if (page >= catchUpMaxPages) {
               truncated = true;
               break;
             }
@@ -484,7 +499,7 @@ function useRoomSync(
       offEvent();
       offStatus();
     };
-  }, [source, dispatch, historyLimit, lastSeqRef, firstSeqRef]);
+  }, [source, dispatch, historyLimit, catchUpMaxPages, lastSeqRef, firstSeqRef]);
   return () => reloadRef.current();
 }
 
@@ -533,6 +548,7 @@ function useScroll(lineCount: number, messageCount: number, viewportHeight: numb
 // ---- pieces ---------------------------------------------------------------------------------------------
 
 function Header({ view, width }: { view: RoomView; width: number }) {
+  const t = useTheme();
   const conn = connectionBadge(view.connection.state);
   // While disconnected the counts are stale, so only the total is shown.
   const summary = view.connection.state === 'connected' ? participantsSummary(view.participants) : participantsSummary(view.participants).slice(0, 1);
@@ -540,17 +556,17 @@ function Header({ view, width }: { view: RoomView; width: number }) {
     <Box width={width} justifyContent="space-between">
       <Text>
         <Text inverse bold> vibe-pairing </Text>
-        {view.room.paused && <Text color="yellow" inverse bold> ⏸ PAUSED </Text>}
+        {view.room.paused && <Text color={t.color('yellow')} inverse bold> ⏸ PAUSED </Text>}
       </Text>
       <Text wrap="truncate">
         {summary.map((part, i) => (
-          <Text key={i} color={part.color} dimColor={part.color === undefined}>
+          <Text key={i} color={t.color(part.color)} dimColor={part.color === undefined}>
             {i > 0 ? ' · ' : ''}
             {part.text}
           </Text>
         ))}
         <Text>  </Text>
-        <Text color={conn.color}>{conn.glyph} {conn.label}</Text>
+        <Text color={t.color(conn.color)}>{conn.glyph} {conn.label}</Text>
       </Text>
     </Box>
   );
@@ -570,6 +586,7 @@ function connectionBadge(state: RoomView['connection']['state']): { glyph: strin
 }
 
 function Banner({ view, width }: { view: RoomView; width: number }) {
+  const t = useTheme();
   if (view.connection.state !== 'connected') {
     const detail = view.connection.detail ? ` (${view.connection.detail})` : '';
     const text =
@@ -580,44 +597,47 @@ function Banner({ view, width }: { view: RoomView; width: number }) {
           : `Reconnecting to the room service${detail}… what you see may be out of date.`;
     return (
       <Box width={width}>
-        <Text color="yellow" wrap="truncate">{text}</Text>
+        <Text color={t.color('yellow')} wrap="truncate">{text}</Text>
       </Box>
     );
   }
   return (
     <Box width={width}>
-      <Text color="yellow" wrap="truncate">{view.notice}</Text>
+      <Text color={t.color('yellow')} wrap="truncate">{view.notice}</Text>
     </Box>
   );
 }
 
-function Participants({ participants, humanName, height, stale }: { participants: ParticipantState[]; humanName: string; height: number; stale: boolean }) {
+function Participants({ participants, humanName, height, stale, panelWidth }: { participants: ParticipantState[]; humanName: string; height: number; stale: boolean; panelWidth: number }) {
+  const t = useTheme();
   // Two rows per participant (name, then status); keep room for the title and footer.
   const capacity = Math.max(0, Math.floor((height - 4) / 2));
   const shown = participants.slice(0, capacity);
   const hidden = participants.length - shown.length;
   return (
-    <Box flexDirection="column" width={PANEL_WIDTH} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} paddingRight={1}>
+    <Box flexDirection="column" width={panelWidth} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} paddingRight={1}>
       <Text dimColor bold>PARTICIPANTS{stale ? ' · stale' : ''}</Text>
       {participants.length === 0 && <Text dimColor>none yet</Text>}
       {shown.map((p) => {
         // While disconnected we can't vouch for liveness: grey everything out (invariant 3).
         const live = stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
         const status = stale ? { text: 'last known: ' + activityLabel(p).text } : activityLabel(p);
-        const usage = usageLabel(p.usage);
+        const label = usageLabel(p.usage);
+        // Monochrome can't show the warning colour, so a high reading gets a "!" instead.
+        const usage = t.mono && label.color ? { ...label, text: `${label.text}!` } : label;
         // Leave a clear gap between a long name and its usage label: truncate the name, never the usage.
-        const nameRoom = PANEL_WIDTH - 2 /* padding+border */ - 2 /* glyph */ - (stale ? 0 : usage.text.length + 1);
+        const nameRoom = panelWidth - 2 /* padding+border */ - 2 /* glyph */ - (stale ? 0 : usage.text.length + 1);
         const name = lineText(fitLine([{ text: sanitize(p.name) }], Math.max(4, nameRoom)));
         return (
           <Box key={p.name} flexDirection="column">
-            <Box justifyContent="space-between" width={PANEL_WIDTH - 2}>
+            <Box justifyContent="space-between" width={panelWidth - 2}>
               <Text>
-                <Text color={live.color}>{live.glyph} </Text>
-                <Text color={stale ? 'gray' : colorFor(p.name)} bold>{name}</Text>
+                <Text color={t.color(live.color)}>{live.glyph} </Text>
+                <Text color={t.color(stale ? 'gray' : colorFor(p.name))} bold>{name}</Text>
               </Text>
-              {!stale && <Text color={usage.color} dimColor={usage.dim}>{usage.text}</Text>}
+              {!stale && <Text color={t.color(usage.color)} dimColor={usage.dim}>{usage.text}</Text>}
             </Box>
-            <Text wrap="truncate" color={status.color} dimColor={status.color === undefined}>
+            <Text wrap="truncate" color={t.color(status.color)} dimColor={status.color === undefined}>
               {'  '}{status.text}
             </Text>
           </Box>
@@ -653,12 +673,39 @@ export function activityLabel(p: ParticipantState): { text: string; color?: stri
   return { text: `${p.activity}${pending}` };
 }
 
-function EmptyState() {
+/** First-run guidance when nobody has joined yet; a short prompt once agents are here but nothing's been said. */
+export function EmptyState({ participants }: { participants: readonly ParticipantState[] }) {
+  const t = useTheme();
+  if (participants.length === 0) {
+    const steps: Array<[string, string]> = [
+      ['1', 'In each agent\'s session, ask it to join: "join the room as <name>". It uses the room_join tool (or `room join --as <name>` from its shell).'],
+      ['2', 'Joined agents appear here with their status. Enter sends to everyone; start with @name to pick one.'],
+      ['3', 'Something off? Run `room doctor`, or see docs/ONBOARDING.md. Press ? for keys and commands.'],
+    ];
+    return (
+      <Box flexDirection="column" flexShrink={0}>
+        <Text bold>Welcome to the room — no agents have joined yet.</Text>
+        <Text> </Text>
+        {steps.map(([n, s]) => (
+          <Box key={n} flexDirection="row">
+            <Box width={3} flexShrink={0}>
+              <Text color={t.color('cyan')} bold>{n}.</Text>
+            </Box>
+            <Box flexGrow={1} flexShrink={1}>
+              <Text wrap="wrap">{s}</Text>
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    );
+  }
+  const names = participants.map((p) => sanitize(p.name));
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       <Text bold>The room is quiet.</Text>
-      <Text dimColor>Type below and press Enter to message every agent, or start with @name to pick one.</Text>
-      <Text dimColor>Agents join with `room join --as &lt;name&gt;` (or the room_join tool). Press ? for help.</Text>
+      <Text dimColor wrap="wrap">
+        {`${names.length === 1 ? `${names[0]} is here.` : `${names.length} agents are here: ${names.slice(0, 6).join(', ')}${names.length > 6 ? ', …' : ''}.`} Type below and press Enter to message everyone, or start with @${names[0]} to pick one. Press ? for help.`}
+      </Text>
     </Box>
   );
 }
@@ -674,25 +721,26 @@ function Composer(props: {
   connected: boolean;
 }) {
   const { draft, to } = props;
+  const t = useTheme();
   const accent = !props.connected ? 'gray' : props.paused ? 'yellow' : 'cyan';
   const toText = to.label === 'command' ? 'command' : `To: ${to.label}`;
   const lines = draftLines(draft, props.rows);
   const hints = 'Enter send · Alt+Enter newline · Tab @name · ? help';
   return (
     <Box flexDirection="column" width={props.width}>
-      <Text color={accent}>{'─'.repeat(props.width)}</Text>
+      <Text color={t.color(accent)}>{'─'.repeat(props.width)}</Text>
       <Box justifyContent="space-between" width={props.width}>
         <Text wrap="truncate">
-          <Text color={to.valid ? accent : 'red'} bold>{toText}</Text>
-          {!to.valid && <Text color="red"> (unknown name)</Text>}
-          {props.paused && <Text color="yellow"> · room paused — deliveries held</Text>}
+          <Text color={t.color(to.valid ? accent : 'red')} bold>{toText}</Text>
+          {!to.valid && <Text color={t.color('red')}> (unknown name)</Text>}
+          {props.paused && <Text color={t.color('yellow')}> · room paused — deliveries held</Text>}
           {props.busy && <Text dimColor> · sending…</Text>}
         </Text>
         {props.width >= hints.length + 30 && <Text dimColor>{hints}</Text>}
       </Box>
       {lines.map((l, i) => (
         <Box key={i} width={props.width}>
-          <Text color={accent}>{i === 0 ? '› ' : '  '}</Text>
+          <Text color={t.color(accent)}>{i === 0 ? '› ' : '  '}</Text>
           {l.before !== '' && <Text>{l.before}</Text>}
           {l.cursor !== null && <Text inverse>{l.cursor}</Text>}
           {l.after !== '' && <Text wrap="truncate">{l.after}</Text>}
@@ -700,7 +748,7 @@ function Composer(props: {
         </Box>
       ))}
       {props.feedback && (
-        <Text wrap="truncate" color={props.feedback.tone === 'error' ? 'red' : props.feedback.tone === 'ok' ? 'green' : 'cyan'}>
+        <Text wrap="truncate" color={t.color(props.feedback.tone === 'error' ? 'red' : props.feedback.tone === 'ok' ? 'green' : 'cyan')}>
           {props.feedback.tone === 'error' ? '✗ ' : props.feedback.tone === 'ok' ? '✓ ' : '· '}
           {props.feedback.text}
         </Text>
@@ -729,6 +777,7 @@ function draftLines(draft: Draft, rows: number): Array<{ before: string; cursor:
 }
 
 function HelpOverlay() {
+  const t = useTheme();
   const keys: Array<[string, string]> = [
     ['Enter', 'send (to everyone unless you start with @names)'],
     ['@name …', 'address one or more agents; Tab completes names'],
@@ -752,7 +801,7 @@ function HelpOverlay() {
       <Text bold>Keys</Text>
       {keys.map(([k, d]) => (
         <Text key={k} wrap="truncate">
-          <Text color="cyan">{k.padEnd(27)}</Text>
+          <Text color={t.color('cyan')}>{k.padEnd(27)}</Text>
           <Text dimColor>{d}</Text>
         </Text>
       ))}
@@ -760,7 +809,7 @@ function HelpOverlay() {
       <Text bold>Commands</Text>
       {commands.map(([k, d]) => (
         <Text key={k} wrap="truncate">
-          <Text color="cyan">{k.padEnd(27)}</Text>
+          <Text color={t.color('cyan')}>{k.padEnd(27)}</Text>
           <Text dimColor>{d}</Text>
         </Text>
       ))}
@@ -769,18 +818,19 @@ function HelpOverlay() {
       <Text wrap="truncate">
         {DELIVERY_LEGEND.map((m, i) => (
           <Text key={i}>
-            <Text color={m.color}>{m.glyph}</Text>
+            <Text color={t.color(m.color)}>{m.glyph}</Text>
             <Text dimColor> {m.label}   </Text>
           </Text>
         ))}
       </Text>
       <Text> </Text>
-      <Text dimColor>Esc to close</Text>
+      <Text dimColor wrap="truncate">Monochrome: set NO_COLOR=1 or run `room tui --no-color`. Esc to close.</Text>
     </Box>
   );
 }
 
 function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
+  const t = useTheme();
   return (
     <Box flexDirection="column" flexShrink={0}>
       <Text bold>Participants ({participants.length})</Text>
@@ -795,10 +845,10 @@ function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
             : `${label.text.replace(/\?$/, '')} · ${p.usage?.status === 'stale' ? 'stale, ' : ''}updated ${relativeTime(p.usage?.observedAt ?? null)}`;
         return (
           <Text key={p.name} wrap="truncate">
-            <Text color={dot.color}>{dot.glyph} </Text>
-            <Text color={colorFor(p.name)} bold>{sanitize(p.name).padEnd(18)}</Text>
+            <Text color={t.color(dot.color)}>{dot.glyph} </Text>
+            <Text color={t.color(colorFor(p.name))} bold>{sanitize(p.name).padEnd(18)}</Text>
             <Text dimColor>{p.harness.padEnd(8)}</Text>
-            <Text color={status.color} dimColor={status.color === undefined}>{status.text.padEnd(26)}</Text>
+            <Text color={t.color(status.color)} dimColor={status.color === undefined}>{status.text.padEnd(26)}</Text>
             <Text dimColor>{usage}</Text>
           </Text>
         );
@@ -810,11 +860,12 @@ function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
 }
 
 function StatusBar({ offset, unseen, width }: { offset: number; unseen: number; width: number }) {
+  const t = useTheme();
   // While scrolled, the scroll state owns the line (it must never be clipped); hints only when there's room.
   if (offset > 0) {
     return (
       <Box width={width}>
-        <Text color="cyan" wrap="truncate">
+        <Text color={t.color('cyan')} wrap="truncate">
           ↑ scrolled{unseen > 0 ? ` · ${unseen} new below` : ''} · End to follow live
         </Text>
       </Box>
@@ -830,10 +881,11 @@ function StatusBar({ offset, unseen, width }: { offset: number; unseen: number; 
 }
 
 function LineView({ line }: { line: Line }) {
+  const t = useTheme();
   return (
     <Text wrap="truncate">
       {line.map((seg, i) => (
-        <Text key={i} color={seg.color} bold={seg.bold} dimColor={seg.dim} italic={seg.italic} inverse={seg.inverse}>
+        <Text key={i} color={t.color(seg.color)} bold={seg.bold} dimColor={seg.dim} italic={seg.italic} inverse={seg.inverse}>
           {seg.text}
         </Text>
       ))}

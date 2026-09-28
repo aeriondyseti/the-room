@@ -40,7 +40,7 @@ export function demoSource(): FakeRoomSource {
     replyTo: kickoff.message.id,
     states: { claude: 'replied' },
   });
-  source.post('claude', ['astra'], 'Yes — composer is mine. I will send you the IPC calls it needs:\n\n  send, pause, resume, retry\n\nand ping you when it is ready for a look.', {
+  source.post('claude', ['astra'], 'Yes — composer is mine. These are the IPC calls it needs:\n\n```ts\nawait source.request(\'send\', { to, body, clientMessageId });\nawait source.request(\'pause\', { stopRequestBody: null });\n```\n\nI will ping you when it is ready for a look.', {
     replyTo: reply.message.id,
     states: { astra: 'submitted' },
   });
@@ -57,6 +57,7 @@ export function demoSource(): FakeRoomSource {
         finishedAt: t,
         outcome: 'uncertain',
         evidence: null,
+        runtimeContext: { harness: 'codex', executable: 'C:\\Users\\you\\.codex\\bin\\codex.exe', home: 'C:\\Users\\you\\.codex' },
         error: { code: 'internal', message: 'codex queue timed out after the message was handed over', hint: 'It may already have arrived; check before retrying.' },
       },
     ],

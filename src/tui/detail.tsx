@@ -91,6 +91,11 @@ function attemptLines(a: DeliveryAttempt, wrapped: (text: string, indent: string
       ...(a.evidence ? [{ text: `  (${evidenceText(a.evidence)})`, dim: true }] : []),
     ],
   ];
+  // Which native runtime took the attempt (e.g. the codex executable and CODEX_HOME), for reconciling an uncertain one.
+  if (a.runtimeContext) {
+    const rc = a.runtimeContext;
+    out.push(...wrapped(`via ${sanitize(rc.executable ?? `${rc.harness} (executable unresolved)`)} · home ${sanitize(rc.home)}`, '      ', { dim: true }));
+  }
   if (a.error) {
     out.push(...wrapped(a.error.message, '      ', { color }));
     if (a.error.hint) out.push(...wrapped(`→ ${a.error.hint}`, '      ', { dim: true }));
