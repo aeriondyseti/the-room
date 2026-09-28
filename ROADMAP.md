@@ -276,7 +276,7 @@ ergonomics first. Ownership agreed at the milestone boundary.
   - URGENT and its reason shown;
   - "N new since snapshot" on agent chips;
   - blocked-then-revised attempts shown as one line.
-- [ ] **7.6 Delivery hold, same-sender batching and room settings** *(Astra core; Claude envelope text, TUI `/settings`, docs)*
+- [x] **7.6 Delivery hold, same-sender batching and room settings** *(Astra core; Claude envelope text, TUI `/settings`, docs)*
   Kevin, 2026-09-28: a half-second hold before delivery, configurable in settings, letting queued messages
   (especially his) go as one message.
   **Done-when:**
