@@ -5,8 +5,8 @@ import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import { Ledger } from '../ledger/ledger.js';
-import { joinParticipant, readRegistry, type Registry } from '../registry/registry.js';
-import { HUMAN, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
+import { joinParticipant, readRegistry, renameParticipant, type Registry } from '../registry/registry.js';
+import { HUMAN, SYSTEM, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
 import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } from '../../contracts/ipc.js';
 import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
@@ -28,6 +28,7 @@ export class RoomService {
   readonly inbox: InboxStore;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
+  private requestTail:Promise<void>=Promise.resolve();
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
@@ -69,7 +70,18 @@ export class RoomService {
   async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
+  /** Rename spans a registry write and a ledger relabel. Serialize room requests
+   * that can observe or mutate that boundary so a send cannot enqueue an old
+   * recipient after the final relabel pass.
+   */
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
+    if(!['send','guarded_send','rename','kick','join','retry','pause','resume','withdraw','inbox','who'].includes(request.method))return this.handleOne(request,client);
+    const previous=this.requestTail;let release!:()=>void;
+    this.requestTail=new Promise<void>(resolve=>{release=resolve;});
+    await previous;
+    try{return await this.handleOne(request,client);}finally{release();}
+  }
+  private async handleOne(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
     switch(request.method) {
       case 'settings_get': return this.settings.get();
@@ -125,7 +137,11 @@ export class RoomService {
         const targets=recipients.map(name=>{
           if(name===HUMAN)return {name,target:null};
           const binding=Object.hasOwn(registry,name)?registry[name]:undefined;
-          if(!binding)throw new RoomError('unknown_recipient',`Unknown participant: ${name}`);
+          if(!binding){
+            const scope=this.ledger.participantAlias(name);
+            const renamed=scope?Object.entries(registry).find(([,b])=>`${b.harness}:${b.session_id}`===scope)?.[0]:null;
+            throw new RoomError('unknown_recipient',renamed?`${name} was renamed to ${renamed}; address the new name.`:`Unknown participant: ${name}`);
+          }
           return {name,target:{harness:binding.harness,sessionId:binding.session_id}};
         });
         const saved=this.ledger.transaction(()=>{
@@ -179,6 +195,35 @@ export class RoomService {
         this.ledger.putParticipant(state);this.publish({type:'participant.updated',participant:state});void this.dispatcher.kick();void this.monitor?.refresh(name);
         return {registration,created:!prior[name],rebound:!!prior[name]&&(prior[name].harness!==binding.harness||prior[name].session_id!==binding.session_id)};
       }
+      case 'rename': {
+        const registry=await readRegistry(this.root);
+        const caller=resolveCaller(p.caller,client,registry);
+        if(caller.sender.kind==='agent'&&caller.sender.identity.mode!=='verified')throw new RoomError('identity_unresolved','Renaming requires verified native session identity.');
+        const oldName=caller.sender.kind==='human'?text(p.oldName,'oldName'):caller.sender.name;
+        if(caller.sender.kind==='agent'&&p.oldName!==undefined&&p.oldName!==null)throw new RoomError('bad_request','Agents rename only their own binding; omit oldName.');
+        const newName=text(p.newName,'newName');
+        if(!isValidParticipantName(newName))throw new RoomError('bad_request','Choose a valid, unreserved participant name.');
+        const binding=registry[oldName];
+        if(!binding)throw new RoomError('not_registered','The participant is no longer registered; refresh room who.');
+        const target={harness:binding.harness,sessionId:binding.session_id};
+        if(oldName===newName)return{oldName,registration:{name:newName,...target},relabeled:0,noticeId:null};
+        const conflicts=this.ledger.relabelConflicts(oldName,newName,target);
+        if(conflicts.length)throw new RoomError('invalid_state',`Rename would collide with an existing delivery for ${newName}; resolve message ${conflicts[0]} before retrying.`);
+        const renamed=await renameParticipant(this.root,oldName,newName,binding);
+        const moved=this.ledger.transaction(()=>{
+          const previous=this.ledger.participants().find(row=>row.name===oldName&&row.harness===target.harness&&row.sessionId===target.sessionId);
+          const deliveries=this.ledger.relabelQueued(oldName,newName,target,this.ledger.roomState().paused);
+          if(previous)this.ledger.putParticipant({...previous,name:newName,pending:this.ledger.queued(newName).length});
+          this.ledger.recordParticipantAlias(oldName,target);
+          return deliveries;
+        });
+        const participant=(await this.participants(renamed)).find(row=>row.name===newName)!;
+        this.ledger.putParticipant(participant);this.publish({type:'participant.updated',participant});
+        for(const delivery of moved)this.publish({type:'delivery.updated',delivery});
+        void this.dispatcher.kick();
+        const noticeId=this.postSystemNotice(`${oldName} is now ${newName}.`,renamed,caller.sender.kind==='agent'?newName:null);
+        return{oldName,registration:{name:newName,...target},relabeled:moved.length,noticeId};
+      }
       case 'deliveries': return {deliveries:this.ledger.read(text(p.messageId,'messageId')).deliveries};
       case 'activity': {
         const req:ActivityRequest={participant:text(p.participant,'participant')};
@@ -228,6 +273,17 @@ export class RoomService {
       }
       default:throw new RoomError('bad_request','This request is handled by the IPC connection.');
     }
+  }
+  /** One informational room message, delivered by the ordinary native path. */
+  private postSystemNotice(body:string,registry:Registry,exclude:string|null=null):string|null {
+    try{
+      const names=Object.keys(registry).filter(name=>name!==exclude);
+      const result=this.ledger.enqueue({sender:{name:SYSTEM,kind:'system',identity:{mode:'system',source:'service'}},senderScope:SYSTEM,
+        body,requestedRecipients:[...names,HUMAN],recipients:[...names.map(name=>({name,target:{harness:registry[name]!.harness,sessionId:registry[name]!.session_id}})),{name:HUMAN,target:null}],
+        addressing:'direct',kind:'system',held:this.ledger.roomState().paused});
+      this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});void this.dispatcher.kick();
+      return result.message.id;
+    }catch{return null; /* Rename remains valid; notices are best effort across a crash/failure. */}
   }
   private inboxDisplay(scope:string) {
     const display=this.ledger.inboxDisplay(scope);if(!display)return null;

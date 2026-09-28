@@ -41,7 +41,8 @@ export class Dispatcher {
     const worker=this.run(name,d=>{processing=d;}).catch(()=>{
      if(!processing.length)return;
      for(const selected of processing){
-     const pending=this.ledger.delivery(selected.messageId,selected.recipient);
+     const pending=this.ledger.findDelivery(selected.messageId,selected.recipient);
+     if(!pending)continue;
      if(pending.state!=='queued'||(pending.held&&pending.attempts.at(-1)?.outcome!=='in_flight'))continue;
      const inFlight=pending.attempts.at(-1)?.outcome==='in_flight';
      this.change(pending,value=>{
@@ -78,7 +79,7 @@ export class Dispatcher {
    const eligibleAt=next.notBefore?Date.parse(next.notBefore):0;
    if(eligibleAt>Date.now()){this.wakeAt(eligibleAt);return;}
    const registry=await readRegistry(this.root);const binding=registry[name];
-   if(this.ledger.delivery(next.messageId,name).state!=='queued')continue;
+   if(this.ledger.findDelivery(next.messageId,name)?.state!=='queued')continue;
    if(!binding||binding.harness!==next.target.harness||binding.session_id!==next.target.sessionId){
     this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;
    }
@@ -87,13 +88,13 @@ export class Dispatcher {
    probe=await adapter.probe(next.target);
    if(this.stopped)return;
    const fresh=(await readRegistry(this.root))[name];
-   const afterProbe=this.ledger.delivery(next.messageId,name);if(afterProbe.state!=='queued'||afterProbe.held)continue;
+   const afterProbe=this.ledger.findDelivery(next.messageId,name);if(!afterProbe||afterProbe.state!=='queued'||afterProbe.held)continue;
    if(!fresh||fresh.harness!==next.target.harness||fresh.session_id!==next.target.sessionId){this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;}
    const old=this.ledger.participants().find(p=>p.name===name&&p.sessionId===next.target.sessionId&&p.harness===next.target.harness);
    const participant={...old,name,...next.target,liveness:probe.liveness,livenessCheckedAt:new Date().toISOString(),activity:probe.activity,pending:this.ledger.queued(name).length,usage:old?.usage??null};
    this.ledger.putParticipant(participant);this.emit({type:'participant.updated',participant});
    // Pause may have happened while a probe was awaiting the native process query.
-   const current=this.ledger.delivery(next.messageId,name);if(current.state!=='queued'||current.held)continue;
+   const current=this.ledger.findDelivery(next.messageId,name);if(!current||current.state!=='queued'||current.held)continue;
    // Urgent work may have arrived during the asynchronous native probe. Claim
    // the current lane head, not the stale selection from before that await.
    if(this.ledger.queued(name).find(d=>!d.held)?.messageId!==current.messageId)continue;

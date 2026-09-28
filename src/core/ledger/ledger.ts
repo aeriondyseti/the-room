@@ -73,6 +73,7 @@ export class Ledger {
         );
         CREATE INDEX IF NOT EXISTS delivery_order ON deliveries(recipient,state);
         CREATE TABLE IF NOT EXISTS participants (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS participant_aliases (old_name TEXT PRIMARY KEY, native_scope TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS usage_cursors (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_records (id TEXT PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_display (scope TEXT PRIMARY KEY, snapshot TEXT NOT NULL, checked_at TEXT NOT NULL);
@@ -228,9 +229,14 @@ export class Ledger {
     return (this.db.prepare('SELECT payload FROM deliveries WHERE message_id=? ORDER BY recipient').all(messageId) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
   }
   delivery(messageId: string, recipient: string): Delivery {
-    const row = this.db.prepare('SELECT payload FROM deliveries WHERE message_id=? AND recipient=?').get(messageId, recipient) as unknown as DeliveryRow | undefined;
-    if (!row) throw new RoomError('not_found', 'Delivery not found in this room.');
-    return JSON.parse(row.payload) as Delivery;
+    const found=this.findDelivery(messageId,recipient);
+    if (!found) throw new RoomError('not_found', 'Delivery not found in this room.');
+    return found;
+  }
+  /** A rename may move a queued row while the old dispatcher worker awaits a probe. */
+  findDelivery(messageId:string,recipient:string):Delivery|null {
+    const row=this.db.prepare('SELECT payload FROM deliveries WHERE message_id=? AND recipient=?').get(messageId,recipient) as unknown as DeliveryRow|undefined;
+    return row?JSON.parse(row.payload) as Delivery:null;
   }
   unfinishedAttempts(): Delivery[] {
     return (this.db.prepare("SELECT payload FROM deliveries WHERE json_extract(payload,'$.attempts[#-1].outcome')='in_flight'").all() as unknown as DeliveryRow[]).map(row=>JSON.parse(row.payload) as Delivery);
@@ -282,6 +288,17 @@ export class Ledger {
       }
       return moved;
     });
+  }
+  relabelConflicts(from:string,to:string,target:Delivery['target']):string[] {
+    return this.queued(from).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&
+      d.attempts.at(-1)?.outcome!=='in_flight'&&this.findDelivery(d.messageId,to)!==null).map(d=>d.messageId);
+  }
+  recordParticipantAlias(oldName:string,target:Delivery['target']):void {
+    this.db.prepare('INSERT INTO participant_aliases(old_name,native_scope) VALUES(?,?) ON CONFLICT(old_name) DO UPDATE SET native_scope=excluded.native_scope').run(oldName,`${target.harness}:${target.sessionId}`);
+  }
+  participantAlias(oldName:string):string|null {
+    const row=this.db.prepare('SELECT native_scope FROM participant_aliases WHERE old_name=?').get(oldName) as {native_scope:string}|undefined;
+    return row?.native_scope??null;
   }
   /** Update mutable state only; message, recipient and target snapshot cannot be replaced. */
   updateDelivery(messageId: string, recipient: string, update: (delivery: Delivery) => void): Delivery {
