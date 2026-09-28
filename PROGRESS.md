@@ -122,7 +122,7 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 8.1 | Ghost cleanup | fable | 🟡 | was 7.8; sprint/8.1 bad3404 core done (483/483); startup reconcile, gate and record pending |
+| 8.1 | Ghost cleanup | fable | 🟡 | was 7.8; sprint/8.1: core + startup reconcile done, lean gate run 1 (4 actionable) fixed, 489/489; run 2 and Astra cross-review pending; review: reviews/8.1.md |
 | 8.2 | Rename without restart | Astra (core) + fable (surfaces) | ⬜ | relabel in-flight (Kevin) |
 | 8.3 | Kick by unanimous consent | Astra (core) + fable (surfaces) | ⬜ | voters = other registered agents online at open (Kevin); agreed with Astra (spec §8): one verb, immediate execution, no veto; voters from fresh liveness |
 | 8.4 | TUI | fable | ⬜ | |

@@ -255,8 +255,14 @@ export class Ledger {
       const owner=this.db.prepare('SELECT sender_scope FROM messages WHERE id=?').get(messageId) as {sender_scope:string}|undefined;
       if(!owner)throw new RoomError('not_found','Message not found.');
       if(owner.sender_scope!==scope)throw new RoomError('identity_mismatch','Only the original sender can withdraw this message.');
-      const item=this.read(messageId);const targets=recipients??item.message.to;
-      if(!targets.length||new Set(targets).size!==targets.length||targets.some(n=>!item.message.to.includes(n)))throw new RoomError('bad_request','Withdraw recipients must be distinct original recipients.');
+      const item=this.read(messageId);
+      // Delivery rows are the truth for who holds a delivery now (a relabelled row lives under its new name; 8.1);
+      // the message's `to` list is history. The human has no row.
+      const current=this.deliveries(messageId).map(d=>d.recipient);
+      // In the message's own order, then any row relabelled to a name the message never listed.
+      const known=[...item.message.to.filter(n=>n===HUMAN||current.includes(n)),...current.filter(n=>!item.message.to.includes(n))];
+      const targets=recipients??known;
+      if(!targets.length||new Set(targets).size!==targets.length||targets.some(n=>!known.includes(n)))throw new RoomError('bad_request',`Withdraw recipients must be distinct current recipients of this message (${known.join(', ')||'none'}).`);
       return {messageId,recipients:targets.map(recipient=>{
         let disposition:WithdrawDisposition;
         if(recipient===HUMAN)disposition='already_visible';
@@ -280,6 +286,10 @@ export class Ledger {
    * 8.1/8.2: move QUEUED deliveries addressed to `from` whose target is `target` under the name `to`. The target
    * snapshot never changes (invariant 5): only the label does. A stale rebind wait is cleared, because the binding is
    * registered again under the new name. Submitted, uncertain, in-flight and terminal rows stay as history.
+   *
+   * Run it only while the dispatcher is stopped or the old name's worker is quiesced (8.1 calls it before the
+   * dispatcher starts): a worker that has selected a queued row but not yet claimed it would find the row gone
+   * (TD-0041; 8.2's live rename must drain the old name's worker first or make that path tolerant).
    */
   relabelQueued(from:string,to:string,target:Delivery['target'],paused:boolean):Delivery[] {
     return this.transaction(()=>{
@@ -288,7 +298,9 @@ export class Ledger {
       for(const d of rows){
         if(this.db.prepare('SELECT 1 FROM deliveries WHERE message_id=? AND recipient=?').get(d.messageId,to))continue;
         const next:Delivery={...d,recipient:to,updatedAt:new Date().toISOString()};
-        if(next.waiting==='rebind_needed'){next.waiting=null;next.held=paused;}
+        // A cleared rebind wait follows the pause like a fresh enqueue would, except stop requests, which pause
+        // never holds.
+        if(next.waiting==='rebind_needed'){next.waiting=null;next.held=paused&&this.read(d.messageId).message.kind!=='stop_request';}
         this.db.prepare('UPDATE deliveries SET recipient=?,held=?,payload=? WHERE message_id=? AND recipient=?').run(to,Number(next.held),JSON.stringify(next),d.messageId,from);
         moved.push(next);
       }
