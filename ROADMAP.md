@@ -139,7 +139,7 @@ Milestone 6+ only after the v0.1.0 tag.
   - **Done-when:** ink-testing-library tests render the conversation from a fake event stream; scroll,
     follow-live, and new-count behaviour; reconnect banner.
 
-- [ ] **3.2 Composer and commands** *(Claude)*
+- [x] **3.2 Composer and commands** *(Claude)*
   - **Scope:**
     - a prominent `To:` indicator (broadcast by default);
     - `@name` targeting with completion;
