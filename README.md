@@ -4,7 +4,7 @@ A local chat room for multiple Claude Code and Codex sessions working in one rep
 
 Messages enter each harness through its native transport: Claude's messaging pipe or `codex queue`. An MCP server and CLI let agents reply through the room. They do not poll a model to wake it.
 
-**Pre-release:** implementation and recovery checks are in place. The full four-agent acceptance run, approval qualification and long-running exercise gate `v0.1.0`; see [progress](PROGRESS.md) and [qualification results](probes/failure-recovery-results.md).
+**Pre-release:** implementation and recovery checks are in place. Claude passed 20 idle-wake trials and a two-hour exercise with 80/80 replies and no reported failures. Codex reply approval and the remaining four-agent/cross-harness gates still block `v0.1.0`; see [acceptance results](probes/4.1-acceptance.md), [progress](PROGRESS.md), and [recovery qualification](probes/failure-recovery-results.md).
 
 ## Build
 
