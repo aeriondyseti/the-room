@@ -28,8 +28,8 @@ export function renameText(outcome: RenameOutcome, self: boolean): string {
     outcome.noticeId === null
       ? 'No room notice was posted.'
       : self
-        ? 'A room notice was posted to the other agents and the human (native delivery follows); you were not sent one, so your snapshot stays current.'
-        : 'A room notice was posted to every agent (the renamed one included) and the human; native delivery follows.',
+        ? 'A room notice was posted to the other agents and the human (queued for native delivery); you were not sent one, so your snapshot stays current.'
+        : 'A room notice was posted to every agent (the renamed one included) and the human, queued for native delivery.',
   );
   return lines.join('\n');
 }
@@ -68,7 +68,7 @@ export function kickText(outcome: KickOutcome, surface: Surface = 'mcp'): string
         ? 'No queued deliveries had to be cancelled.'
         : `${outcome.cancelled} queued deliver${outcome.cancelled === 1 ? 'y' : 'ies'} to it cancelled, shown as withdrawn (kicked); nothing redirected.`,
     );
-    lines.push(`Its session was not touched; it can rejoin with ${JOIN[surface]}, which everyone will see.${outcome.noticeId === null ? ' No room notice was posted.' : ' A room notice was posted.'}`);
+    lines.push(`Its session was not touched; it can rejoin with ${JOIN[surface]}, and its return appears in room who and the TUI.${outcome.noticeId === null ? ' No room notice was posted.' : ' A room notice was posted.'}`);
     return lines.join('\n');
   }
   const p = outcome.proposal;

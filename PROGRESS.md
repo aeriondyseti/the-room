@@ -122,9 +122,9 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 8.1 | Ghost cleanup | fable | 🟡 | was 7.8; sprint/8.1: core + startup reconcile done, lean gate run 1 (4 actionable) fixed, 489/489; run 2 and Astra cross-review pending; review: reviews/8.1.md |
-| 8.2 | Rename without restart | Astra (core) + fable (surfaces) | 🟡 | core on sprint/8.2-contracts (Astra, reviews/8.2-8.3-core.md); surfaces on sprint/8.2-surfaces (room_rename, room rename, /rename); relabel in-flight (Kevin) |
-| 8.3 | Kick by unanimous consent | Astra (core) + fable (surfaces) | 🟡 | core on sprint/8.2-contracts; surfaces on sprint/8.2-surfaces (room_kick, room kick, /kick); one verb, immediate execution, no veto, voters from fresh liveness (spec §8) |
-| 8.4 | TUI | fable | 🟡 | sprint/8.2-surfaces: /rename, /kick, offline-with-queued flag; system notices render as notes |
+| 8.1 | Ghost cleanup | fable | ✅ | **v0.9.0** · review: reviews/8.1.md (2 lean runs + focused recheck; Astra APPROVE) · registry-driven participants(), single participant.removed emitter, startup reconcile (relabelQueued) |
+| 8.2 | Rename without restart | Astra (core) + fable (surfaces) | ✅ | **v0.9.0** · reviews/8.2-8.3-core.md (Astra gate + fable cross-review) and reviews/8.2-8.4-surfaces.md (fable gate + Astra recheck GO) · room_rename / room rename / /rename; queued rows relabelled, targets frozen; notice split |
+| 8.3 | Kick by unanimous consent | Astra (core) + fable (surfaces) | ✅ | **v0.9.0** · same records · room_kick as one verb, frozen electorate from fresh liveness, immediate execution, kicked tombstones, durable human intent; TD-0042 open |
+| 8.4 | TUI | fable | ✅ | **v0.9.0** · reviews/8.2-8.4-surfaces.md · /rename, /kick, offline-with-queued flag, kicked mark and legend, notices as notes |
 
-> Ownership agreed with Astra at the M7→M8 boundary (spec §6): Astra core + contracts; fable 8.1, surfaces, spec, docs. Milestone 7 follow-up 7.7 (baseline text) stays on hold for Astra's delivery-token frontier.
+> Released together as **v0.9.0** in one combined merge (Astra core + 8.1 + surfaces; each branch's history kept). Ownership agreed with Astra at the M7→M8 boundary (spec §6): Astra core + contracts; fable 8.1, surfaces, spec, docs. Milestone 7 follow-up 7.7 (baseline text) stays on hold for Astra's delivery-token frontier.
