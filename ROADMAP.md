@@ -83,6 +83,11 @@ Milestone 6+ only after the v0.1.0 tag.
   Unicode, id capture, failure mapping, and the oversize fallback. A documented live smoke test against
   a real thread passes.
 
+- [x] **2.1b Codex observed activity** *(Astra)* — read enrolled thread status through the shared
+  daemon used by `codex agents`, without starting a daemon or loading/resuming a thread.
+  **Done-when:** active/idle/approval evidence populates participant state; unavailable/unloaded stays
+  unknown; bounded protocol and failure tests pass; a live read-only observation is recorded.
+
 - [x] **2.2 Claude adapter** *(Claude)* — look up the live registry entry by `session_id`, validating
   that the pid is alive and `procStart` matches; derive the key from the pipe path; write the auth frame
   then the user frame (`priority: next`); stale binding means "rebind needed"; tokens are never logged.
@@ -105,6 +110,11 @@ Milestone 6+ only after the v0.1.0 tag.
   - **Done-when:** integration tests run the CLI against a service with fake adapters for each command;
     identity detection, mismatch refusal, and the declared fallback are labelled; `room join` writes
     only harness and session_id.
+
+- [x] **2.3b Human desktop ancestry** *(Astra)* — treat Explorer as the Windows desktop ancestry
+  root after native-agent checks, rather than rejecting its normally exited launcher.
+  **Done-when:** human terminal chain accepted; detected agent, Claude env evidence and ancestry
+  broken below the desktop still rejected; regression tests and independent review complete.
 
 - [x] **2.4 MCP front end** *(Claude)*
   - **Scope:** official MCP SDK stdio server exposing `room_send`, `room_read` (paginated, with message
