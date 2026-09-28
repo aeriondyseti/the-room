@@ -88,6 +88,8 @@ export interface RoomConfig {
   activityPollMs: number;
   /** How often each subscription-usage source is sampled (bounded: per source, never per participant or render). */
   accountsPollMs: number;
+  /** On shutdown, how long to wait for an in-flight observation pass before abandoning it (it then writes nothing). */
+  monitorStopGraceMs: number;
   /** A usage reading older than this is shown as stale (values kept, labelled). */
   accountsStaleMs: number;
   /**
@@ -145,6 +147,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   activityReadBytes: 4 * 1024 * 1024,
   activityPollMs: 2_000,
   accountsPollMs: 120_000,
+  monitorStopGraceMs: 500,
   accountsStaleMs: 15 * 60_000,
   claudeUsageApi: 'off',
   claudeUsageTimeoutMs: 5_000,
@@ -195,6 +198,7 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   activityReadBytes: 'ROOM_ACTIVITY_READ_BYTES',
   activityPollMs: 'ROOM_ACTIVITY_POLL_MS',
   accountsPollMs: 'ROOM_ACCOUNTS_POLL_MS',
+  monitorStopGraceMs: 'ROOM_MONITOR_STOP_GRACE_MS',
   accountsStaleMs: 'ROOM_ACCOUNTS_STALE_MS',
   claudeUsageApi: 'ROOM_CLAUDE_USAGE_API',
   claudeUsageTimeoutMs: 'ROOM_CLAUDE_USAGE_TIMEOUT_MS',

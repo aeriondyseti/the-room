@@ -45,7 +45,7 @@ export class RoomService {
     this.accounts=new AccountMonitor({providers,publish:event=>this.publish(event),intervalMs,staleAfterMs});
   }
   start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
-  async close():Promise<void>{await this.accounts?.stop();await this.activity?.stop();await this.monitor?.stop();await this.dispatcher.stop();this.ledger.close();}
+  async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {

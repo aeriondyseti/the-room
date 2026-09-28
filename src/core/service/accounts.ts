@@ -5,12 +5,16 @@
 //  - a good reading older than `staleAfterMs` is also marked `stale` (values kept, labelled).
 import type { AccountUsage, AccountUsageProvider } from '../../contracts/account.js';
 import type { RoomEvent } from '../../contracts/ipc.js';
+import { DEFAULT_CONFIG } from '../config.js';
+import { settleWithin } from './settle.js';
 
 export interface AccountMonitorDeps {
   providers: readonly AccountUsageProvider[];
   publish(event: RoomEvent): void;
   intervalMs: number;
   staleAfterMs: number;
+  /** Shutdown grace for an in-flight pass (default: config monitorStopGraceMs). */
+  stopGraceMs?: number;
   now?: () => Date;
 }
 
@@ -38,7 +42,8 @@ export class AccountMonitor {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    await this.running;
+    // A slow provider (daemon read, endpoint call) gets a short grace, then is abandoned; it then publishes nothing.
+    await settleWithin(this.running, this.deps.stopGraceMs ?? DEFAULT_CONFIG.monitorStopGraceMs);
   }
 
   /** Current view, one entry per source (with staleness applied at read time). */
@@ -67,6 +72,7 @@ export class AccountMonitor {
         void err;
         sample = unavailable(provider, 'the usage source failed unexpectedly', this.now(), this.current.get(provider.id)?.account);
       }
+      if (this.stopped) return; // abandoned by stop()
       const next = this.merge(provider.id, sample);
       this.current.set(provider.id, next);
       // Compare what subscribers would SEE (age applied), so a reading that ages into `stale` is published too.
