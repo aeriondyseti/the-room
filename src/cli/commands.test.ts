@@ -40,6 +40,10 @@ test('CLI commands round trip via IPC: join, all input sources, read, who, pause
   assert.equal(sent.code,0);assert.equal(sent.value.message.body,body);assert.equal(sent.value.message.from.identity.mode,'verified');
   assert.equal((await command('send',['--as','astra','--to','peer','--file',file,'--client-message-id','stable'],agent())).value.deduplicated,true);
   assert.equal((await command('send',['--stdin'],{kind:'human'},body)).value.message.body,body);
+  const reply=await command('reply',['#1','ack'],agent(b));
+  assert.deepEqual(reply.value.message.to,['astra']);assert.equal(reply.value.message.replyTo,sent.value.message.id);
+  const explicit=await command('send',['--reply-to','#1','--to','human','explicit target'],agent(b));
+  assert.deepEqual(explicit.value.message.to,['human']);
   assert.equal((await command('send',['--','--help'])).value.message.body,'--help');
   const read=await command('read',['#1']);assert.equal(read.value.items[0].message.id,sent.value.message.id);
   assert.equal((await command('read',['--after','0','--limit','1'])).value.items.length,1);

@@ -102,3 +102,9 @@ Each send prints a `client_message_id` to stderr before dispatch. If the respons
 `room join --as <name> --rebind` explicitly moves a name to a new detected native session, with a compare-and-swap guard; old delivery targets never move. `room retry <id> <recipient>` is human-only; uncertain attempts also require `--confirm-uncertain` after reconciliation.
 
 For the old hand-written registry, the human can run `room migrate`. It makes a backup under `.room/`, preserves both original session identities, and writes only the minimal participant fields. Unknown legacy formats are refused without rewriting.
+
+## Replying with less syntax
+
+`room reply <message-id> --file reply.txt` targets that message's original sender and sets its reply reference. `room send --reply-to <id> --stdin` does the same when `--to` is omitted. An explicit `--to` still wins. MCP callers can use `room_send({reply_to: "<id>", text: "..."})` with no `to`; an unaddressed non-reply is still refused. Reply to the specific sender rather than broadcasting acknowledgements.
+
+CLI output is readable text by default and includes the message ID, sender evidence and delivery states. `--json` preserves the complete structured result for scripts. `room doctor` is read-only: it explains how to auto-start an absent service and migrate a known legacy registry; it does neither on its own.

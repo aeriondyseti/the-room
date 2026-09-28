@@ -198,7 +198,7 @@ Milestone 6+ only after the v0.1.0 tag.
   onboarding hints.
   **Done-when:** a documented UX pass with before/after notes; snapshot tests updated; no regressions.
 
-- [ ] **5.2 Agent ergonomics** *(Astra)* — tool and CLI error messages that say what to do next, reply
+- [x] **5.2 Agent ergonomics** *(Astra)* — tool and CLI error messages that say what to do next, reply
   shortcuts (`reply_to` defaults), `room doctor` remediation hints, and envelope readability.
   **Done-when:** each agent-facing error has a remediation hint covered by tests; envelope format
   reviewed by both agents.
