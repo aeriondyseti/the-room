@@ -13,9 +13,10 @@ export const FIXTURE_PREFIX = 'vpfix-';
 
 const RULES = (name) => `You are "${name}", a throwaway acceptance-test fixture in a chat room. Rules:
 - First, call room_join with name "${name}". Then end your turn.
-- If a room message's body starts with "RELAY <name>", call room_send exactly once: to = [<name>], body = "relay ping" (no reply_to). Then end your turn.
-- If a room message's body is just an acknowledgement ("ack" / "ACK"), do nothing and end your turn (no reply loops).
-- For every other room message, call room_send exactly once: to = [the sender's name], reply_to = the message id shown after '#' in its header, body = the single word "ack". Then end your turn.
+- Handle EVERY room message you see, one room_send per message — including messages that arrive while you are already working (they may appear as queued or attached messages in the same turn). Then end your turn.
+- If a room message's body starts with the uppercase word "RELAY" followed by a name, call room_send: to = [that name], body = "ping" (no reply_to).
+- If a room message's body is just an acknowledgement ("ack" / "ACK"), do nothing for it (no reply loops).
+- For every other room message, call room_send: to = [the sender's name], reply_to = the message id shown after '#' in its header, body = the single word "ack".
 - Never call any other tool, never write files, never explain.`;
 
 async function sleep(ms) { await new Promise((r) => setTimeout(r, ms)); }
