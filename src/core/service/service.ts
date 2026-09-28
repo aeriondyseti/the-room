@@ -5,7 +5,7 @@ import { InboxStore } from '../ledger/inbox.js';
 import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.js';
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
-import { Ledger } from '../ledger/ledger.js';
+import { Ledger, type HumanKickIntent } from '../ledger/ledger.js';
 import { joinParticipant, readRegistry, renameParticipant, removeRegistryParticipant, type Registry } from '../registry/registry.js';
 import { HUMAN, SYSTEM, isValidParticipantName, type MessageWithDeliveries, type ParticipantRegistration, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
 import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } from '../../contracts/ipc.js';
@@ -239,7 +239,11 @@ export class RoomService {
         const binding=registry[name];if(!binding)throw new RoomError('unknown_recipient',`No registered agent named ${name}.`);
         const target={harness:binding.harness,sessionId:binding.session_id};
         const registration={name,...target};
-        if(caller.sender.kind==='human')return await this.executeKick(null,registration,text(reason,'reason'));
+        if(caller.sender.kind==='human'){
+          const intent:HumanKickIntent={id:randomBytes(16).toString('hex'),target:registration,reason:text(reason,'reason'),createdAt:new Date().toISOString()};
+          this.ledger.putHumanKickIntent(intent);
+          return await this.executeKick(null,registration,intent.reason,intent.id);
+        }
         if(caller.sender.identity.mode!=='verified')throw new RoomError('identity_unresolved','Kick votes require verified native session identity.');
         const own=registry[caller.sender.name]!;const voter={harness:own.harness,sessionId:own.session_id};
         let proposal=this.ledger.openKickProposal(target);
@@ -346,6 +350,9 @@ export class RoomService {
     this.scheduleKickExpiry();
   }
   private async recoverKickProposals():Promise<void> {
+    for(const intent of this.ledger.humanKickIntents()){
+      try{await this.executeKick(null,intent.target,intent.reason,intent.id);}catch{/* Keep the intent for the next recovery attempt. */}
+    }
     for(const proposal of this.ledger.openKickProposals()){
       if(proposal.voters.every(v=>v.votedAt!==null)){
         try{await this.executeKick(proposal,proposal.target,proposal.reason);}catch{/* Keep the approved proposal for the next recovery attempt. */}
@@ -354,19 +361,24 @@ export class RoomService {
     }
     this.scheduleKickExpiry();
   }
-  private async executeKick(proposal:KickProposal|null,target:ParticipantRegistration,reason:string):Promise<KickOutcome> {
+  private async executeKick(proposal:KickProposal|null,target:ParticipantRegistration,reason:string,humanIntentId:string|null=null):Promise<KickOutcome> {
     const superseded=proposal?null:this.ledger.openKickProposal({harness:target.harness,sessionId:target.sessionId});
     let registry=await readRegistry(this.root);
-    const bound=registry[target.name];
     const same=(b:{harness:string;session_id:string})=>b.harness===target.harness&&b.session_id===target.sessionId;
+    // An explicit human decision follows the native binding if it was renamed
+    // while the service was down; a proposal's frozen target does not.
+    const currentName=Object.entries(registry).find(([,b])=>same(b))?.[0];
+    if(humanIntentId&&currentName)target={...target,name:currentName};
+    let bound=registry[target.name];
     if(bound&&!same(bound)){
       if(proposal)await this.expireKickProposal(proposal);
-      throw new RoomError('rebind_conflict','Target binding changed during voting; open a new proposal.');
+      if(!humanIntentId)throw new RoomError('rebind_conflict','Target binding changed during voting; open a new proposal.');
+      bound=undefined; // The intended binding is already absent; never remove its replacement.
     }
     if(!bound){
-      if(!proposal)throw new RoomError('not_registered','The target is no longer registered.');
+      if(!proposal&&!humanIntentId)throw new RoomError('not_registered','The target is no longer registered.');
       if(Object.values(registry).some(same)){
-        await this.expireKickProposal(proposal);
+        if(proposal)await this.expireKickProposal(proposal);
         throw new RoomError('rebind_conflict','Target changed its name during voting; open a new proposal.');
       }
     }else registry=await removeRegistryParticipant(this.root,target.name,{harness:target.harness,session_id:target.sessionId});
@@ -377,6 +389,7 @@ export class RoomService {
       const rows=this.ledger.kickQueued(target.name,{harness:target.harness,sessionId:target.sessionId});
       if(proposal)this.ledger.putKickProposal({...proposal,status:'executed'});
       if(superseded)this.ledger.putKickProposal({...superseded,status:'executed'});
+      if(humanIntentId)this.ledger.deleteHumanKickIntent(humanIntentId);
       return rows;
     });
     await this.participants(registry);

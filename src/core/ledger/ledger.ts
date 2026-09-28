@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantState, RoomMessage, RoomState, Sender, TargetSnapshot } from '../../contracts/domain.js';
+import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantRegistration, ParticipantState, RoomMessage, RoomState, Sender, TargetSnapshot } from '../../contracts/domain.js';
 import { HUMAN } from '../../contracts/domain.js';
 import { loadConfig } from '../config.js';
 import type { WithdrawOutcome, WithdrawDisposition } from '../../contracts/crossing.js';
@@ -29,6 +29,8 @@ export interface EnqueueInput {
   crossing?: RoomMessage['crossing'];
 }
 export interface UsageCursor { source: string; offset: number; identity: string; updatedAt: string }
+/** A human removal survives a crash between the registry CAS and delivery tombstones. */
+export interface HumanKickIntent { id:string; target:ParticipantRegistration; reason:string; createdAt:string }
 interface MessageRow { seq: number; id: string; payload: string; fingerprint: string }
 interface DeliveryRow { payload: string }
 
@@ -77,6 +79,7 @@ export class Ledger {
         CREATE TABLE IF NOT EXISTS participant_aliases (old_name TEXT PRIMARY KEY, native_scope TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS kick_proposals (id TEXT PRIMARY KEY, target_scope TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE UNIQUE INDEX IF NOT EXISTS kick_open_target ON kick_proposals(target_scope) WHERE status='open';
+        CREATE TABLE IF NOT EXISTS human_kick_intents (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS usage_cursors (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_records (id TEXT PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_display (scope TEXT PRIMARY KEY, snapshot TEXT NOT NULL, checked_at TEXT NOT NULL);
@@ -318,6 +321,15 @@ export class Ledger {
   }
   openKickProposals():KickProposal[] {
     return (this.db.prepare("SELECT payload FROM kick_proposals WHERE status='open'").all() as {payload:string}[]).map(row=>JSON.parse(row.payload) as KickProposal);
+  }
+  putHumanKickIntent(intent:HumanKickIntent):void {
+    this.db.prepare('INSERT INTO human_kick_intents(id,payload) VALUES(?,?)').run(intent.id,JSON.stringify(intent));
+  }
+  humanKickIntents():HumanKickIntent[] {
+    return (this.db.prepare('SELECT payload FROM human_kick_intents').all() as {payload:string}[]).map(row=>JSON.parse(row.payload) as HumanKickIntent);
+  }
+  deleteHumanKickIntent(id:string):void {
+    this.db.prepare('DELETE FROM human_kick_intents WHERE id=?').run(id);
   }
   /** Update mutable state only; message, recipient and target snapshot cannot be replaced. */
   updateDelivery(messageId: string, recipient: string, update: (delivery: Delivery) => void): Delivery {
