@@ -1,4 +1,4 @@
-// 7.8: the registry is the truth for who is in the room. A name that leaves it (rename, removed section) is pruned
+// 8.1: the registry is the truth for who is in the room. A name that leaves it (rename, removed section) is pruned
 // from the ledger and announced once with participant.removed; no later display refresh resurrects it.
 import {test,type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -103,4 +103,49 @@ test('reconcile leaves a delivery alone when its binding is no longer registered
   await writeFile(join(root,'session.toml'),`[participants.astra]\nharness = "codex"\nsession_id = "${b}"\n`);
   assert.equal(await room.reconcile(),0);
   assert.equal(room.ledger.delivery(sent.message.id,'claude').recipient,'claude');
+});
+test('a relabelled delivery can still be withdrawn, by default and by its current name; the old name is refused with the current list',async t=>{
+  const {room,rename}=await fixture(t);
+  const page=await call(room,'inbox',{caller:agent(b)});
+  const sent=await call(room,'guarded_send',{caller:agent(b),to:['claude'],body:'take it back',snapshot:page.snapshot});
+  assert.equal(sent.status,'sent');if(sent.status!=='sent')return;
+  await rename();assert.equal(await room.reconcile(),1);
+  await assert.rejects(call(room,'withdraw',{caller:agent(b),messageId:sent.result.message.id,recipients:['claude']}),/current recipients of this message \(fable\)/);
+  const outcome=await call(room,'withdraw',{caller:agent(b),messageId:sent.result.message.id});
+  assert.deepEqual(outcome.recipients,[{recipient:'fable',disposition:'withdrawn'}]);
+  assert.equal(room.ledger.delivery(sent.result.message.id,'fable').state,'withdrawn');
+});
+
+test('withdraw recomputes and publishes the pending count of current participants',async t=>{
+  const {room,events}=await fixture(t);
+  const page=await call(room,'inbox',{caller:agent(b)});
+  const sent=await call(room,'guarded_send',{caller:agent(b),to:['claude'],body:'pending one',snapshot:page.snapshot});
+  assert.equal(sent.status,'sent');if(sent.status!=='sent')return;
+  room.ledger.putParticipant({...row('claude',a),pending:1});events.length=0;
+  await call(room,'withdraw',{caller:agent(b),messageId:sent.result.message.id});
+  assert.equal(room.ledger.participants().find(p=>p.name==='claude')?.pending,0,'stored row recomputed');
+  const published=events.find(e=>e.type==='participant.updated'&&e.participant.name==='claude');
+  assert.equal(published&&published.type==='participant.updated'?published.participant.pending:-1,0,'published with the recomputed count');
+});
+
+test('relabelQueued: a cleared rebind wait follows the pause for ordinary messages but never for a stop request',async t=>{
+  const {room,rename}=await fixture(t);
+  const ordinary=await call(room,'send',{caller:{kind:'human'},to:['claude'],body:'ordinary'});
+  const paused=await call(room,'pause',{caller:{kind:'human'}});
+  const stop=paused.stopRequest;assert.ok(stop,'pause sends a stop request');
+  for(const id of [ordinary.message.id,stop.message.id])room.ledger.updateDelivery(id,'claude',d=>{d.held=true;d.waiting='rebind_needed';});
+  await rename();assert.equal(await room.reconcile(),2);
+  const o=room.ledger.delivery(ordinary.message.id,'fable'),s=room.ledger.delivery(stop.message.id,'fable');
+  assert.equal(o.waiting,null);assert.equal(o.held,true,'ordinary: held while paused');
+  assert.equal(s.waiting,null);assert.equal(s.held,false,'stop request: never held by pause');
+});
+
+test('relabelQueued moves only queued rows: a withdrawn row keeps its old label as history',async t=>{
+  const {room,rename}=await fixture(t);
+  const page=await call(room,'inbox',{caller:agent(b)});
+  const sent=await call(room,'guarded_send',{caller:agent(b),to:['claude'],body:'already withdrawn',snapshot:page.snapshot});
+  assert.equal(sent.status,'sent');if(sent.status!=='sent')return;
+  await call(room,'withdraw',{caller:agent(b),messageId:sent.result.message.id});
+  await rename();assert.equal(await room.reconcile(),0);
+  assert.equal(room.ledger.delivery(sent.result.message.id,'claude').state,'withdrawn');
 });

@@ -62,10 +62,19 @@ export class RoomService {
       if(Object.hasOwn(registry,d.recipient))continue;
       const name=byBinding.get(`${d.target.harness}:${d.target.sessionId}`);if(!name)continue;
       for(const delivery of this.ledger.relabelQueued(d.recipient,name,d.target,paused)){this.publish({type:'delivery.updated',delivery});moved++;}
+      // A row the relabel had to skip (the same message already has a delivery under the new name) stays stranded
+      // under the departed name; say so rather than claim a full repair (8.2's explicit rename refuses such a case).
+      const stranded=this.ledger.queued(d.recipient).filter(q=>q.target.harness===d.target.harness&&q.target.sessionId===d.target.sessionId);
+      if(stranded.length)console.error(`room: ${stranded.length} queued deliver${stranded.length===1?'y':'ies'} to departed name "${d.recipient}" could not be relabelled to "${name}" (the message already has a delivery under that name): ${stranded.map(q=>q.messageId).join(', ')}`);
     }
     return moved;
   }
-  async start():Promise<void>{await this.reconcile();this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
+  async start():Promise<void>{
+    // A repair that can't run (registry unreadable right now) must not stop the room: the dispatcher's own registry
+    // checks mark such deliveries rebind_needed as before, and the next start retries the repair.
+    try{await this.reconcile();}catch(error){console.error(`room: startup delivery repair skipped: ${error instanceof Error?error.message:String(error)}`);}
+    this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();
+  }
   async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
@@ -80,8 +89,9 @@ export class RoomService {
         if(p.recipients!==undefined&&(!Array.isArray(p.recipients)||p.recipients.some(n=>typeof n!=='string')))throw new RoomError('bad_request','Withdraw recipients must be strings.');
         const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
         for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
-        // Pending counts and inbox coverage for CURRENT participants only (7.8).
-        await this.syncDisplay(registry,{pending:false});
+        // Pending counts (withdraw is the one request that recomputes them here) and inbox coverage, for CURRENT
+        // participants only (8.1).
+        await this.syncDisplay({pending:true});
         return result;
       }
       case 'inbox': {
@@ -92,7 +102,7 @@ export class RoomService {
         if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
         if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
         if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
-        const page=this.inbox.review(caller.scope,options);await this.syncDisplay(registry,{pending:false});return page;
+        const page=this.inbox.review(caller.scope,options);await this.syncDisplay({pending:false});return page;
       }
       case 'guarded_send':
       case 'send': {
@@ -149,10 +159,10 @@ export class RoomService {
           }
           return{result,replyDelivery,rejected:null};
         });
-        if(saved.rejected){await this.syncDisplay(registry,{pending:false});return saved.rejected;}
+        if(saved.rejected){await this.syncDisplay({pending:false});return saved.rejected;}
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
-          await this.syncDisplay(registry,{pending:false});
+          await this.syncDisplay({pending:false});
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           for(const delivery of result.updatedDeliveries??[])this.publish({type:'delivery.updated',delivery});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
@@ -239,9 +249,11 @@ export class RoomService {
    * participants are considered (7.8): a name that left the registry is never republished, so it cannot come back
    * as a ghost after a TUI restart. New or rebound rows are introduced by the monitor, not here.
    */
-  private async syncDisplay(registry:Registry|undefined,fields:{pending:boolean}):Promise<void> {
+  private async syncDisplay(fields:{pending:boolean}):Promise<void> {
     const saved=new Map(this.ledger.participants().map(p=>[p.name,p] as const));
-    for(const participant of await this.participants(registry)){
+    // Always a FRESH registry read: a request's own snapshot may predate a join that completed meanwhile, and
+    // pruning from it would delete and "remove" a participant that is registered (review finding).
+    for(const participant of await this.participants()){
       const prev=saved.get(participant.name);
       if(!prev||prev.harness!==participant.harness||prev.sessionId!==participant.sessionId)continue;
       // Pending is otherwise the dispatcher's to publish (as it claims and settles), so only withdraw recomputes it here.
@@ -256,8 +268,8 @@ export class RoomService {
    * longer in it (a rename, a removed section) are pruned here and announced once with `participant.removed` (7.8);
    * this is the only emitter of that event. A rebound name is not "removed": its row is simply superseded.
    */
-  async participants(registry?:Registry):Promise<ParticipantState[]> {
-    registry??=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
+  async participants():Promise<ParticipantState[]> {
+    const registry:Registry=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
     for(const stale of previous){
       if(Object.hasOwn(registry,stale.name))continue;
       this.ledger.removeParticipant(stale.name);this.publish({type:'participant.removed',name:stale.name});
