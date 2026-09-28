@@ -59,10 +59,12 @@ async function locked<T>(root: string, options: RegistryOptions, operation: () =
 async function writeRegistry(root: string, registry: Registry): Promise<void> {
   const text = stringify({ participants: registry }); parseRegistry(text);
   const target = path.join(root, 'session.toml'); const temp = `${target}.${randomUUID()}.tmp`;
-  const handle = await open(temp, 'wx');
-  try { await handle.writeFile(text, 'utf8'); await handle.sync(); }
-  finally { await handle.close(); }
-  try { await rename(temp, target); }
+  try {
+    const handle = await open(temp, 'wx');
+    try { await handle.writeFile(text, 'utf8'); await handle.sync(); }
+    finally { await handle.close(); }
+    await rename(temp, target);
+  }
   finally { await unlink(temp).catch(e => { if (code(e) !== 'ENOENT') throw e; }); }
 }
 export async function joinParticipant(root: string, name: string, input: Binding, options: RegistryOptions = {}): Promise<Registry> {

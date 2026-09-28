@@ -74,3 +74,16 @@ append; announce new ADRs over pair-poc.
   - Dev dependencies: `typescript`, `@types/node`, `@types/react`, `ink-testing-library`.
 - **Consequences:** The service stays built-in-only (`node:sqlite`, `node:net`); the TUI and MCP carry
   the dependencies.
+
+## ADR-0006 — Registry preservation applies to participant sections
+- **Date:** 2026-09-28   **Sprint:** 0.2   **Author:** Astra   **Status:** Accepted
+- **Context:** Review found that the short invariant wording could imply unrelated configuration is
+  supported in session.toml, contrary to Kevin's minimum-only registry requirement.
+- **Decision:** Normal joins preserve every other participant section and accept only harness and
+  session_id within each. Unsupported top-level tables cause explicit refusal without changing the
+  file. The known legacy schema is converted only by explicit migration, with an exact backup under
+  ignored .room/ before atomic replacement. Embedded send commands are parsed as inert strings.
+- **Consequences:** Machine configuration stays outside the registry. Changed native bindings require
+  an expected previous binding so simultaneous enrollment cannot silently replace another session.
+  A crashed registry writer leaves a lock requiring owner verification before manual removal; it is
+  never stolen on a timeout. Service-owner crash recovery is a separate feature (1.2).
