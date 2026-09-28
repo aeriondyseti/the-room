@@ -197,3 +197,16 @@ test('review fix: CSI-u Ctrl+Enter / Ctrl+Backspace work too; outside Windows Te
   await other.type('\r');
   assert.equal(other.sends()[0]?.body, 'a\nb', 'outside Windows Terminal Alt+Enter adds a line');
 });
+test('cross-review: a key release (CSI-u event type 3) never acts — one press + one release = one action; a released Enter never submits', async () => {
+  const t = await setup();
+  await t.type('one two');
+  await t.type('\u001B[127;5u'); // press Ctrl+Backspace
+  await t.type('\u001B[127;5:3u'); // release Ctrl+Backspace
+  await t.type('\u001B[13;5u'); // press Ctrl+Enter
+  await t.type('\u001B[13;5:3u'); // release Ctrl+Enter
+  await t.type('x');
+  await t.type('\u001B[13;1:3u'); // release of a plain Enter
+  assert.equal(t.sends().length, 0, 'a release never submits');
+  await t.type('\r');
+  assert.equal(t.sends()[0]?.body, 'one \nx', 'exactly one deletion and one newline');
+});

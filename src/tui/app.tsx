@@ -451,6 +451,9 @@ function Room({
   });
 
   useInput((input, key) => {
+    // A key RELEASE (CSI-u event type 3, e.g. ESC[13;5:3u) is never an action: acting on press and release would
+    // insert, delete or submit twice (Astra's 6.13 cross-review).
+    if (key.eventType === 'release') return;
     if (overlay !== null && typeof overlay === 'object' && 'activity' in overlay) return; // the activity pane owns its keys
     if (overlay) {
       if (key.escape || key.return || input === 'q' || input === '?') {
