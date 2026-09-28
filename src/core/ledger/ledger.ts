@@ -264,6 +264,25 @@ export class Ledger {
       })};
     });
   }
+  /**
+   * 8.1/8.2: move QUEUED deliveries addressed to `from` whose target is `target` under the name `to`. The target
+   * snapshot never changes (invariant 5): only the label does. A stale rebind wait is cleared, because the binding is
+   * registered again under the new name. Submitted, uncertain, in-flight and terminal rows stay as history.
+   */
+  relabelQueued(from:string,to:string,target:Delivery['target'],paused:boolean):Delivery[] {
+    return this.transaction(()=>{
+      const rows=this.queued(from).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&d.attempts.at(-1)?.outcome!=='in_flight');
+      const moved:Delivery[]=[];
+      for(const d of rows){
+        if(this.db.prepare('SELECT 1 FROM deliveries WHERE message_id=? AND recipient=?').get(d.messageId,to))continue;
+        const next:Delivery={...d,recipient:to,updatedAt:new Date().toISOString()};
+        if(next.waiting==='rebind_needed'){next.waiting=null;next.held=paused;}
+        this.db.prepare('UPDATE deliveries SET recipient=?,held=?,payload=? WHERE message_id=? AND recipient=?').run(to,Number(next.held),JSON.stringify(next),d.messageId,from);
+        moved.push(next);
+      }
+      return moved;
+    });
+  }
   /** Update mutable state only; message, recipient and target snapshot cannot be replaced. */
   updateDelivery(messageId: string, recipient: string, update: (delivery: Delivery) => void): Delivery {
     return this.transaction(() => {

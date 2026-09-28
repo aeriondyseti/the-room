@@ -120,7 +120,7 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
       }
       for(const socket of subscribed)event(socket,value);
     });
-    service.start();signalReady();
+    await service.start();signalReady();
   }catch(error){startupError=error;signalReady();for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));await service!?.close();throw error;}
   server.on('error',()=>{void close();});
   return {service,pid:process.pid,close};

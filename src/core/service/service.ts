@@ -50,7 +50,22 @@ export class RoomService {
   enableAccounts(providers:AccountUsageProvider[],intervalMs:number,staleAfterMs:number,stopGraceMs?:number):void{
     this.accounts=new AccountMonitor({providers,publish:event=>this.publish(event),intervalMs,staleAfterMs,...(stopGraceMs!==undefined?{stopGraceMs}:{})});
   }
-  start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
+  /**
+   * 8.1: repair labels after a rename that did not finish, or a manual registry edit. A queued delivery whose recipient
+   * name left the registry, but whose target binding is registered under another name, is relabelled to that name.
+   * Nothing is redirected: the target is the same session. Returns how many deliveries moved.
+   */
+  async reconcile():Promise<number>{
+    const registry=await readRegistry(this.root);const paused=this.ledger.roomState().paused;let moved=0;
+    const byBinding=new Map(Object.entries(registry).map(([name,b])=>[`${b.harness}:${b.session_id}`,name] as const));
+    for(const d of this.ledger.queued()){
+      if(Object.hasOwn(registry,d.recipient))continue;
+      const name=byBinding.get(`${d.target.harness}:${d.target.sessionId}`);if(!name)continue;
+      for(const delivery of this.ledger.relabelQueued(d.recipient,name,d.target,paused)){this.publish({type:'delivery.updated',delivery});moved++;}
+    }
+    return moved;
+  }
+  async start():Promise<void>{await this.reconcile();this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
   async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }

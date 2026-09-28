@@ -80,3 +80,27 @@ test('a TUI rebuilt from who plus later events never shows the departed name',as
   for(const e of events){if(e.type==='participant.updated')shown.add(e.participant.name);if(e.type==='participant.removed')shown.delete(e.name);}
   assert.deepEqual([...shown].sort(),['astra','fable']);
 });
+
+test('startup reconcile relabels queued deliveries left under a departed name to the binding\'s current name',async t=>{
+  const {room,events,rename}=await fixture(t);
+  const sent=await call(room,'send',{caller:{kind:'human'},to:['claude'],body:'before the rename'});
+  // What the dispatcher does when it finds no registry entry for the recipient name.
+  room.ledger.updateDelivery(sent.message.id,'claude',d=>{d.held=true;d.waiting='rebind_needed';});
+  await rename();events.length=0;
+  assert.equal(await room.reconcile(),1);
+  const d=room.ledger.delivery(sent.message.id,'fable');
+  assert.equal(d.waiting,null);assert.equal(d.held,false);assert.deepEqual(d.target,{harness:'codex',sessionId:a},'same target: relabelled, not redirected');
+  assert.throws(()=>room.ledger.delivery(sent.message.id,'claude'),{code:'not_found'});
+  assert.ok(events.some(e=>e.type==='delivery.updated'&&e.delivery.recipient==='fable'));
+  assert.equal((await call(room,'who',{})).participants.find(p=>p.name==='fable')?.pending,1);
+  assert.deepEqual(room.ledger.read(sent.message.id).message.to,['claude'],'history keeps the old label');
+  assert.equal(await room.reconcile(),0,'idempotent');
+});
+
+test('reconcile leaves a delivery alone when its binding is no longer registered at all',async t=>{
+  const {root,room,rename:_}=await fixture(t);
+  const sent=await call(room,'send',{caller:{kind:'human'},to:['claude'],body:'orphaned'});
+  await writeFile(join(root,'session.toml'),`[participants.astra]\nharness = "codex"\nsession_id = "${b}"\n`);
+  assert.equal(await room.reconcile(),0);
+  assert.equal(room.ledger.delivery(sent.message.id,'claude').recipient,'claude');
+});
