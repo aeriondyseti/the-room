@@ -5,6 +5,7 @@ import { render, cleanup } from 'ink-testing-library';
 import { HUMAN, type ParticipantState } from '../contracts/domain.js';
 import { App } from './app.js';
 import { FakeRoomSource } from './fake-source.js';
+import { waitFor } from './test-utils.js';
 
 afterEach(() => cleanup());
 
@@ -55,16 +56,12 @@ test('scrolling up holds the viewport and counts new messages; End returns to li
   assert.match(scrolled, /↑ scrolled/);
 
   src.post('astra', [HUMAN], 'brand new while scrolled');
-  await tick();
-  const held = plain(ui.lastFrame());
+  const held = await waitFor(() => plain(ui.lastFrame()), /1 new below/);
   assert.doesNotMatch(held, /brand new while scrolled/, 'viewport did not jump');
-  assert.match(held, /1 new below/);
 
   ui.stdin.write(KEYS.end);
-  await tick();
-  const live = plain(ui.lastFrame());
+  const live = await waitFor(() => plain(ui.lastFrame()), /● live/);
   assert.match(live, /brand new while scrolled/);
-  assert.match(live, /● live/);
 });
 
 test('following live shows new messages immediately', async () => {
@@ -142,6 +139,18 @@ test('while disconnected the participant panel is marked stale', async () => {
   const frame = plain(ui.lastFrame());
   assert.match(frame, /PARTICIPANTS · stale/);
   assert.match(frame, /last known: busy/);
+});
+
+test('after a reconnect, delivery states of messages already on screen are refreshed', async () => {
+  const src = room(0);
+  const m = src.post(HUMAN, ['astra'], 'deploy the fix', { states: { astra: 'queued' } });
+  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
+  await waitFor(() => plain(ui.lastFrame()), /◌ astra/);
+  src.setStatus({ state: 'reconnecting', detail: 'service restarted' });
+  src.setDelivery(m.message.id, 'astra', { state: 'failed' }, { silent: true }); // missed while away
+  src.setStatus({ state: 'connected' });
+  const frame = await waitFor(() => plain(ui.lastFrame()), /✗ astra failed/);
+  assert.doesNotMatch(frame, /◌ astra/);
 });
 
 test('narrow terminals hide the participant panel instead of squeezing it', async () => {

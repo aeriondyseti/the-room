@@ -87,13 +87,13 @@ export class FakeRoomSource implements RoomSource {
     return item;
   }
 
-  /** Change a delivery's state and emit delivery.updated. */
-  setDelivery(messageId: string, recipient: string, patch: Partial<Delivery>): void {
+  /** Change a delivery's state and emit delivery.updated (unless `silent`, e.g. to simulate a missed event). */
+  setDelivery(messageId: string, recipient: string, patch: Partial<Delivery>, options: { silent?: boolean } = {}): void {
     const item = this.items.find((i) => i.message.id === messageId);
     const d = item?.deliveries.find((x) => x.recipient === recipient);
     if (!item || !d) throw new Error(`no delivery ${messageId}/${recipient}`);
     Object.assign(d, patch, { updatedAt: new Date(this.clock).toISOString() });
-    this.emit({ type: 'delivery.updated', delivery: { ...d } });
+    if (!options.silent) this.emit({ type: 'delivery.updated', delivery: { ...d } });
   }
 
   setParticipant(state: ParticipantState): void {
