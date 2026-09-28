@@ -83,6 +83,15 @@ test('not sent with an incomplete inbox asks to finish reading before resending'
   assert.doesNotMatch(t, /send again with snapshot=/);
 });
 
+test('CLI surface: every hint names a shell command, never an MCP call', () => {
+  const t = guardedSendText({ status: 'not_sent', reason: 'snapshot_stale', attemptId: 'att-6', inbox: page({ snapshot: 's2' }), guidance: '' }, 'cli');
+  assert.match(t, /send again with --snapshot s2 --revises att-6/);
+  const more = inboxPageText(page({ hasMore: true, nextCursor: 'c9', remaining: 1 }), 'cli');
+  assert.match(more, /room inbox --cursor c9 --snapshot snap-1/);
+  const urgent = guardedSendText(sent({ guard: 'urgent', newSinceSnapshot: 1 }), 'cli');
+  for (const text of [t, more, urgent]) assert.doesNotMatch(text, /room_inbox|revises_attempt_id|cursor=/);
+});
+
 test('withdraw: a full withdraw says so', () => {
   const t = withdrawText({ messageId: 'm9', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }, { recipient: 'bob', disposition: 'already_withdrawn' }] }, 9);
   assert.match(t, /^Withdrew #9 for every recipient\./);
