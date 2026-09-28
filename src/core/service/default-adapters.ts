@@ -5,5 +5,5 @@ import { loadConfig } from '../config.js';
 /** Production wiring; tests inject their own adapters and never inherit live native transports. */
 export function defaultAdapters(root:string):DeliveryAdapter[]{
  const config=loadConfig();
- return [new CodexAdapter(codexOptionsFrom(config,root)),new ClaudeAdapter(claudeAdapterOptionsFrom(config,defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeProcStartTimeoutMs)))];
+ return [new CodexAdapter(codexOptionsFrom(config,root)),new ClaudeAdapter(claudeAdapterOptionsFrom(config,defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeProcStartTimeoutMs,config.claudeProcStartCacheMs)))];
 }

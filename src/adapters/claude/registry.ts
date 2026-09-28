@@ -41,12 +41,30 @@ export function resolveClaudeConfigDir(explicit: string | null, env: NodeJS.Proc
   return explicit ?? env['CLAUDE_CONFIG_DIR'] ?? join(homedir(), '.claude');
 }
 
-export function defaultRegistryDeps(claudeConfigDir: string, procStartTimeoutMs: number): ClaudeRegistryDeps {
+export function defaultRegistryDeps(claudeConfigDir: string, procStartTimeoutMs: number, procStartCacheMs = 0): ClaudeRegistryDeps {
+  const lookup = (pid: number) => windowsProcessStartTime(pid, procStartTimeoutMs);
   return {
     sessionsDir: join(claudeConfigDir, 'sessions'),
     isPidAlive,
-    processStartTime: (pid) => windowsProcessStartTime(pid, procStartTimeoutMs),
+    processStartTime: procStartCacheMs > 0 ? cachedStartTime(lookup, procStartCacheMs) : lookup,
     pidDomain: `${process.platform}:${hostname().toLowerCase()}`,
+  };
+}
+
+/**
+ * Cache successful start-time lookups per pid for `ttlMs` (the monitor probes every few seconds; each lookup spawns
+ * PowerShell). Failures (null) are not cached. A stale cached value can only make a reused pid look like the old
+ * process for up to `ttlMs`; delivery is still safe because the pipe name is session-bound (TD-0006 reasoning).
+ */
+export function cachedStartTime(lookup: (pid: number) => Promise<string | null>, ttlMs: number, now: () => number = Date.now): (pid: number) => Promise<string | null> {
+  const cache = new Map<number, { value: string; at: number }>();
+  return async (pid) => {
+    const hit = cache.get(pid);
+    if (hit && now() - hit.at < ttlMs) return hit.value;
+    const value = await lookup(pid);
+    if (value !== null) cache.set(pid, { value, at: now() });
+    else cache.delete(pid);
+    return value;
   };
 }
 

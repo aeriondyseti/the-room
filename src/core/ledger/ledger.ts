@@ -192,6 +192,7 @@ export class Ledger {
   putParticipant(value: ParticipantState): void { this.db.prepare('INSERT INTO participants(name,payload) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET payload=excluded.payload').run(value.name, JSON.stringify(value)); }
   participants(): ParticipantState[] { return (this.db.prepare('SELECT payload FROM participants ORDER BY name').all() as {payload: string}[]).map(row => JSON.parse(row.payload) as ParticipantState); }
   removeParticipant(name: string): void { this.db.prepare('DELETE FROM participants WHERE name=?').run(name); }
-  putCursor(name: string, cursor: UsageCursor): void { this.db.prepare('INSERT INTO usage_cursors(name,payload) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET payload=excluded.payload').run(name, JSON.stringify(cursor)); }
-  cursor(name: string): UsageCursor | null { const row = this.db.prepare('SELECT payload FROM usage_cursors WHERE name=?').get(name) as {payload: string} | undefined; return row ? JSON.parse(row.payload) as UsageCursor : null; }
+  putCursor<T = UsageCursor>(name: string, cursor: T): void { this.db.prepare('INSERT INTO usage_cursors(name,payload) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET payload=excluded.payload').run(name, JSON.stringify(cursor)); }
+  /** Stored cursor payload. The caller owns its shape (the usage observer stores its own cursor list). */
+  cursor<T = UsageCursor>(name: string): T | null { const row = this.db.prepare('SELECT payload FROM usage_cursors WHERE name=?').get(name) as {payload: string} | undefined; return row ? JSON.parse(row.payload) as T : null; }
 }

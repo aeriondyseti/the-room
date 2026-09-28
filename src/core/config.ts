@@ -45,6 +45,10 @@ export interface RoomConfig {
   claudeSubmitSettleMs: number;
   /** Timeout for the process start-time query used to detect pid reuse. */
   claudeProcStartTimeoutMs: number;
+  /** How long a Claude process start time is cached (pid-reuse check); a stale value can only cause a clean connect failure. */
+  claudeProcStartCacheMs: number;
+  /** How often the service refreshes participant liveness, activity and usage. */
+  participantRefreshMs: number;
   /** Codex home holding `sessions/` rollouts (else CODEX_HOME, else ~/.codex). */
   codexHome: string | null;
   /** A usage reading older than this is labelled `stale` (values still shown). */
@@ -77,6 +81,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   claudeConfigDir: null,
   claudeSubmitSettleMs: 300,
   claudeProcStartTimeoutMs: 5_000,
+  claudeProcStartCacheMs: 30_000,
+  participantRefreshMs: 5_000,
   codexHome: null,
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
@@ -104,6 +110,8 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   claudeConfigDir: 'ROOM_CLAUDE_CONFIG_DIR',
   claudeSubmitSettleMs: 'ROOM_CLAUDE_SUBMIT_SETTLE_MS',
   claudeProcStartTimeoutMs: 'ROOM_CLAUDE_PROC_START_TIMEOUT_MS',
+  claudeProcStartCacheMs: 'ROOM_CLAUDE_PROC_START_CACHE_MS',
+  participantRefreshMs: 'ROOM_PARTICIPANT_REFRESH_MS',
   codexHome: 'ROOM_CODEX_HOME',
   usageStaleMs: 'ROOM_USAGE_STALE_MS',
   contextLimits: 'ROOM_CONTEXT_LIMITS',

@@ -7,14 +7,25 @@ import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } f
 import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
 import { integer, nativeEvidence, optionalText, record, requireHuman, resolveCaller, text } from './validation.js';
+import { ParticipantMonitor, type MonitorDeps } from './monitor.js';
+import type { UsageCursor as ObserverCursor } from '../../observer/observer.js';
+
+const OBSERVER_CURSORS='usage-observer';
 
 export class RoomService {
   readonly ledger: Ledger;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
-  constructor(readonly root: string, adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
-  start():void{this.dispatcher.start();}
-  async close():Promise<void>{await this.dispatcher.stop();this.ledger.close();}
+  private monitor: ParticipantMonitor|null=null;
+  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
+  /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
+  enableMonitor(observer:MonitorDeps['observer'],intervalMs:number):void{
+    this.monitor=new ParticipantMonitor({participants:()=>this.participants(),adapters:this.adapters,observer,
+      save:state=>this.ledger.putParticipant(state),publish:participant=>this.publish({type:'participant.updated',participant}),
+      loadCursors:()=>this.ledger.cursor<ObserverCursor[]>(OBSERVER_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(OBSERVER_CURSORS,cursors),intervalMs});
+  }
+  start():void{this.dispatcher.start();this.monitor?.start();}
+  async close():Promise<void>{await this.monitor?.stop();await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
@@ -74,7 +85,7 @@ export class RoomService {
         const registry=await joinParticipant(this.root,name,{harness:native.harness,session_id:native.sessionId},expected?{expectedPrevious:{harness:expected.harness as TargetSnapshot['harness'],session_id:expected.sessionId as string}}:{});
         const binding=registry[name]!;const registration={name,harness:binding.harness,sessionId:binding.session_id};
         const state=(await this.participants()).find(participant=>participant.name===name)!;
-        this.ledger.putParticipant(state);this.publish({type:'participant.updated',participant:state});void this.dispatcher.kick();
+        this.ledger.putParticipant(state);this.publish({type:'participant.updated',participant:state});void this.dispatcher.kick();void this.monitor?.refresh(name);
         return {registration,created:!prior[name],rebound:!!prior[name]&&(prior[name].harness!==binding.harness||prior[name].session_id!==binding.session_id)};
       }
       case 'deliveries': return {deliveries:this.ledger.read(text(p.messageId,'messageId')).deliveries};
