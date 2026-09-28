@@ -78,3 +78,6 @@ their own rows**.
 ### Post-release patch 6.3a (Astra)
 ✅ v0.1.1: Git discovery and fixture environments isolated; TD-0005/TD-0010 disposition recorded;
 210 tests pass normally and with hostile Git environment. Review: reviews/6.3a.md.
+
+### Post-release patch 6.3c (Astra)
+✅ v0.1.3: MCP text-field remediation; 211 tests pass; reviews/6.3c.md complete.

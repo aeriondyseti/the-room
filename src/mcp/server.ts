@@ -76,7 +76,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           .union([z.string(), z.array(z.string())])
           .optional()
           .describe('Recipient name(s): "astra", "astra, claude", ["astra","claude"], "human", or "all". Omit only when reply_to is supplied; defaults to that message\'s sender.'),
-        text: z.string().min(1).describe('The message (markdown/plain text).'),
+        text: z.string({ error: 'Provide the message body as a string in the text field.' }).min(1, 'Provide a non-empty message in the text field.').describe('Message content (markdown/plain text). Put the message body in this text field.'),
         reply_to: z.string().optional().describe('Message id or #number you are replying to.'),
         client_message_id: z
           .string()
