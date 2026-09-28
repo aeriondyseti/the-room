@@ -96,5 +96,6 @@ their own rows**.
 ✅ v0.1.3: MCP text-field remediation; 211 tests pass; reviews/6.3c.md complete.
 
 ### 6.17 — Outer pane separator (Astra)
+- Ownership moved from Claude to Astra by agreement (room m-muljy8gl); Claude provides independent cross-review.
 - Implementation and full suite ready: cyan full-cell bottom row in effective sidebar layout, right column in effective top layout. Monochrome uses inverse spaces. Content geometry reserves the cell before layout; help and narrow fallback covered.
 - Validation: 340/340 tests. Independent review pending; physical terminal appearance not yet verified.
