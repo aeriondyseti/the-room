@@ -309,7 +309,7 @@ test('room_withdraw resolves #N, passes recipients, and reports each recipient h
   const p = f.requests.find((x) => x.method === 'withdraw')!.params as Params<'withdraw'>;
   assert.equal(p.messageId, 'm12');
   assert.deepEqual(p.recipients, ['astra', 'bob']);
-  assert.match(r.text, /^Withdrew #12 for 1 of 2 recipients only\./);
+  assert.match(r.text, /^Withdrew #12 for 1 of 2 requested recipients only\./);
   assert.match(r.text, /bob: NOT withdrawn: .*too late/);
 });
 
@@ -352,4 +352,11 @@ test('room_inbox is not advertised as idempotent (each call records coverage)', 
   const { client } = await connectClient(fakeLink({}).link);
   const tool = (await client.listTools()).tools.find((t) => t.name === 'room_inbox')!;
   assert.equal(tool.annotations?.idempotentHint, false);
+});
+test('room_withdraw with named recipients never claims the whole message', async () => {
+  const f = fakeLink({ withdraw: () => ({ messageId: 'm-x', recipients: [{ recipient: 'astra', disposition: 'withdrawn' }] }) });
+  const { call } = await connectClient(f.link);
+  const r = await call('room_withdraw', { message_id: 'm-x', recipients: 'astra' });
+  assert.match(r.text, /^Withdrew m-x for every requested recipient\./);
+  assert.match(r.text, /other recipients are unchanged/);
 });
