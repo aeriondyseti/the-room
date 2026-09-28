@@ -9,3 +9,5 @@ session.toml
 # Build output and dependencies
 node_modules/
 dist/
+# Node
+*.tsbuildinfo

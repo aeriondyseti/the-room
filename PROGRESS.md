@@ -15,7 +15,7 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 0.1 | Repo skeleton and contracts | Claude | ⬜ | |
+| 0.1 | Repo skeleton and contracts | Claude | ✅ | v0.0.1 · review: reviews/0.1.md |
 | 0.2 | Room root and minimal registry | Astra | ⬜ | |
 
 ## Milestone 1 — Room service core
@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 0 / 20 features complete · **current version: v0.0.0** · last tag: none
+**Summary:** 1 / 20 features complete · **current version: v0.0.1** · last tag: v0.0.1

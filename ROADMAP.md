@@ -14,7 +14,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 0 — Foundation
 
-- [ ] **0.1 Repo skeleton and contracts** *(Claude)* *(§3, §4.7)*
+- [x] **0.1 Repo skeleton and contracts** *(Claude)* *(§3, §4.7)*
   - **Scope:**
     - `package.json` (`room` bin), `tsconfig` (strict, ESM, JSX for Ink), the `src/` layout from DESIGN
       §3, and build/test/typecheck scripts;
