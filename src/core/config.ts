@@ -2,6 +2,8 @@
 
 export interface RoomConfig {
   /** Conservative CreateProcess budget including executable, quoting and NUL. */
+  codexStatusTimeoutMs: number;
+  codexStatusMaxBytes: number;
   codexCommandLineBudget: number;
   /** Queue CLI output limit; exceeding it makes acceptance uncertain. */
   codexMaxOutputBytes: number;
@@ -74,6 +76,8 @@ export interface RoomConfig {
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
+  codexStatusTimeoutMs: 3000,
+  codexStatusMaxBytes: 4 * 1024 * 1024,
   codexCommandLineBudget: 30000,
   codexMaxOutputBytes: 65536,
   dispatchPollMs: 1000,
@@ -110,6 +114,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
+  codexStatusTimeoutMs: 'ROOM_CODEX_STATUS_TIMEOUT_MS',
+  codexStatusMaxBytes: 'ROOM_CODEX_STATUS_MAX_BYTES',
   codexCommandLineBudget: 'ROOM_CODEX_COMMAND_LINE_BUDGET',
   codexMaxOutputBytes: 'ROOM_CODEX_MAX_OUTPUT_BYTES',
   dispatchPollMs: 'ROOM_DISPATCH_POLL_MS',

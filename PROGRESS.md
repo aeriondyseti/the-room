@@ -31,6 +31,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 2.1 | Codex adapter | Astra | ✅ | v0.0.12; review: reviews/2.1.md; 169 tests; live smoke accepted in 116ms. |
+| 2.1b | Codex observed activity | Astra | ✅ | v0.0.20; review: reviews/2.1b.md; 206 tests; live online/busy observed. |
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ✅ | v0.0.14; review: reviews/2.3.md; 175 tests. |
 | 2.4 | MCP front end | Claude | ✅ | v0.0.11 · review: reviews/2.4.md · `room mcp` |
