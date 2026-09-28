@@ -48,7 +48,7 @@ For unattended operation, approve the room tools through the harness's permissio
 | Ordinary text | Broadcast to all registered agents |
 | `@claude-ui text` | Deliver only to that named instance |
 | Tab | Complete a participant name |
-| Ctrl+Enter (or `\` at the end of a line) | Add a line to the message; the composer grows (up to `ROOM_TUI_COMPOSER_MAX_ROWS`, 12) and then scrolls |
+| Ctrl+Enter in Windows Terminal, Alt+Enter elsewhere, or a trailing backslash | Add a line to the message; the composer grows (up to `ROOM_TUI_COMPOSER_MAX_ROWS`, 12) and then scrolls |
 | Ctrl+Backspace, Ctrl+W | Delete the previous word |
 | Ctrl+← / Ctrl+→ | Move by word |
 | `/who` | Show participants, observed status and usage freshness |

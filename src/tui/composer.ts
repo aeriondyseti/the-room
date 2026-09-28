@@ -213,16 +213,22 @@ export function end(d: Draft): Draft {
   return { ...d, cursor: nl === -1 ? d.text.length : nl };
 }
 
+/** The grapheme boundary before `i` (6.13: never inside a combining sequence or joined emoji). */
 function prevBoundary(text: string, i: number): number {
   if (i <= 0) return 0;
-  const code = text.charCodeAt(i - 1);
-  return code >= 0xdc00 && code <= 0xdfff && i >= 2 ? i - 2 : i - 1;
+  const b = graphemeBounds(text);
+  let prev = 0;
+  for (const x of b) {
+    if (x >= i) break;
+    prev = x;
+  }
+  return prev;
 }
 
+/** The grapheme boundary after `i`. */
 function nextBoundary(text: string, i: number): number {
   if (i >= text.length) return text.length;
-  const code = text.charCodeAt(i);
-  return code >= 0xd800 && code <= 0xdbff && i + 1 < text.length ? i + 2 : i + 1;
+  return graphemeBounds(text).find((x) => x > i) ?? text.length;
 }
 
 // ---- history ------------------------------------------------------------------------------------------------
@@ -352,7 +358,8 @@ export function visualRows(d: Draft, width: number, measure: (s: string) => numb
     chunks.push(row);
     chunks.forEach((c, ci) => {
       const lastChunk = ci === chunks.length - 1;
-      const at = cursorHere ? c.gs.findIndex((g) => g.index === d.cursor) : -1;
+      // The grapheme that contains the cursor (robust even if an index ever lands inside a cluster).
+      const at = cursorHere && d.cursor < lineEnd ? c.gs.findIndex((g, k) => g.index <= d.cursor && (k + 1 < c.gs.length ? c.gs[k + 1]!.index > d.cursor : ci === chunks.length - 1 || chunks[ci + 1]!.gs[0]!.index > d.cursor)) : -1;
       if (at >= 0) {
         cursorRow = rows.length;
         rows.push({ before: c.gs.slice(0, at).map((g) => g.text).join(''), cursor: c.gs[at]!.text, after: c.gs.slice(at + 1).map((g) => g.text).join('') });

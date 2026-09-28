@@ -74,8 +74,12 @@ export interface AppProps {
   onTopBarChange?: (mode: TopBarMode) => Promise<boolean>;
   /** The most rows the composer grows to before it scrolls (config: tuiComposerMaxRows). */
   composerMaxRows?: number;
-  /** Whether a raw BS (0x08) is Ctrl+Backspace here (default: in Windows Terminal, per Kevin's key probe). */
-  bsIsCtrlBackspace?: boolean;
+  /**
+   * Running in Windows Terminal (default: WT_SESSION set). Kevin's probe qualified its keys there: raw BS is Ctrl+Backspace,
+   * LF is Ctrl+Enter, and Alt+Enter is the terminal's fullscreen. Elsewhere BS stays a plain Backspace, the hint offers
+   * "\ + Enter" for a newline, and Alt+Enter also adds a line.
+   */
+  windowsTerminal?: boolean;
 }
 
 /** The conversation keeps at least this many rows however much the draft grows. */
@@ -119,7 +123,7 @@ function Room({
   topBar: initialTopBar = 'full',
   onTopBarChange,
   composerMaxRows = DEFAULT_CONFIG.tuiComposerMaxRows,
-  bsIsCtrlBackspace = bsIsCtrlBackspaceIn(),
+  windowsTerminal = bsIsCtrlBackspaceIn(),
 }: Omit<AppProps, 'theme'>) {
   const t = useTheme();
   const { exit } = useApp();
@@ -165,7 +169,8 @@ function Room({
   useEffect(() => setSuggestIdx(0), [draft.text]);
   const suggestionRows = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
   // The draft as terminal rows (hard newlines and soft wraps, measured by display width), shared by layout and render.
-  const draftVisual = useMemo(() => visualRows(draft, colsTotal - 2 /* gutter */, cols, sanitize), [draft, colsTotal]);
+  // Tabs are shown as two spaces (as in messages), so the measured width is the drawn width.
+  const draftVisual = useMemo(() => visualRows(draft, colsTotal - 2 /* gutter */, cols, (g) => (g === '\t' ? '  ' : sanitize(g))), [draft, colsTotal]);
   const draftWanted = Math.min(composerMaxRows, draftVisual.rows.length);
   // Top bar (6.10, Kevin's mockup): AGENTS and BUDGETS as aligned, labelled grids; when a grid can't fit the width it
   // falls back to the wrapping chips / metric lines. Compact (explicit, never automatic): one line per section.
@@ -477,7 +482,7 @@ function Room({
     if (key.end && draft.text === '') return scroll.toLive();
 
     // Keys Ink can't tell apart by itself (Kevin's Windows Terminal: Ctrl+Enter = LF, Ctrl+Backspace = BS).
-    const raw = classifyRawKey(rawKey.current, { bsIsCtrlBackspace });
+    const raw = classifyRawKey(rawKey.current, { bsIsCtrlBackspace: windowsTerminal });
     if (raw === 'ctrl-enter') return edit(insert(draft, '\n'));
     if (raw === 'ctrl-backspace') return edit(deleteWordBackward(draft));
 
@@ -489,8 +494,9 @@ function Room({
     if (key.return) {
       // Ctrl+Enter inserts a newline and never sends, runs a command or confirms (checked before anything else).
       if (key.ctrl) return edit(insert(draft, '\n'));
-      // Alt+Enter is left to the terminal (Windows Terminal: fullscreen); if it arrives anyway it does nothing.
-      if (key.meta) return;
+      // Alt+Enter: in Windows Terminal it's the terminal's fullscreen (never an app shortcut; ignored if it arrives);
+      // elsewhere it adds a line. It never sends.
+      if (key.meta) return windowsTerminal ? undefined : edit(insert(draft, '\n'));
       if (busy) return;
       if (draft.text.slice(0, draft.cursor).endsWith('\\') && draft.cursor === draft.text.length) {
         return edit({ text: draft.text.slice(0, -1) + '\n', cursor: draft.text.length });
@@ -619,6 +625,7 @@ function Room({
         draft={draft}
         rows={draftRows}
         visual={draftVisual}
+        windowsTerminal={windowsTerminal}
         to={to}
         paused={view.room.paused}
         busy={busy}
@@ -906,6 +913,7 @@ function Composer(props: {
   draft: Draft;
   rows: number;
   visual: { rows: VisualRow[]; cursorRow: number };
+  windowsTerminal: boolean;
   to: { label: string; valid: boolean };
   paused: boolean;
   busy: boolean;
@@ -923,7 +931,7 @@ function Composer(props: {
   const start = Math.min(Math.max(0, props.visual.cursorRow - props.rows + 1), Math.max(0, all.length - props.rows));
   const lines = all.slice(start, start + props.rows);
   const gutter = (i: number) => (start + i === 0 ? '› ' : i === 0 && start > 0 ? '↑ ' : i === lines.length - 1 && start + lines.length < all.length ? '↓ ' : '  ');
-  const hints = props.suggestions.length > 0 ? 'Tab complete · ↑/↓ choose · Enter run · Esc clear' : 'Enter send · Ctrl+Enter newline · Tab @name · ? help';
+  const hints = props.suggestions.length > 0 ? 'Tab complete · ↑/↓ choose · Enter run · Esc clear' : `Enter send · ${props.windowsTerminal ? 'Ctrl+Enter' : '\\ + Enter'} newline · Tab @name · ? help`;
   // Keep the highlighted suggestion inside the visible window.
   const n = props.suggestions.length;
   const first = n <= MAX_SUGGESTIONS ? 0 : Math.min(Math.max(0, props.suggestIdx - MAX_SUGGESTIONS + 1), n - MAX_SUGGESTIONS);
@@ -979,7 +987,7 @@ export function helpLines(): Line[] {
   const keys: Array<[string, string]> = [
     ['Enter', 'send (to everyone unless you start with @names)'],
     ['@name …', 'address one or more agents; Tab completes names'],
-    ['Ctrl+Enter, or \\ at line end', 'new line'],
+    ['Ctrl+Enter, or \\ at line end', 'new line (Ctrl+Enter in Windows Terminal; Alt+Enter elsewhere)'],
     ['Ctrl+← / Ctrl+→', 'move by word'],
     ['Ctrl+Backspace, Ctrl+W', 'delete the previous word'],
     ['↑ / ↓', 'previous / next message you sent'],

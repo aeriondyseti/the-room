@@ -74,9 +74,9 @@ test('visual rows: soft wraps measured by display width (wide chars count two); 
 });
 
 const agent = (name: string): ParticipantState => ({ name, harness: 'codex', sessionId: name, liveness: 'online', livenessCheckedAt: null, activity: 'idle', pending: 0, usage: null });
-async function setup(height = 30, width = 100, bsIsCtrlBackspace = true) {
+async function setup(height = 30, width = 100, windowsTerminal = true) {
   const src = new FakeRoomSource({ participants: [agent('astra')] });
-  const ui = render(<App source={src} humanName="Kevin" width={width} height={height} bsIsCtrlBackspace={bsIsCtrlBackspace} />);
+  const ui = render(<App source={src} humanName="Kevin" width={width} height={height} windowsTerminal={windowsTerminal} />);
   await tick();
   const type = async (s: string) => { ui.stdin.write(s); await tick(); };
   const sends = () => src.requests.filter((r) => r.method === 'send').map((r) => r.params as Params<'send'>);
@@ -150,4 +150,50 @@ test('the composer grows with the draft (soft wraps included) and scrolls inside
   assert.equal(rows.length, 30);
   assert.match(rows.at(-1)!, /^● live/, 'a long soft-wrapped line never pushes into the bottom bar');
   assert.ok(rows.every((r) => cols(r) <= 60), 'nothing wider than the terminal');
+});
+
+test('review fix: Left/Right/Backspace move by grapheme, and the cursor is never lost inside a cluster', async () => {
+  const t = await setup(20, 60);
+  for (let i = 1; i <= 14; i++) {
+    await t.type(`line ${i}`);
+    await t.type('\n');
+  }
+  await t.type('cafe\u0301 👩‍💻');
+  await t.type('\u001B[D'); // Left over the joined emoji: one grapheme
+  await t.type('\u001B[D'); // Left over the space
+  await t.type('\u001B[D'); // Left over "é" (e + combining accent): one grapheme
+  const rows = t.frame().split('\n');
+  assert.ok(rows.some((r) => r.includes('cafe\u0301')), `the cursor line stays in view:\n${rows.join('\n')}`);
+  await t.type('\x7f'); // Backspace deletes the "f" before the cursor; the accented é stays whole
+  await t.type('\r');
+  assert.match(t.sends()[0]?.body ?? '', /cae\u0301 👩‍💻$/);
+  const v = visualRows({ text: 'ab\ncafe\u0301', cursor: 7 }, 20, cols);
+  assert.equal(v.cursorRow, 1, 'an index inside a cluster still puts the cursor on its row');
+  assert.equal(v.rows[1]?.cursor, 'e\u0301');
+});
+
+test('review fix: a tab is measured and drawn as two columns, so the row budget holds', () => {
+  const v = visualRows({ text: 'a\tb|'.replace('|', ''), cursor: 3 }, 4, cols, (g) => (g === '\t' ? '  ' : g));
+  assert.deepEqual(v.rows.map((r) => r.before + (r.cursor ?? '') + r.after), ['a  b', ' '], 'a + two spaces + b fills four columns; the cursor wraps');
+});
+
+test('review fix: CSI-u Ctrl+Enter / Ctrl+Backspace work too; outside Windows Terminal Alt+Enter adds a line and the hint says "\\ + Enter"', async () => {
+  const t = await setup();
+  await t.type('one two');
+  await t.type('\u001B[127;5u'); // CSI-u Ctrl+Backspace
+  await t.type('\u001B[13;5u'); // CSI-u Ctrl+Enter
+  await t.type('three');
+  assert.equal(t.sends().length, 0, 'CSI-u Ctrl+Enter never sends');
+  await t.type('\r');
+  assert.equal(t.sends()[0]?.body, 'one \nthree');
+  assert.match(t.frame(), /Ctrl\+Enter newline/, 'Windows Terminal hint');
+  cleanup();
+  const other = await setup(30, 100, false);
+  assert.match(other.frame(), /\\ \+ Enter newline/, 'elsewhere the hint offers the backslash newline');
+  await other.type('a');
+  await other.type('\u001B\r'); // Alt+Enter
+  await other.type('b');
+  assert.equal(other.sends().length, 0);
+  await other.type('\r');
+  assert.equal(other.sends()[0]?.body, 'a\nb', 'outside Windows Terminal Alt+Enter adds a line');
 });
