@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AccountUsage } from '../contracts/account.js';
 import type { ParticipantState } from '../contracts/domain.js';
-import { lineCols, lineText } from './format.js';
+import { lineCols } from './format.js';
+// 6.15: bar track cells are a flat background on screen; in assertions they read as "░" (see test-utils barText).
+import { barText as lineText } from './test-utils.js';
 import { accountLines, accountSegments, participantLines, resetHint } from './topbar.js';
 import { STATE_COLOR } from './bars.js';
 
@@ -49,9 +51,9 @@ test('stale readings keep values but are labelled; unavailable says why; monochr
   assert.equal(un, 'Claude usage unavailable — wrap your statusline');
   const colour = accountSegments(acct(), { mono: false, now: NOW });
   const high = colour.find((s) => s.text === '90.0%!');
-  assert.deepEqual([high?.color, high?.bold], [STATE_COLOR.warn, true], 'a high reading is amber (70–90%) with a bold \"!\"');
-  const low = colour.find((s) => s.inverse && s.text.includes('38'));
-  assert.deepEqual([low?.color, low?.inverse], [STATE_COLOR.ok, true], '6.14: the filled part of the bar is a green block (reverse video) with the number over it');
+  assert.deepEqual([high?.surface?.color, high?.bold], [STATE_COLOR.warn, true], 'a high reading is amber (70–90%) with a bold \"!\"');
+  const low = colour.find((s) => s.surface?.kind === 'fill' && s.text.includes('38'));
+  assert.deepEqual([low?.surface?.color, low?.surface?.kind], [STATE_COLOR.ok, 'fill'], '6.14: the filled part of the bar is a green block (reverse video) with the number over it');
   assert.match(lineText(accountSegments(acct(), { mono: true, now: NOW })), /weekly {3}90\.0%! ░/);
 });
 

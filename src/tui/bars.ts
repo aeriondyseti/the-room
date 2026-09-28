@@ -1,4 +1,4 @@
-// Usage bars (6.8) with state colours (6.10) and the percentage inside the bar (6.14, Kevin's option a): 10 cells
+// Usage bars (6.8) with state colours (6.10), the percentage inside the bar (6.14) as one flat surface (6.15): 10 cells
 // (8 when the budget grid is tight), filled cells in reverse video, a dim ░ track, and the number (one decimal) centred.
 // Colour (Kevin, 6.10, mockup option "c"): a bar takes the colour of its STATE — green under 70%, amber 70–90%, red
 // above 90% — so a glance tells whether anything is close to a limit. Status is also carried by text ("!", "—",
@@ -30,11 +30,18 @@ export function usageColor(percent: number): string {
   return percent > CRITICAL_PERCENT ? STATE_COLOR.critical : percent >= WARN_PERCENT ? STATE_COLOR.warn : STATE_COLOR.ok;
 }
 
+/** The track's flat dim background, and the fill's colour for a stale reading (6.15). */
+export const TRACK_BG = 'ansi256(237)';
+export const STALE_FILL = 'ansi256(244)';
+/** Label text over a bright fill: dark, for contrast; over the track it keeps the default foreground. */
+export const TEXT_ON_FILL = 'black';
+
 /**
- * The bar with its percentage INSIDE it (Kevin, 6.14, "option a" — htop/btop style): `cells` cells, the first
- * round(pct/100 × cells) of them filled in reverse video (the state colour as a block), the rest a dim ░ track, and the
- * number centred over it. Reverse video survives NO_COLOR, so the fill never depends on colour alone. `text` must fit
- * the bar (callers pass cells ≥ 8; "100.0%!" is 7).
+ * The bar with its percentage INSIDE it (Kevin, 6.14 option a; 6.15: one flat surface). `cells` cells: the first
+ * round(pct/100 × cells) are the FILL — a solid bright background in the state colour — and the rest the TRACK, a solid
+ * dim background (no stipple glyph). The number is centred over the bar with no background of its own: each glyph sits
+ * on the surface of the cell it covers. Padding spaces in `text` (column alignment) are just more surface. `text` must
+ * fit the bar (callers pass cells ≥ 8; "100.0%!" is 7).
  */
 export function shadedBar(percent: number, text: string, opts: { cells: number; color: string | undefined; stale: boolean; bold: boolean }): Line {
   const cells = Math.max(text.length, opts.cells);
@@ -42,24 +49,34 @@ export function shadedBar(percent: number, text: string, opts: { cells: number; 
   const start = Math.floor((cells - text.length) / 2);
   const out: Segment[] = [];
   for (let i = 0; i < cells; i++) {
-    // Padding spaces in `text` (column alignment) are layout, not content: they show the bar cell beneath them, so only
-    // the number's own glyphs cover the bar and the fill/track read stays intact (6.14 review).
     const inText = i >= start && i < start + text.length && text[i - start] !== ' ';
-    const ch = inText ? text[i - start]! : i < filled ? ' ' : '░';
-    const seg: Segment =
-      i < filled
-        ? { text: ch, color: opts.color, inverse: true, dim: opts.stale, bold: inText && opts.bold }
-        : inText
-          ? { text: ch, color: opts.color, dim: opts.stale, bold: opts.bold }
-          : { text: ch, dim: true };
+    const seg: Segment = {
+      text: inText ? text[i - start]! : ' ',
+      surface: i < filled ? { kind: 'fill', color: opts.stale ? undefined : opts.color } : { kind: 'track' },
+      bold: inText && opts.bold,
+      dim: opts.stale && inText,
+    };
     const prev = out.at(-1);
-    // Merge runs with the same style (fewer segments to render).
-    if (prev && prev.color === seg.color && prev.inverse === seg.inverse && prev.dim === seg.dim && prev.bold === seg.bold) prev.text += ch;
+    // Merge runs with the same look (fewer segments to render).
+    if (prev && prev.surface?.kind === seg.surface!.kind && prev.surface?.color === seg.surface!.color && prev.bold === seg.bold && prev.dim === seg.dim) prev.text += seg.text;
     else out.push(seg);
   }
   return out;
 }
 
+/**
+ * How a segment is drawn in a theme. Surfaces: in colour, a fill is a solid background in its colour (grey when stale)
+ * with dark text, and the track a solid dim background with the default text colour; in monochrome (no backgrounds) a
+ * fill is reverse video and the track plain, so the filled extent still shows without colour.
+ */
+export function surfaceStyle(seg: Segment, mono: boolean): { color?: string; backgroundColor?: string; inverse?: boolean; dim?: boolean } {
+  if (!seg.surface) return { color: seg.color, inverse: seg.inverse, dim: seg.dim };
+  const fill = seg.surface.kind === 'fill';
+  if (mono) return { inverse: fill, dim: seg.dim };
+  return fill
+    ? { backgroundColor: seg.surface.color ?? STALE_FILL, color: TEXT_ON_FILL, dim: seg.dim }
+    : { backgroundColor: TRACK_BG, dim: seg.dim };
+}
 /**
  * One metric: `label [bar with "21.0%" inside]` (label quiet; the bar in the state colour), or `label 21.0%` when
  * `bar` is false (tight widths), or a bare cell when `label` is empty (the budget grid names its columns once).

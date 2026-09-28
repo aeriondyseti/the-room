@@ -11,10 +11,12 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage } from '../contracts/account.js';
 import { App } from './app.js';
 import { demoSource } from './demo.js';
-import { lineCols, lineText } from './format.js';
+import { lineCols } from './format.js';
+// 6.15: bar track cells are a flat background on screen; in assertions they read as "░" (see test-utils barText).
+import { barText as lineText } from './test-utils.js';
 import { leftPanelFits, sidePanelLines } from './sidepanel.js';
 import { accountLines, participantLines } from './topbar.js';
-import { STATE_COLOR, contextBar, sliderBar, usageBar } from './bars.js';
+import { STATE_COLOR, STALE_FILL, TEXT_ON_FILL, TRACK_BG, contextBar, sliderBar, surfaceStyle, usageBar } from './bars.js';
 import { readSavedLayout, saveLayout, startingLayout, tuiPrefsPath } from './prefs.js';
 import { layoutFlag } from '../cli/tui-command.js';
 
@@ -147,14 +149,15 @@ test('bars: ccstatusline slider (10 cells, round(clamp)) with one-decimal percen
   assert.equal(lineText(usageBar('5h', null, { stale: false })), '5h —', 'unknown: no bar, never an empty 0% bar');
   const high = usageBar('5h', 95, { stale: false });
   assert.equal(lineText(high), '5h   95.0%!  ');
-  assert.ok(high[0]!.color === undefined && high.slice(1).every((s) => s.color === STATE_COLOR.critical && s.inverse), 'quiet label; the bar is a red block (> 90%) with the number over it');
-  assert.equal(usageBar('5h', 43, { stale: false })[1]?.color, STATE_COLOR.ok, 'green under 70%');
-  assert.equal(usageBar('5h', 70, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber from 70%');
-  assert.equal(usageBar('5h', 90, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber up to 90%');
+  assert.ok(high[0]!.color === undefined && high.slice(1).every((s) => s.surface?.kind === 'fill' && s.surface.color === STATE_COLOR.critical), 'quiet label; the bar is a red surface (> 90%) with the number over it');
+  assert.equal(usageBar('5h', 43, { stale: false })[1]?.surface?.color, STATE_COLOR.ok, 'green under 70%');
+  assert.equal(usageBar('5h', 70, { stale: false })[1]?.surface?.color, STATE_COLOR.warn, 'amber from 70%');
+  assert.equal(usageBar('5h', 90, { stale: false })[1]?.surface?.color, STATE_COLOR.warn, 'amber up to 90%');
   assert.equal(lineText(usageBar('', null, { stale: false })), '—', 'a bare grid cell with no reading is a dash, never 0');
   const stale = usageBar('5h', 95, { stale: true });
   assert.equal(lineText(stale), '5h   95.0%   ', 'stale: no warning emphasis');
-  assert.ok(stale.every((s) => s.color === undefined && s.dim));
+  assert.ok(stale.every((s) => s.color === undefined && (!s.surface || s.surface.kind === 'track' || s.surface.color === undefined)), 'stale: no state colour anywhere (the fill is drawn grey)');
+  assert.ok(stale.filter((s) => /\S/.test(s.text)).every((s) => s.dim), 'stale text is dim');
   assert.equal(lineText(usageBar('5h', 43, { stale: false, bar: false })), '5h 43.0%');
   assert.equal(lineText(contextBar(null, { stale: false })), 'ctx —');
   assert.equal(lineText(contextBar({ source: 'codex-token-count', status: 'ok', observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } }, { stale: false })), 'ctx 12k', 'tokens without a limit: no bar');
@@ -200,4 +203,28 @@ test('cross-review (Astra): on a very short panel a shown value never loses its 
     if (firstValue < 0) continue;
     assert.ok(text.slice(0, firstValue).some((l) => /statusline/.test(l)), `height ${height}: "${text.join(' | ')}"`);
   }
+});
+test('6.15: a bar is one flat surface — fill = solid bright background, track = solid dim background, label with no background of its own; mono falls back to inverse', () => {
+  const bar = usageBar('', 43, { stale: false });
+  assert.ok(bar.every((s) => s.surface), 'every cell is surface');
+  assert.ok(!bar.some((s) => s.text.includes('░')), 'no stipple glyph');
+  const fill = bar.find((s) => s.surface?.kind === 'fill')!;
+  const track = bar.find((s) => s.surface?.kind === 'track')!;
+  assert.deepEqual(surfaceStyle(fill, false), { backgroundColor: STATE_COLOR.ok, color: TEXT_ON_FILL, dim: fill.dim });
+  assert.deepEqual(surfaceStyle(track, false), { backgroundColor: TRACK_BG, dim: track.dim });
+  assert.deepEqual(surfaceStyle(fill, true), { inverse: true, dim: fill.dim }, 'monochrome: the fill is reverse video');
+  assert.deepEqual(surfaceStyle(track, true), { inverse: false, dim: track.dim }, 'monochrome: the track is plain');
+  const stale = usageBar('', 43, { stale: true }).find((s) => s.surface?.kind === 'fill')!;
+  assert.equal(surfaceStyle(stale, false).backgroundColor, STALE_FILL, 'stale fill is grey, never a state colour');
+  const glyphs = bar.map((s) => s.text).join('').replace(/ /g, '');
+  assert.equal(glyphs, '43.0%', 'the label is the only text, drawn over the surface');
+});
+
+test('6.15: the rendered colour frame has no stipple glyph; the track is a background colour', async () => {
+  const ui = render(<App source={demoSource()} humanName="Kevin" width={120} height={30} />);
+  await tick();
+  const frame = ui.lastFrame() ?? '';
+  assert.doesNotMatch(plain(frame), /░/, 'no ░ anywhere in the bars');
+  assert.match(frame, /\u001B\[48;5;237m/, 'the dim track is drawn as a 256-colour background');
+  assert.match(frame, /\u001B\[4[0-7]m|\u001B\[48;5;214m/, 'the fill is drawn as a background colour');
 });

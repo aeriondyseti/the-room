@@ -11,7 +11,9 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage } from '../contracts/account.js';
 import { App } from './app.js';
 import { demoSource } from './demo.js';
-import { lineCols, lineText } from './format.js';
+import { lineCols } from './format.js';
+// 6.15: bar track cells are a flat background on screen; in assertions they read as "░" (see test-utils barText).
+import { barText as lineText } from './test-utils.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
 import { stateDot } from './topbar.js';
 import { STATE_COLOR } from './bars.js';

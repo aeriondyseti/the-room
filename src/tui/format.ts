@@ -12,6 +12,11 @@ export interface Segment {
   dim?: boolean;
   italic?: boolean;
   inverse?: boolean;
+  /**
+   * A bar cell's flat surface (6.15): 'fill' (solid bright background in color, the state colour) or 'track' (solid dim
+   * background). Text on it has no background of its own. See bars.ts surfaceStyle for how themes render it.
+   */
+  surface?: { kind: 'fill' | 'track'; color?: string };
 }
 export type Line = Segment[];
 
