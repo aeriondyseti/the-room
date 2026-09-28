@@ -133,7 +133,7 @@ Mirrored verbatim in CLAUDE.md and AGENTS.md; audited by local-code-review every
    never persisted, logged, returned by tools, or shown in the TUI.
 7. **Minimal registry.**
    - `session.toml` participant sections contain only `harness` and `session_id`.
-   - Writes use a lock and atomic replace, and preserve every other section.
+   - Writes use a lock and atomic replace, and preserve every other participant section.
    - Duplicate names or duplicate native bindings are rejected, not clobbered.
 8. **Hands off the harnesses.** Never write Codex's or Claude's internal databases or state files, never
    change a harness's config or permissions, and never silently restart, resume, or fork a session.

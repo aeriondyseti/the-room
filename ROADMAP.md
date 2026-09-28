@@ -26,7 +26,7 @@ Milestone 6+ only after the v0.1.0 tag.
     `node dist/cli/main.js --version` prints the package version; the contract types are exported from
     `src/contracts/`; typecheck is clean.
 
-- [ ] **0.2 Room root and minimal registry** *(Astra)* *(§4.5, proposal "Registry")*
+- [x] **0.2 Room root and minimal registry** *(Astra)* *(§4.5, proposal "Registry")*
   - **Scope:**
     - canonical room root via `git rev-parse --git-common-dir`, plus a `ROOM_ROOT` override;
     - read/write `session.toml` `[participants.<name>]` {harness, session_id} with a lock and atomic
