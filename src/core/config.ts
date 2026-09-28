@@ -1,6 +1,8 @@
 // Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
 
 export interface RoomConfig {
+  /** Retry reachability checks for queued recipients without model polling. */
+  dispatchPollMs: number;
   /** Poll interval for detached service readiness. */
   servicePollMs: number;
   /** Bounded SQLite lock-contention wait. */
@@ -51,6 +53,7 @@ export interface RoomConfig {
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
+  dispatchPollMs: 1000,
   servicePollMs: 50,
   sqliteBusyTimeoutMs: 5000,
   codexMaxEnvelopeChars: 24_000,
@@ -71,10 +74,12 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   codexHome: null,
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
-  contextLimits: Object.freeze({ 'claude-opus-5-5': 1_000_000 }),
+  contextLimits: Object.freeze({
+  dispatchPollMs: 1000, 'claude-opus-5-5': 1_000_000 }),
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
+  dispatchPollMs: 'ROOM_DISPATCH_POLL_MS',
   servicePollMs: 'ROOM_SERVICE_POLL_MS',
   sqliteBusyTimeoutMs: 'ROOM_SQLITE_BUSY_TIMEOUT_MS',
   codexMaxEnvelopeChars: 'ROOM_CODEX_MAX_ENVELOPE_CHARS',

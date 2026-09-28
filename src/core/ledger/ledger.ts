@@ -159,6 +159,9 @@ export class Ledger {
     if (!row) throw new RoomError('not_found', 'Delivery not found in this room.');
     return JSON.parse(row.payload) as Delivery;
   }
+  unfinishedAttempts(): Delivery[] {
+    return (this.db.prepare("SELECT payload FROM deliveries WHERE json_extract(payload,'$.attempts[#-1].outcome')='in_flight'").all() as unknown as DeliveryRow[]).map(row=>JSON.parse(row.payload) as Delivery);
+  }
   queued(recipient?: string): Delivery[] {
     return (this.db.prepare(`SELECT d.payload FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.state='queued' ${recipient === undefined ? '' : 'AND d.recipient=?'} ORDER BY m.seq,d.recipient`).all(...(recipient === undefined ? [] : [recipient])) as unknown as DeliveryRow[]).map(row => JSON.parse(row.payload) as Delivery);
   }

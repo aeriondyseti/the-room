@@ -1,3 +1,4 @@
+import type { DeliveryAdapter } from '../contracts/adapter.js';
 import { createServer, type Socket } from 'node:net';
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +12,7 @@ import { VERSION } from '../version.js';
 import { endpointFor } from './endpoint.js';
 
 export interface RunningServer { service:RoomService; pid:number; close():Promise<void> }
-export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>} = {}):Promise<RunningServer> {
+export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>;adapters?:DeliveryAdapter[]} = {}):Promise<RunningServer> {
   await mkdir(path.join(root,'.room'),{recursive:true});
   const endpoint=endpointFor(root);const nonce=randomUUID();const lock=path.join(root,'.room','service.lock');
   const sockets=new Set<Socket>();const active=new Set<Promise<unknown>>();const subscribed=new Set<Socket>();const replaying=new Map<Socket,RoomEvent[]>();let service:RoomService;let closing:Promise<void>|null=null;let stopping=false;let startupError:unknown;let signalReady!:()=>void;const ready=new Promise<void>(resolve=>{signalReady=resolve;});
@@ -94,7 +95,7 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
       // Keep the endpoint bound while old operations/storage still exist. New hello calls are refused.
       await Promise.allSettled(active);
       for(const socket of sockets)socket.destroySoon();
-      service?.close();
+      await service?.close();
       let cleanupError:unknown;
       try {const owner=JSON.parse(await readFile(lock,'utf8')) as {nonce?:string};if(owner.nonce===nonce)await unlink(lock);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')cleanupError=error;}
       await new Promise<void>(resolve=>{server.close(()=>resolve());for(const socket of sockets)socket.destroy();});
@@ -102,7 +103,7 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
     })();return closing;
   };
   try {
-    service=new RoomService(root);
+    service=new RoomService(root,options.adapters);
     await options.beforeReady?.();
     await writeFile(lock,JSON.stringify({pid:process.pid,nonce,endpoint,startedAt:new Date().toISOString()}));
     service.onEvent(value=>{
@@ -112,8 +113,8 @@ export async function startServer(root:string, options:{beforeReady?:()=>Promise
       }
       for(const socket of subscribed)event(socket,value);
     });
-    signalReady();
-  }catch(error){startupError=error;signalReady();for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));service!?.close();throw error;}
+    service.start();signalReady();
+  }catch(error){startupError=error;signalReady();for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));await service!?.close();throw error;}
   server.on('error',()=>{void close();});
   return {service,pid:process.pid,close};
 }
