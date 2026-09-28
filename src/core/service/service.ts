@@ -27,8 +27,8 @@ export class RoomService {
   private accounts: AccountMonitor|null=null;
   constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
-  enableMonitor(observer:MonitorDeps['observer'],intervalMs:number):void{
-    this.monitor=new ParticipantMonitor({participants:()=>this.participants(),adapters:this.adapters,observer,
+  enableMonitor(observer:MonitorDeps['observer'],intervalMs:number,workspace?:MonitorDeps['workspace']):void{
+    this.monitor=new ParticipantMonitor({participants:()=>this.participants(),adapters:this.adapters,observer,...(workspace?{workspace}:{}),
       save:state=>this.ledger.putParticipant(state),publish:participant=>this.publish({type:'participant.updated',participant}),
       loadCursors:()=>this.ledger.cursor<ObserverCursor[]>(OBSERVER_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(OBSERVER_CURSORS,cursors),intervalMs});
   }
@@ -160,7 +160,7 @@ export class RoomService {
     return Object.entries(registry).map(([name,binding])=>{
       const saved=previous.find(p=>p.name===name&&p.harness===binding.harness&&p.sessionId===binding.session_id);
       return {name,harness:binding.harness,sessionId:binding.session_id,liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,
-        activity:saved?.activity??'unknown',pending:queued.filter(d=>d.recipient===name).length,usage:saved?.usage??null};
+        activity:saved?.activity??'unknown',pending:queued.filter(d=>d.recipient===name).length,usage:saved?.usage??null,...(saved?.workspace!==undefined?{workspace:saved.workspace}:{})};
     });
   }
 }

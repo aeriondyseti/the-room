@@ -2,6 +2,7 @@
 // lot of empty space"). Pure line model so layout is testable; the conversation gets the full terminal width.
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
+import type { GitInfo, WorkspaceInfo } from '../contracts/workspace.js';
 import { colorFor, cols, fitLine, lineCols, sanitize, usageLabel, type Line, type Segment } from './format.js';
 
 export function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
@@ -41,7 +42,47 @@ export function participantChip(p: ParticipantState, opts: { stale: boolean; mon
     // Monochrome can't show the warning colour, so a high reading gets a "!" instead.
     chip.push({ text: ` ${u.text}${opts.mono && u.color ? '!' : ''}`, color: u.color, dim: u.dim });
   }
+  // 6.7: model and git in compact form (full cwd/worktree/status live in /who). Unknown parts are simply omitted.
+  const ws = p.workspace;
+  if (ws?.model) chip.push({ text: ` · ${sanitize(shortModel(ws.model))}`, dim: true });
+  const git = gitLabel(ws?.git ?? null);
+  if (git) chip.push({ text: ` · ${git}`, dim: true });
   return chip;
+}
+
+/** "claude-opus-5-5" → "opus-5-5"; other ids unchanged (bounded). */
+export function shortModel(model: string): string {
+  return model.replace(/^claude-/, '').slice(0, 24);
+}
+
+/** "sprint/6.7*3" (3 changed files), "@a1b2c3d" when detached, "no git" / "git ?" when not a repo / unreadable. */
+export function gitLabel(git: GitInfo | null): string | null {
+  if (!git) return null;
+  if (git.status === 'not_a_repo') return 'no git';
+  if (git.status === 'unavailable') return 'git ?';
+  const where = git.detached ? (git.head ? `@${git.head}` : '@detached') : git.branch;
+  if (!where) return null;
+  // Unique changed files (never the sum of overlapping staged/modified counts).
+  return `${sanitize(where)}${git.dirty ? `*${git.dirty}` : ''}`;
+}
+
+/** /who detail line: session cwd (+ source), worktree, and git status in words; unknowns are said, not hidden. */
+export function workspaceDetail(ws: WorkspaceInfo | null | undefined): string {
+  if (!ws) return 'workspace not observed';
+  const parts: string[] = [];
+  parts.push(ws.cwd ? `cwd ${sanitize(ws.cwd)}${ws.cwdSource ? ` (${sanitize(ws.cwdSource)})` : ''}` : 'cwd unknown');
+  const g = ws.git;
+  if (!g) parts.push('git not sampled');
+  else if (g.status !== 'ok') parts.push(g.status === 'not_a_repo' ? 'not a git repository' : `git unavailable${g.reason ? ` (${sanitize(g.reason)})` : ''}`);
+  else {
+    if (g.worktree) parts.push(`worktree ${sanitize(g.worktree)}`);
+    parts.push(g.detached ? `detached at ${g.head ?? '?'}` : `branch ${sanitize(g.branch ?? '?')}`);
+    const n = (v: number | null, label: string) => (v === null ? null : `${v} ${label}`);
+    const counts = [n(g.staged, 'staged'), n(g.modified, 'modified'), n(g.untracked, 'untracked')].filter(Boolean);
+    parts.push(counts.length ? counts.join(', ') : 'status unknown');
+    if (g.ahead !== null || g.behind !== null) parts.push(`↑${g.ahead ?? '?'} ↓${g.behind ?? '?'}`);
+  }
+  return parts.join(' · ');
 }
 
 const GAP: Segment = { text: '   ' };

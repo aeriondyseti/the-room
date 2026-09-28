@@ -16,7 +16,9 @@ export interface GitInfo {
   detached: boolean;
   /** Short HEAD commit. */
   head: string | null;
-  /** Porcelain counts; null when not read. */
+  /** Unique changed entries (a file both staged and modified counts once); null when not read. Drives "*N". */
+  dirty: number | null;
+  /** Porcelain counts (may overlap: a file can be both staged and modified); null when not read. */
   staged: number | null;
   modified: number | null;
   untracked: number | null;

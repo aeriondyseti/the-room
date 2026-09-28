@@ -138,6 +138,24 @@ test('a join during an in-flight refresh is queued, not swallowed; checks persis
   assert.equal(saved.length, before.saved + 2, 'but every check is persisted (fresh livenessCheckedAt in who)');
 });
 
+test('workspace (6.7): merged into state; timestamp-only changes are not news; a no-observation result keeps the last known', async () => {
+  const W = (branch: string, observedAt: string | null) => ({ model: 'gpt-6', cwd: 'X:/r', cwdSource: 'codex-transcript', observedAt,
+    git: { status: 'ok' as const, root: 'X:/r', worktree: null, branch, detached: false, head: 'abc', dirty: 0, staged: 0, modified: 0, untracked: 0, ahead: null, behind: null, checkedAt: observedAt } });
+  const results = [W('main', '2026-09-28T10:00:00Z'), W('main', '2026-09-28T10:05:00Z'), { model: null, cwd: null, cwdSource: null, git: null, observedAt: null }, W('feature', '2026-09-28T10:10:00Z')];
+  let i = 0;
+  const h = harness({ workspace: { observe: async () => results[Math.min(i++, results.length - 1)]! } });
+  const m = new ParticipantMonitor(h.deps);
+  await m.refresh();
+  const published = () => h.published.map((p) => p.workspace?.git?.branch ?? null);
+  assert.deepEqual(published(), ['main']);
+  await m.refresh(); // same branch, new timestamps
+  assert.equal(h.published.length, 1, 'timestamps alone are not news');
+  await m.refresh(); // provider timed out
+  assert.equal(h.saved.at(-1)?.workspace?.git?.branch, 'main', 'last known workspace kept, not blanked');
+  await m.refresh();
+  assert.deepEqual(published(), ['main', 'feature']);
+});
+
 test('cursors are restored on construction; corrupt cursors never block', () => {
   let restored: unknown = null;
   const h = harness({ loadCursors: () => [{ x: 1 }] as never, observer: { snapshot: async () => usageOk, exportCursors: () => [], restoreCursors: (c) => { restored = c; } } });
