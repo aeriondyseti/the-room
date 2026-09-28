@@ -1,0 +1,4 @@
+# Machine-specific participant registry (see proposal.md)
+session.toml
+# Room runtime data
+.room/
