@@ -124,7 +124,7 @@ Mirrored verbatim in CLAUDE.md and AGENTS.md; audited by local-code-review every
    reported accepted. Per-recipient order is preserved. One offline or failing recipient never blocks
    the others.
 5. **Identity integrity.**
-   - Never infer a sender from pid, cwd, clientInfo, a JSON-RPC id, or model-supplied text, apart from the
+   - Never infer a sender from the MCP server's own pid alone, cwd, clientInfo, a JSON-RPC id, or model-supplied text (a verified parent-pid registry lookup is valid), apart from the
      explicit declared-identity fallback, which is labelled.
    - Never post an unbound agent's message as the human.
    - Never redirect an already-queued delivery to a different native session. Deliveries snapshot their

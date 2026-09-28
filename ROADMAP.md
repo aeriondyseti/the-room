@@ -86,9 +86,15 @@ Milestone 6+ only after the v0.1.0 tag.
 - [ ] **2.2 Claude adapter** *(Claude)* — look up the live registry entry by `session_id`, validating
   that the pid is alive and `procStart` matches; derive the key from the pipe path; write the auth frame
   then the user frame (`priority: next`); stale binding means "rebind needed"; tokens are never logged.
-  **Done-when:** tests against a fake named-pipe server cover the exact frames, missing, dead or
-  mismatched sessions, a pipe error mapped to `failed`, and no secret in any log, error, or return value.
-  A documented live smoke test against a real session passes.
+  **Outcome mapping:**
+  - no live registry entry for the session → `offline` (not delivered; stays pending);
+  - positive evidence of pid reuse or a `sessionId`/`procStart` mismatch → `rebind needed`;
+  - connect or auth failure *before* the message frame is written → `failed`;
+  - a pipe error *after* the frame is written → `uncertain`.
+
+  **Done-when:** tests against a fake named-pipe server cover the exact frames, every outcome above, and
+  no secret in any log, error, or return value. A documented live smoke test against a real session
+  passes.
 
 - [ ] **2.3 CLI** *(Astra)*
   - **Scope:**
@@ -153,16 +159,37 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 4 — MVP acceptance (dogfood)
 
-- [ ] **4.1 Room end to end on live agents** *(Claude, with Astra)* — Claude and Astra switch from
-  pair-poc to the real room via MCP, and Kevin's TUI broadcast reaches both.
-  **Done-when:** a documented live run shows a broadcast from the TUI reaching Claude and Astra, replies
-  via `room_send` appearing in the TUI with delivery states, and CLI fallback verified.
+- [ ] **4.1 Room end to end on live agents** *(Claude, with Astra)*
+  - **Scope:** Claude and Astra switch from pair-poc to the real room via MCP (initial dogfood), then the
+    proposal's **four-agent acceptance fixture** (two Codex and two Claude Code sessions, all
+    throwaway except us).
+  - **Done-when:** a documented live run under `probes/` shows:
+    - a TUI broadcast reaching all four;
+    - `@name` reaching only the selected instance;
+    - same-harness and cross-harness replies via `room_send` appearing in the TUI with delivery states;
+    - an offline or busy instance not blocking the others;
+    - CLI fallback verified.
+  - **Evidence gates (required before v0.1.0):**
+    - **20 idle-wake trials** per supported configuration (Claude pipe and Codex queue), with enqueue,
+      turn-start and reply latency measured separately;
+    - a **two-hour mixed idle/busy exercise**;
+    - all timeouts and failures reported.
 
-- [ ] **4.2 Failure and recovery qualification** *(Astra)* — service restart with pending work,
-  concurrent startup, ambiguous-submit recovery, the pause/stop-request live check, oversized-message
-  reference, and a linked-worktree room.
-  **Done-when:** an automated suite plus a documented live checklist pass; results are recorded under
-  `probes/`.
+    Release is never marked complete without these.
+
+- [ ] **4.2 Failure and recovery qualification** *(Astra)*
+  - **Scope:**
+    - service restart with pending work;
+    - concurrent startup;
+    - ambiguous-submit recovery;
+    - the pause/stop-request live check;
+    - oversized-message reference;
+    - a linked-worktree room;
+    - **add, remove and rebind with delivery snapshots**: rejoining under the same name with a new
+      native id rebinds future deliveries only, and never silently redirects prior pending or queued
+      work.
+  - **Done-when:** an automated suite, including snapshot and rebind tests, plus a documented live
+    checklist pass; results are recorded under `probes/`.
 
 ## Milestone 5 — Ergonomics polish (then tag v0.1.0)
 
@@ -183,7 +210,17 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 6 — Post-release (only after v0.1.0)
 
-- [ ] **6.1 Full activity view** — the transcript observer: tool calls and results in the TUI (proposal
-  "Minimal observation now; full output after MVP").
-- [ ] **6.2 IDEAS.md: background agents** — pursue per the IDEAS.md check results, as agreed then.
-- [ ] **6.3 Tech-debt triage** — work TECH-DEBT.md items by severity.
+Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint before execution.
+
+- [ ] **6.1 Full activity view** *(Claude)* — the transcript observer: tool calls and results in the TUI
+  (proposal "Minimal observation now; full output after MVP").
+  **Done-when:** the TUI shows each agent's tool calls and results, expandable and filterable, from
+  read-only transcript readers with cursors; large outputs stay responsive; unavailable coverage is
+  labelled; nothing observed feeds back into delivery.
+- [ ] **6.2 Background agents (IDEAS.md)** *(Astra: Codex daemon hosting; Claude: `--bg` lifecycle)*
+  **Done-when:** agents can be registered while running headless; the TUI shows their state, with
+  approval or attach hand-off, and interrupts or stops where the harness supports it; everything else
+  is gated on the IDEAS.md check results.
+- [ ] **6.3 Tech-debt triage** *(both; each works items in their own components)*
+  **Done-when:** every 🔵 TECH-DEBT item with severity medium or higher is resolved or explicitly
+  marked won't-fix with a reason.

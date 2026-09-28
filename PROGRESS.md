@@ -64,9 +64,9 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 6.1 | Full activity view | TBD | ⬜ | |
-| 6.2 | Background agents (IDEAS.md) | TBD | ⬜ | |
-| 6.3 | Tech-debt triage | TBD | ⬜ | |
+| 6.1 | Full activity view | Claude | ⬜ | |
+| 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
+| 6.3 | Tech-debt triage | both | ⬜ | |
 
 ---
 

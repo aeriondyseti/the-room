@@ -121,8 +121,8 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
 4. **Persist before acknowledging.** A message and its deliveries commit atomically before the send is
    reported accepted. Per-recipient order is preserved. One offline or failing recipient never blocks
    the others.
-5. **Identity integrity.** Never infer a sender from pid, cwd, clientInfo, a JSON-RPC id, or
-   model-supplied text, apart from the explicit declared-identity fallback, which is labelled. Never post
+5. **Identity integrity.** Never infer a sender from the MCP server's own pid alone, cwd, clientInfo, a
+   JSON-RPC id, or model-supplied text (a verified parent-pid registry lookup is valid), apart from the explicit declared-identity fallback, which is labelled. Never post
    an unbound agent's message as the human. Never redirect an already-queued delivery to a different
    native session; deliveries snapshot their target.
 6. **Secrets never leave memory.** Claude peer tokens (`.key` files, `CLAUDE_CODE_MESSAGING_TOKEN`) are
