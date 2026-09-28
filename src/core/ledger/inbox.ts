@@ -8,7 +8,7 @@ interface Snapshot {
   version: 1;
   covered: string[];
   exempted: string[];
-  parts: Record<string, number>;
+  parts: Record<string, {next:number;chunkBytes:number;digest:string}>;
 }
 interface Cursor { snapshot: string }
 type ReviewOptions = Pick<InboxRequest,'snapshot'|'cursor'|'limit'|'baseline'>;
@@ -41,7 +41,13 @@ export class InboxStore {
     const token=id();this.ledger.putCrossing(token,scope,'snapshot',state);return token;
   }
   review(scope:string,options:ReviewOptions={}):InboxReviewPage {
-    return this.ledger.transaction(()=>this.page(scope,options));
+    return this.ledger.transaction(()=>{
+      const page=this.page(scope,options);
+      // Display-only pointer. Eligibility NEVER reads this; it always requires
+      // the token explicitly supplied on that particular send.
+      this.ledger.setInboxDisplay(scope,page.snapshot);
+      return page;
+    });
   }
   private page(scope:string,options:ReviewOptions):InboxReviewPage {
     if(options.baseline&&(options.snapshot!==undefined||options.cursor!==undefined))throw new RoomError('bad_request','Baseline cannot be combined with snapshot or cursor.');
@@ -71,17 +77,19 @@ export class InboxStore {
         if(items.length>=limit||used+bytes(full)>this.pageBytes)break;
         items.push(full);used+=bytes(full);state.covered.push(key);done.add(key);continue;
       }
-      const chunks=this.chunks(value.message.body);
       const {body,...message}=value.message;
       const bodyDigest=createHash('sha256').update(body).digest('hex');
-      for(let index=state.parts[key]??0;index<chunks.length;index++){
+      const progress=state.parts[key]??{next:0,chunkBytes:this.partBytes,digest:bodyDigest};
+      if(progress.digest!==bodyDigest)throw new RoomError('invalid_state','Inbox body changed during review.');
+      const chunks=this.chunks(body,progress.chunkBytes);
+      for(let index=progress.next;index<chunks.length;index++){
         const item:InboxReviewItem={kind:'message_part',message,bodyDigest,text:chunks[index]!,partIndex:index+1,partCount:chunks.length};
         const size=bytes(item);
         if(size>this.pageBytes-1024)throw new RoomError('message_too_large','Message metadata exceeds the inbox page budget.');
         if(items.length>=limit||used+size>this.pageBytes)break outer;
-        items.push(item);used+=size;state.parts[key]=index+1;
+        items.push(item);used+=size;state.parts[key]={...progress,next:index+1};
       }
-      if(state.parts[key]===chunks.length){state.covered.push(key);done.add(key);delete state.parts[key];}
+      if(state.parts[key]?.next===chunks.length){state.covered.push(key);done.add(key);delete state.parts[key];}
     }
     const remaining=history.filter(i=>!done.has(i.message.id)).length;
     const snapshot=this.issue(scope,state);
@@ -89,9 +97,9 @@ export class InboxStore {
     if(remaining){nextCursor=id();this.ledger.putCrossing(nextCursor,scope,'cursor',{snapshot});}
     return {items,snapshot,hasMore:remaining>0,nextCursor,remaining};
   }
-  private chunks(text:string):string[]{
+  private chunks(text:string,chunkBytes:number):string[]{
     const result:string[]=[];let part='',size=0;
-    for(const ch of text){const n=Buffer.byteLength(ch,'utf8');if(size+n>this.partBytes){result.push(part);part='';size=0;}part+=ch;size+=n;}
+    for(const ch of text){const n=Buffer.byteLength(ch,'utf8');if(size+n>chunkBytes){result.push(part);part='';size=0;}part+=ch;size+=n;}
     if(part||!result.length)result.push(part);return result;
   }
 }

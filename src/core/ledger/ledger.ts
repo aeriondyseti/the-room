@@ -59,6 +59,7 @@ export class Ledger {
         CREATE TABLE IF NOT EXISTS participants (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS usage_cursors (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_records (id TEXT PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS crossing_display (scope TEXT PRIMARY KEY, snapshot TEXT NOT NULL, checked_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS room_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
         INSERT OR IGNORE INTO room_state VALUES(1,'{"paused":false,"pausedAt":null,"stopRequestId":null}');
         PRAGMA user_version = 1;
@@ -82,6 +83,13 @@ export class Ledger {
     const rows=this.db.prepare(`SELECT DISTINCT m.id,m.seq FROM messages m JOIN deliveries d ON d.message_id=m.id
       WHERE json_extract(d.payload,'$.target.harness') || ':' || json_extract(d.payload,'$.target.sessionId') = ? ORDER BY m.seq`).all(scope) as {id:string;seq:number}[];
     return rows.map(row=>this.read(row.id));
+  }
+  setInboxDisplay(scope:string,snapshot:string):void {
+    this.db.prepare('INSERT INTO crossing_display(scope,snapshot,checked_at) VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET snapshot=excluded.snapshot,checked_at=excluded.checked_at').run(scope,snapshot,new Date().toISOString());
+  }
+  inboxDisplay(scope:string):{snapshot:string;checkedAt:string}|null {
+    const row=this.db.prepare('SELECT snapshot,checked_at FROM crossing_display WHERE scope=?').get(scope) as {snapshot:string;checked_at:string}|undefined;
+    return row?{snapshot:row.snapshot,checkedAt:row.checked_at}:null;
   }
 
   /** All callbacks are synchronous. Savepoints keep caught nested failures from partially committing. */
