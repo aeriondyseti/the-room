@@ -42,7 +42,9 @@ export function shadedBar(percent: number, text: string, opts: { cells: number; 
   const start = Math.floor((cells - text.length) / 2);
   const out: Segment[] = [];
   for (let i = 0; i < cells; i++) {
-    const inText = i >= start && i < start + text.length;
+    // Padding spaces in `text` (column alignment) are layout, not content: they show the bar cell beneath them, so only
+    // the number's own glyphs cover the bar and the fill/track read stays intact (6.14 review).
+    const inText = i >= start && i < start + text.length && text[i - start] !== ' ';
     const ch = inText ? text[i - start]! : i < filled ? ' ' : '░';
     const seg: Segment =
       i < filled

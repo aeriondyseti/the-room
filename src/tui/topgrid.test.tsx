@@ -45,7 +45,7 @@ test('AGENTS: a quiet section label, then one aligned row per agent; only the st
   const rows = agentGrid([agent('astra', withWs('gpt-6-astra', 'main')), agent('claude', { activity: 'busy', ...withWs('claude-opus-5-5', 'sprint/6.9', 3) })], { width: 100, stale: false, maxRows: 6 })!;
   const text = rows.map(lineText);
   assert.equal(text[0], 'AGENTS');
-  assert.match(text[1]!, /^ ● astra +idle +ctx {3}59\.0% ░░ +gpt-6-astra +main$/);
+  assert.match(text[1]!, /^ ● astra +idle +ctx {3}59\.0%░░░ +gpt-6-astra +main$/);
   assert.match(text[2]!, /^ ● claude +busy +ctx .* +opus-5-5 +sprint\/6\.9\*3$/);
   for (const needle of ['ctx', 'main']) assert.equal(colOf(text[1]!, needle === 'main' ? 'main' : needle), colOf(text[2]!, needle === 'main' ? 'sprint' : needle), `column "${needle}" lines up`);
   const busy = rows[2]!.find((s) => s.text === 'busy');
@@ -73,8 +73,8 @@ test('BUDGETS: one row per account; 5h / weekly / Fable weekly named once; model
   const text = rows.map(lineText);
   assert.equal(text.length, 3, 'header + one row per account (no separate Fable row)');
   assert.match(text[0]!, /^BUDGETS +5h +weekly +Fable weekly$/);
-  assert.match(text[1]!, /^ Claude +29\.0% ░░ +↻ 1h53m +24\.0% ░░ +27\.0% ░░$/);
-  assert.match(text[2]!, /^ Codex +— +18\.0% ░░ +stale$/, 'Codex has no Fable limit: blank cells, not "—"; its caveat stays on its row');
+  assert.match(text[1]!, /^ Claude +29\.0%░░░ +↻ 1h53m +24\.0%░░░ +27\.0%░░░$/);
+  assert.match(text[2]!, /^ Codex +— +18\.0%░░░ +stale$/, 'Codex has no Fable limit: blank cells, not "—"; its caveat stays on its row');
   const barStart = (l: string, pct: string) => l.indexOf(pct) - 2; // the number is centred: two filled cells precede it
   assert.equal(colOf(text[0]!, '5h'), barStart(text[1]!, '29.0%'), '5h header over its column');
   assert.equal(colOf(text[0]!, 'weekly'), barStart(text[2]!, '18.0%'), 'weekly header over its column');
@@ -91,7 +91,7 @@ test('6.12: as the width shrinks, bars go 10 → 8 cells (fill recomputed) → p
     const g = budgetGrid([claude, codex], { width, now: NOW });
     if (!g) return 'fallback';
     const t = g.map(lineText).join('\n');
-    return t.includes('29.0% ░░') ? '10' : t.includes('29.0% ░') ? '8' : /░/.test(t) ? '?' : 'numbers';
+    return t.includes('29.0%░░░') ? '10' : t.includes('29.0%░░') ? '8' : /░/.test(t) ? '?' : 'numbers';
   };
   const seen: string[] = [];
   for (let w = 130; w >= 30; w--) {
@@ -196,13 +196,13 @@ test('6.12 review: every window of a model bucket gets a column — a Codex mode
 
 test('6.12 review / 6.14: empty columns take no space; bar size is monotonic in width (a narrower terminal never gets bigger bars); caveats wrap whole', () => {
   const g = budgetGrid([claude, codex], { width: 200, now: NOW })!.map(lineText);
-  assert.match(g[1]!, /24\.0% ░░ {4}27\.0%/, `one gap (plus the bar's two filled cells) between columns, none doubled by an all-empty reset column:\n${g.join('\n')}`);
+  assert.match(g[1]!, /24\.0%░░░ {4}27\.0%/, `one gap (plus the bar's two filled cells) between columns, none doubled by an all-empty reset column:\n${g.join('\n')}`);
   const long: AccountUsage = { ...claude, fallback: true };
   const size = (w: number) => {
     const t = budgetGrid([long, codex], { width: w, now: NOW });
     if (!t) return 0;
     const s = t.map(lineText).join('\n');
-    return s.includes('29.0% ░░') ? 10 : s.includes('29.0% ░') ? 8 : 1;
+    return s.includes('29.0%░░░') ? 10 : s.includes('29.0%░░') ? 8 : 1;
   };
   let prev = Infinity;
   for (let w = 160; w >= 30; w--) {
