@@ -11,7 +11,7 @@ import { waitFor } from './test-utils.js';
 
 afterEach(() => cleanup());
 
-const K = { enter: '\r', esc: '\u001B', tab: '\t', up: '\u001B[A', altEnter: '\u001B\r', pageDown: '\u001B[6~' };
+const K = { enter: '\r', esc: '\u001B', tab: '\t', up: '\u001B[A', ctrlEnter: '\n', pageDown: '\u001B[6~' };
 const tick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 const plain = (s: string | undefined) => (s ?? '').replace(/\u001B\[[0-9;]*m/g, '');
 
@@ -61,7 +61,7 @@ test('an unknown @name is flagged live, refused on Enter, and the draft is kept'
   assert.match(t.frame(), /@astr hi/, 'draft kept for fixing');
 });
 
-test('Tab completes names; Esc clears the draft; Alt+Enter adds a line', async () => {
+test('Tab completes names; Esc clears the draft; Ctrl+Enter adds a line', async () => {
   const t = await setup();
   await t.type('@cl');
   await t.type(K.tab);
@@ -69,7 +69,7 @@ test('Tab completes names; Esc clears the draft; Alt+Enter adds a line', async (
   await t.type(K.esc);
   assert.doesNotMatch(t.frame(), /@claude/);
   await t.type('line one');
-  await t.type(K.altEnter);
+  await t.type(K.ctrlEnter);
   await t.type('line two');
   await t.type(K.enter);
   assert.equal(t.sends()[0]?.body, 'line one\nline two');

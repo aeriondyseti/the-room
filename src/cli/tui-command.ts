@@ -48,6 +48,7 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
     catchUpMaxPages: config.tuiCatchUpMaxPages,
     panelWidth: config.tuiPanelWidth,
     panelBreakpoint: config.tuiPanelBreakpoint,
+    composerMaxRows: config.tuiComposerMaxRows,
   };
   if (argv.includes('--demo')) {
     const { demoSource } = await import('../tui/demo.js');

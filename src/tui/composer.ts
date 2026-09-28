@@ -213,16 +213,22 @@ export function end(d: Draft): Draft {
   return { ...d, cursor: nl === -1 ? d.text.length : nl };
 }
 
+/** The grapheme boundary before `i` (6.13: never inside a combining sequence or joined emoji). */
 function prevBoundary(text: string, i: number): number {
   if (i <= 0) return 0;
-  const code = text.charCodeAt(i - 1);
-  return code >= 0xdc00 && code <= 0xdfff && i >= 2 ? i - 2 : i - 1;
+  const b = graphemeBounds(text);
+  let prev = 0;
+  for (const x of b) {
+    if (x >= i) break;
+    prev = x;
+  }
+  return prev;
 }
 
+/** The grapheme boundary after `i`. */
 function nextBoundary(text: string, i: number): number {
   if (i >= text.length) return text.length;
-  const code = text.charCodeAt(i);
-  return code >= 0xd800 && code <= 0xdbff && i + 1 < text.length ? i + 2 : i + 1;
+  return graphemeBounds(text).find((x) => x > i) ?? text.length;
 }
 
 // ---- history ------------------------------------------------------------------------------------------------
@@ -253,4 +259,123 @@ export function historyDown(h: History): { history: History; text: string } | nu
   if (h.index <= -1) return null;
   const index = h.index - 1;
   return { history: { ...h, index }, text: index === -1 ? h.saved : h.entries[h.entries.length - 1 - index]! };
+}
+
+// ---- word editing and navigation (6.13; Astra's spec docs/COMPOSER-KEYS-SPEC.md) ------------------------------
+// Words are whitespace-delimited tokens, deliberately: paths, @mentions and punctuation stay attached (this is not
+// language-aware code editing). All boundaries are grapheme-safe (never half a surrogate pair, combining sequence or
+// joined emoji).
+
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/** Grapheme start offsets in `text`, plus `text.length`. */
+function graphemeBounds(text: string): number[] {
+  const out: number[] = [];
+  for (const g of graphemeSegmenter.segment(text)) out.push(g.index);
+  out.push(text.length);
+  return out;
+}
+
+const isBlank = (g: string) => g === ' ' || g === '\t';
+const isSpaceOrNewline = (g: string) => isBlank(g) || g === '\n' || g === '\r';
+
+/** Ctrl+Left: skip whitespace (crossing newlines), then move to the beginning of the preceding token. */
+export function wordLeft(d: Draft): Draft {
+  const b = graphemeBounds(d.text);
+  let k = b.findIndex((x) => x >= d.cursor);
+  if (k < 0) k = b.length - 1;
+  const g = (i: number) => d.text.slice(b[i]!, b[i + 1]!);
+  while (k > 0 && isSpaceOrNewline(g(k - 1))) k--;
+  while (k > 0 && !isSpaceOrNewline(g(k - 1))) k--;
+  return { ...d, cursor: b[k]! };
+}
+
+/** Ctrl+Right: skip the rest of the current token, then the following whitespace (crossing newlines). */
+export function wordRight(d: Draft): Draft {
+  const b = graphemeBounds(d.text);
+  let k = b.findIndex((x) => x >= d.cursor);
+  if (k < 0) k = b.length - 1;
+  const last = b.length - 1;
+  const g = (i: number) => d.text.slice(b[i]!, b[i + 1]!);
+  while (k < last && !isSpaceOrNewline(g(k))) k++;
+  while (k < last && isSpaceOrNewline(g(k))) k++;
+  return { ...d, cursor: b[k]! };
+}
+
+/**
+ * Ctrl+Backspace: at the start of a line, join it to the previous one (delete only the newline); otherwise delete
+ * horizontal whitespace left of the cursor and then the preceding token, never crossing the line start. The text after
+ * the cursor is kept exactly.
+ */
+export function deleteWordBackward(d: Draft): Draft {
+  if (d.cursor === 0) return d;
+  if (d.text[d.cursor - 1] === '\n') return { text: d.text.slice(0, d.cursor - 1) + d.text.slice(d.cursor), cursor: d.cursor - 1 };
+  const b = graphemeBounds(d.text);
+  let k = b.findIndex((x) => x >= d.cursor);
+  if (k < 0) k = b.length - 1;
+  const g = (i: number) => d.text.slice(b[i]!, b[i + 1]!);
+  while (k > 0 && isBlank(g(k - 1))) k--;
+  while (k > 0 && !isSpaceOrNewline(g(k - 1))) k--;
+  return { text: d.text.slice(0, b[k]!) + d.text.slice(d.cursor), cursor: b[k]! };
+}
+
+// ---- visual rows (6.13: the composer grows without overwriting the bottom bar) ----------------------------------
+
+export interface VisualRow {
+  before: string;
+  /** The cursor cell's content (a grapheme, or " " at the end of a line), or null when the cursor isn't on this row. */
+  cursor: string | null;
+  after: string;
+}
+
+/**
+ * The draft as terminal rows of at most `width` columns: hard newlines kept, long lines soft-wrapped explicitly by
+ * display width (wide CJK/emoji count as two), so the renderer never lets the terminal wrap on its own and the layout
+ * can budget every row. The cursor occupies a cell; at the end of a full row it moves to a row of its own.
+ */
+export function visualRows(d: Draft, width: number, measure: (s: string) => number, clean: (s: string) => string = (s) => s): { rows: VisualRow[]; cursorRow: number } {
+  const w = Math.max(1, width);
+  const rows: VisualRow[] = [];
+  let cursorRow = 0;
+  let offset = 0;
+  for (const line of d.text.split('\n')) {
+    const lineStart = offset;
+    const lineEnd = offset + line.length;
+    offset = lineEnd + 1;
+    const gs = [...graphemeSegmenter.segment(line)].map((s) => ({ index: lineStart + s.index, text: clean(s.segment) }));
+    const cursorHere = d.cursor >= lineStart && d.cursor <= lineEnd;
+    let row: { gs: typeof gs; width: number } = { gs: [], width: 0 };
+    const chunks: (typeof row)[] = [];
+    for (const g of gs) {
+      const gw = Math.max(1, measure(g.text));
+      if (row.gs.length && row.width + gw > w) {
+        chunks.push(row);
+        row = { gs: [], width: 0 };
+      }
+      row.gs.push(g);
+      row.width += gw;
+    }
+    chunks.push(row);
+    chunks.forEach((c, ci) => {
+      const lastChunk = ci === chunks.length - 1;
+      // The grapheme that contains the cursor (robust even if an index ever lands inside a cluster).
+      const at = cursorHere && d.cursor < lineEnd ? c.gs.findIndex((g, k) => g.index <= d.cursor && (k + 1 < c.gs.length ? c.gs[k + 1]!.index > d.cursor : ci === chunks.length - 1 || chunks[ci + 1]!.gs[0]!.index > d.cursor)) : -1;
+      if (at >= 0) {
+        cursorRow = rows.length;
+        rows.push({ before: c.gs.slice(0, at).map((g) => g.text).join(''), cursor: c.gs[at]!.text, after: c.gs.slice(at + 1).map((g) => g.text).join('') });
+      } else if (cursorHere && lastChunk && d.cursor === lineEnd) {
+        // Cursor after the line's last character: on this row if a cell is free, else on a row of its own.
+        const text = c.gs.map((g) => g.text).join('');
+        if (c.width + 1 <= w) {
+          cursorRow = rows.length;
+          rows.push({ before: text, cursor: ' ', after: '' });
+        } else {
+          rows.push({ before: text, cursor: null, after: '' });
+          cursorRow = rows.length;
+          rows.push({ before: '', cursor: ' ', after: '' });
+        }
+      } else rows.push({ before: c.gs.map((g) => g.text).join(''), cursor: null, after: '' });
+    });
+  }
+  return { rows, cursorRow };
 }
