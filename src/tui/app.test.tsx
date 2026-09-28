@@ -5,6 +5,7 @@ import { render, cleanup } from 'ink-testing-library';
 import { HUMAN, type ParticipantState } from '../contracts/domain.js';
 import { App } from './app.js';
 import { FakeRoomSource } from './fake-source.js';
+import { waitFor } from './test-utils.js';
 
 afterEach(() => cleanup());
 
@@ -55,16 +56,12 @@ test('scrolling up holds the viewport and counts new messages; End returns to li
   assert.match(scrolled, /↑ scrolled/);
 
   src.post('astra', [HUMAN], 'brand new while scrolled');
-  await tick();
-  const held = plain(ui.lastFrame());
+  const held = await waitFor(() => plain(ui.lastFrame()), /1 new below/);
   assert.doesNotMatch(held, /brand new while scrolled/, 'viewport did not jump');
-  assert.match(held, /1 new below/);
 
   ui.stdin.write(KEYS.end);
-  await tick();
-  const live = plain(ui.lastFrame());
+  const live = await waitFor(() => plain(ui.lastFrame()), /● live/);
   assert.match(live, /brand new while scrolled/);
-  assert.match(live, /● live/);
 });
 
 test('following live shows new messages immediately', async () => {
