@@ -148,7 +148,7 @@ Milestone 6+ only after the v0.1.0 tag.
   - **Done-when:** tests cover addressing parsing, completion, multi-line, each command dispatching the
     right IPC request, and errors shown inline.
 
-- [ ] **3.3 Participants, usage, and delivery detail** *(Claude)*
+- [x] **3.3 Participants, usage, and delivery detail** *(Claude)*
   - **Scope:**
     - participant strip or panel (state, pending, usage with freshness, "rebind needed" or "offline");
     - delivery detail view per message (attempts, evidence, errors);
