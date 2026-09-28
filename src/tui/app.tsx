@@ -171,7 +171,8 @@ function Room({
   const suggestions = useMemo(() => (overlay ? [] : commandSuggestions(draft.text)), [draft.text, overlay]);
   const [suggestIdx, setSuggestIdx] = useState(0);
   useEffect(() => setSuggestIdx(0), [draft.text]);
-  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
+  // The rows the suggestion list would like; what it actually gets is budgeted with the draft below (TD-0034).
+  const suggestionRowsWanted = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
   // The draft as terminal rows (hard newlines and soft wraps, measured by display width), shared by layout and render.
   // Tabs are shown as two spaces (as in messages), so the measured width is the drawn width.
   const draftVisual = useMemo(() => visualRows(draft, colsTotal - 2 /* gutter */, cols, (g) => (g === '\t' ? '  ' : sanitize(g))), [draft, colsTotal]);
@@ -193,12 +194,12 @@ function Room({
     // Every other row counts (6.13, TD-0027): header, banner, left-layout notice, rules, the composer as the draft needs it
     // (with feedback and suggestions) and the status bar.
     const persistent = (view.connection.state !== 'connected' || (view.notice !== null && view.loaded) ? 1 : 0) + (layout === 'left' ? 1 : 0);
-    const chrome = 1 /* header */ + persistent + 1 /* rule */ + 2 /* composer rule + To */ + draftWanted + (feedback ? 1 : 0) + suggestionRows + 1 /* status */;
+    const chrome = 1 /* header */ + persistent + 1 /* rule */ + 2 /* composer rule + To */ + draftWanted + (feedback ? 1 : 0) + suggestionRowsWanted + 1 /* status */;
     const gridFits = grid !== null && !overlay && rows - grid.length - chrome >= MIN_CONVERSATION_ROWS;
     const lines = gridFits ? grid : [...chips(topBar === 'compact' ? 1 : TOP_BAR_PARTICIPANT_LINES), ...usage()];
     if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${leftPanelMinCols(panelWidth, panelBreakpoint)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
     return lines;
-  }, [showLeft, layout, topBar, overlay, rows, draftWanted, feedback, suggestionRows, view.connection.state, view.notice, view.loaded, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
+  }, [showLeft, layout, topBar, overlay, rows, draftWanted, feedback, suggestionRowsWanted, view.connection.state, view.notice, view.loaded, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
   const convWidth = colsTotal - (showLeft ? panelWidth + 1 : 0) - 1;
   const saveGen = useRef(0);
   const switchLayout = (next: TuiLayout): Feedback => {
@@ -234,9 +235,18 @@ function Room({
   // 6.13: the composer takes the rows its draft actually needs (soft wraps included), up to composerMaxRows and never
   // below a readable conversation; beyond that it scrolls inside itself to follow the cursor. Nothing is ever drawn over
   // the bottom bar.
-  const draftRows = Math.max(1, Math.min(draftWanted, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) - (2 + (feedback ? 1 : 0) + suggestionRows) - 1 /* status */ - MIN_VIEWPORT_ROWS));
+  // One budget that always fits the frame (TD-0034: at 12 rows the "/" list plus a fixed 3-row conversation overflowed,
+  // clipping the header and the To: row). After the fixed rows: one draft row, then suggestions capped so the
+  // conversation keeps its minimum (the rest summarised by "+N more"), then the draft's growth, then the conversation.
+  const fixedRows = 1 /* header */ + (banner ? 1 : 0) + (topLines.length + 1) /* top bar + rule */ + 2 /* composer rule + To: */ + (feedback ? 1 : 0) + 1 /* status */;
+  const space = Math.max(1, rows - fixedRows);
+  const suggestionBudget = suggestions.length === 0 ? 0 : Math.max(1, Math.min(suggestionRowsWanted, space - 1 - MIN_VIEWPORT_ROWS));
+  const suggestionLimit = suggestions.length === 0 ? 0 : suggestionBudget >= suggestionRowsWanted ? Math.min(MAX_SUGGESTIONS, suggestions.length) : Math.max(0, suggestionBudget - 1);
+  const suggestionRows = suggestions.length === 0 ? 0 : suggestionLimit + (suggestions.length > suggestionLimit ? 1 : 0);
+  const draftRows = Math.max(1, Math.min(draftWanted, space - suggestionRows - MIN_VIEWPORT_ROWS));
   const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0) + suggestionRows;
-  const viewportHeight = Math.max(3, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) /* top bar + rule */ - composerHeight - 1 /* status */);
+  // Whatever is left; below MIN_VIEWPORT_ROWS only on a terminal too short for everything, never overflowing the frame.
+  const viewportHeight = Math.max(1, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) /* top bar + rule */ - composerHeight - 1 /* status */);
 
   const seqById = useMemo(() => new Map(view.items.map((i) => [i.message.id, i.message.seq] as const)), [view.items]);
   const lines = useMemo(
@@ -641,6 +651,7 @@ function Room({
         connected={view.connection.state === 'connected'}
         suggestions={suggestions}
         suggestIdx={suggestIdx}
+        suggestionLimit={suggestionLimit}
       />
       <StatusBar offset={scroll.offset} unseen={scroll.unseen} width={colsTotal} />
     </Box>
@@ -935,6 +946,8 @@ function Composer(props: {
   connected: boolean;
   suggestions: readonly CommandInfo[];
   suggestIdx: number;
+  /** How many suggestions fit (the rest are summarised as "+N more"). */
+  suggestionLimit: number;
 }) {
   const { draft, to } = props;
   const t = useTheme();
@@ -948,8 +961,9 @@ function Composer(props: {
   const hints = props.suggestions.length > 0 ? 'Tab complete · ↑/↓ choose · Enter run · Esc clear' : `Enter send · ${props.windowsTerminal ? 'Ctrl+Enter' : '\\ + Enter'} newline · Tab @name · ? help`;
   // Keep the highlighted suggestion inside the visible window.
   const n = props.suggestions.length;
-  const first = n <= MAX_SUGGESTIONS ? 0 : Math.min(Math.max(0, props.suggestIdx - MAX_SUGGESTIONS + 1), n - MAX_SUGGESTIONS);
-  const shownSuggestions = props.suggestions.slice(first, first + MAX_SUGGESTIONS);
+  const limit = props.suggestionLimit;
+  const first = n <= limit ? 0 : Math.min(Math.max(0, props.suggestIdx - limit + 1), n - limit);
+  const shownSuggestions = props.suggestions.slice(first, first + limit);
   const nameCol = Math.max(0, ...props.suggestions.map((c) => c.name.length + (c.args ? c.args.length + 1 : 0))) + 3;
   return (
     <Box flexDirection="column" width={props.width}>
@@ -963,7 +977,7 @@ function Composer(props: {
           </Text>
         );
       })}
-      {n > MAX_SUGGESTIONS && <Text dimColor wrap="truncate">  +{n - MAX_SUGGESTIONS} more · ↑/↓ to see them</Text>}
+      {n > limit && <Text dimColor wrap="truncate">  +{n - limit} more · ↑/↓ to see them</Text>}
       <Text color={t.color(accent)}>{'─'.repeat(props.width)}</Text>
       <Box justifyContent="space-between" width={props.width}>
         <Text wrap="truncate">

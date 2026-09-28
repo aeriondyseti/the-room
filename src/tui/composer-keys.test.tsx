@@ -210,3 +210,24 @@ test('cross-review: a key release (CSI-u event type 3) never acts — one press 
   await t.type('\r');
   assert.equal(t.sends()[0]?.body, 'one \nx', 'exactly one deletion and one newline');
 });
+test('TD-0034: at every height and in both layouts the frame holds — header, the To:/command row and the status bar survive suggestions, feedback and a long draft', async () => {
+  for (const layout of ['top', 'left'] as const) {
+    for (const height of [12, 13, 14, 16, 20]) {
+      for (const typed of ['/', '@nobody hi\r', 'a\nb\nc\nd\ne\nf\ng\nh', 'a\nb\nc\nd\ne\nf\ng\nh\u0017']) {
+        const src = new FakeRoomSource({ participants: [agent('astra')] });
+        const ui = render(<App source={src} humanName="Kevin" width={100} height={height} layout={layout} windowsTerminal={true} />);
+        await tick();
+        for (const ch of typed) { ui.stdin.write(ch); await tick(5); }
+        await tick();
+        const rows = plain(ui.lastFrame()).split('\n');
+        const where = `${layout} h=${height} typed ${JSON.stringify(typed)}:\n${rows.join('\n')}`;
+        assert.equal(rows.length, height, `frame height — ${where}`);
+        assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where}`);
+        assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where}`);
+        const statusAt = rows.findIndex((r) => r.startsWith('● live'));
+        assert.equal(statusAt, layout === 'left' ? height - 2 : height - 1, `status bar in place (above the divider in the left layout) — ${where}`);
+        cleanup();
+      }
+    }
+  }
+});
