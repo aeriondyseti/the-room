@@ -8,15 +8,20 @@ import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
 import { integer, nativeEvidence, optionalText, record, requireHuman, resolveCaller, text } from './validation.js';
 import { ParticipantMonitor, type MonitorDeps } from './monitor.js';
+import { ActivityService } from './activity.js';
+import type { ActivityCursorState, ActivityReader } from '../../observer/activity-reader.js';
+import type { ActivityRequest } from '../../contracts/activity.js';
 import type { UsageCursor as ObserverCursor } from '../../observer/observer.js';
 
 const OBSERVER_CURSORS='usage-observer';
+const ACTIVITY_CURSORS='activity-reader';
 
 export class RoomService {
   readonly ledger: Ledger;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
   private monitor: ParticipantMonitor|null=null;
+  private activity: ActivityService|null=null;
   constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   enableMonitor(observer:MonitorDeps['observer'],intervalMs:number):void{
@@ -24,8 +29,13 @@ export class RoomService {
       save:state=>this.ledger.putParticipant(state),publish:participant=>this.publish({type:'participant.updated',participant}),
       loadCursors:()=>this.ledger.cursor<ObserverCursor[]>(OBSERVER_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(OBSERVER_CURSORS,cursors),intervalMs});
   }
-  start():void{this.dispatcher.start();this.monitor?.start();}
-  async close():Promise<void>{await this.monitor?.stop();await this.dispatcher.stop();this.ledger.close();}
+  /** Observe each participant's transcript activity (6.1; presentation only, never feeds delivery or state). */
+  enableActivity(reader:ActivityReader,intervalMs:number):void{
+    this.activity=new ActivityService({reader,participants:()=>this.participants(),publish:event=>this.publish(event),
+      loadCursors:()=>this.ledger.cursor<ActivityCursorState[]>(ACTIVITY_CURSORS)??[],saveCursors:cursors=>this.ledger.putCursor(ACTIVITY_CURSORS,cursors),intervalMs});
+  }
+  start():void{this.dispatcher.start();this.monitor?.start();this.activity?.start();}
+  async close():Promise<void>{await this.activity?.stop();await this.monitor?.stop();await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
@@ -89,6 +99,17 @@ export class RoomService {
         return {registration,created:!prior[name],rebound:!!prior[name]&&(prior[name].harness!==binding.harness||prior[name].session_id!==binding.session_id)};
       }
       case 'deliveries': return {deliveries:this.ledger.read(text(p.messageId,'messageId')).deliveries};
+      case 'activity': {
+        const req:ActivityRequest={participant:text(p.participant,'participant')};
+        const after=p.afterSeq===undefined||p.afterSeq===null?null:integer(p.afterSeq,'afterSeq',0);
+        const before=p.beforeSeq===undefined||p.beforeSeq===null?null:integer(p.beforeSeq,'beforeSeq',0);
+        if(after!==null&&before!==null)throw new RoomError('bad_request','Use afterSeq or beforeSeq, not both.');
+        if(after!==null)req.afterSeq=after;if(before!==null)req.beforeSeq=before;
+        if(p.limit!==undefined&&p.limit!==null)req.limit=integer(p.limit,'limit',50,1);
+        if(p.stream!==undefined&&p.stream!==null){const s=record(p.stream);req.stream={participant:text(s.participant,'stream.participant'),harness:s.harness==='codex'?'codex':'claude',sessionId:text(s.sessionId,'stream.sessionId'),generation:integer(s.generation,'stream.generation',1)};}
+        if(!this.activity)return{stream:null,items:[],earliestSeq:null,lastSeq:null,hasMore:false,olderEvicted:false,reset:false,coverage:'unavailable',reason:'activity observation is not enabled in this service',checkedAt:null,backlog:false};
+        return this.activity.page(req);
+      }
       case 'shutdown': requireHuman(p.caller,client);return {stopping:true};
       case 'pause': {
         requireHuman(p.caller,client);

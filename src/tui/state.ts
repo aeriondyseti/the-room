@@ -76,6 +76,8 @@ function applyEvent(view: RoomView, event: RoomEvent): RoomView {
       return { ...view, room: event.room };
     case 'service.stopping':
       return { ...view, notice: `Room service stopping: ${event.reason}` };
+    case 'activity.appended':
+      return view; // the activity pane keeps its own state; the room view is unaffected
   }
 }
 

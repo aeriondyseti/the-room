@@ -13,6 +13,7 @@ import type {
   RoomState,
   TargetSnapshot,
 } from './domain.js';
+import type { ActivityItem, ActivityPage, ActivityRequest, ActivityStreamId } from './activity.js';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -128,6 +129,14 @@ export interface RequestMap {
     params: { caller: { kind: 'human' } };
     result: { stopping: true };
   };
+  activity: {
+    /**
+     * Observed activity for one participant (6.1): read-only, presentation only. Exactly one of afterSeq/beforeSeq
+     * (neither = newest page). A `stream` from another binding/generation yields `reset: true` (drop local state).
+     */
+    params: ActivityRequest;
+    result: ActivityPage;
+  };
 }
 
 export type Method = keyof RequestMap;
@@ -143,6 +152,7 @@ export const METHODS = [
   'resume',
   'subscribe',
   'shutdown',
+  'activity',
 ] as const satisfies readonly Method[];
 
 export type Params<M extends Method> = RequestMap[M]['params'];
@@ -168,7 +178,9 @@ export type RoomEvent =
   | { type: 'participant.updated'; participant: ParticipantState }
   | { type: 'participant.removed'; name: string }
   | { type: 'room.updated'; room: RoomState }
-  | { type: 'service.stopping'; reason: string };
+  | { type: 'service.stopping'; reason: string }
+  /** New observed activity (6.1). `reset` means the stream changed (rebind/rotation): drop that participant's view. */
+  | { type: 'activity.appended'; stream: ActivityStreamId; items: ActivityItem[]; reset: boolean };
 
 export interface EventFrame {
   v: typeof PROTOCOL_VERSION;

@@ -88,6 +88,14 @@ test('persisted cursors resume exactly: no repeats and no gaps after a restart',
   assert.equal(b.page({ participant: 'fxa', limit: 10 }).olderEvicted, true, 'pre-restart items are unavailable, not missing silently');
 });
 
+test('a harness without a parser is unavailable ("not supported yet"), never an empty full stream', async () => {
+  const { reader } = setup();
+  await reader.poll({ participant: 'astra', harness: 'codex', sessionId: '01a0e605-0000' });
+  const page = reader.page({ participant: 'astra' });
+  assert.equal(page.coverage, 'unavailable');
+  assert.match(page.reason ?? '', /codex sessions isn't supported yet/);
+});
+
 test('coverage is honest: missing transcript → unavailable; unknown/malformed records → partial with a reason', async () => {
   const { reader, file } = setup();
   await reader.poll(target('nobody'));

@@ -52,6 +52,8 @@ interface Stream {
   exists: boolean;
   checkedAt: string | null;
   backlog: boolean;
+  /** No parser for this harness: reported as unavailable, never as an empty "full" stream. */
+  unsupported?: boolean;
 }
 
 export class ActivityReader {
@@ -90,6 +92,8 @@ export class ActivityReader {
     const reset = stream.nextSeq === 1 && stream.items.length === 0 && stream.cursor === null;
     const parser = this.options.parsers.find((p) => p.harness === target.harness);
     stream.checkedAt = this.now().toISOString();
+    stream.unsupported = !parser;
+    if (!parser) return { stream: stream.id, items: [], reset: false }; // never read records we can't interpret
     if (!stream.path) {
       stream.exists = false;
       return { stream: stream.id, items: [], reset: false };
@@ -122,7 +126,6 @@ export class ActivityReader {
     stream.oversized += read.oversized;
     const fresh: ActivityItem[] = [];
     for (const record of read.records) {
-      if (!parser) break;
       const verdict = parser.parse(record, { detailBytes: this.options.detailBytes });
       if (verdict.kind === 'unknown') {
         stream.unknown++;
@@ -174,8 +177,12 @@ export class ActivityReader {
     if (s.unknown) problems.push(`${s.unknown} unrecognised record${s.unknown === 1 ? '' : 's'}${s.lastUnknownReason ? ` (e.g. ${s.lastUnknownReason})` : ''}`);
     if (s.malformed) problems.push(`${s.malformed} malformed line${s.malformed === 1 ? '' : 's'}`);
     if (s.oversized) problems.push(`${s.oversized} oversized record${s.oversized === 1 ? '' : 's'} skipped`);
-    const coverage = !s.path || !s.exists ? 'unavailable' : problems.length ? 'partial' : 'full';
-    const reason = coverage === 'unavailable' ? (s.path ? 'the transcript could not be read' : 'no transcript found for this session') : problems.join('; ') || undefined;
+    const coverage = s.unsupported || !s.path || !s.exists ? 'unavailable' : problems.length ? 'partial' : 'full';
+    const reason = s.unsupported
+      ? `activity for ${s.id.harness} sessions isn't supported yet`
+      : coverage === 'unavailable'
+        ? s.path ? 'the transcript could not be read' : 'no transcript found for this session'
+        : problems.join('; ') || undefined;
     return {
       stream: s.id, items, earliestSeq: all[0]?.seq ?? null, lastSeq: all.at(-1)?.seq ?? null, hasMore,
       olderEvicted: reachesStart && s.olderUnavailable, reset, coverage, ...(reason ? { reason } : {}), checkedAt: s.checkedAt, backlog: s.backlog,
