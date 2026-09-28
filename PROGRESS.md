@@ -113,6 +113,6 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 | 7.1 | Inbox snapshots + guarded send (core) | Astra | ⬜ | contracts first |
 | 7.2 | Withdraw + urgent (core) | Astra | ⬜ | broker-pending only; native acceptance = too late (Kevin) |
 | 7.3 | Tools and CLI | Claude | ⬜ | against 7.1/7.2 contracts |
-| 7.4 | TUI | Claude | ⬜ | |
+| 7.4 | TUI | Claude | 🟡 | sprint/7.4: URGENT badge + reason line, ⤫ for sends over uncovered messages (unknown count shown as unknown), revised/unguarded labels, "N not covered" column/chip and side-panel "as of" row. Pending: withdrawn delivery state (lands with 7.2 core) |
 
 > Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core, Claude surfaces + spec. Native recall probes dropped per Kevin's scope decision.

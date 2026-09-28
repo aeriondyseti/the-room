@@ -4,9 +4,9 @@
 // column. Pure line model (like the top bar) so it's testable; the app draws it beside the conversation.
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
-import { colorFor, cols, fitLine, lineCols, sanitize, type Line } from './format.js';
+import { colorFor, cols, fitLine, formatTime, lineCols, sanitize, type Line } from './format.js';
 import { contextBar, numberWidth, RESET_MARK, usageBar } from './bars.js';
-import { accountNotes, activityLabel, harnessLabel, resetHint, stateDot, workspaceSegments } from './topbar.js';
+import { accountNotes, activityLabel, harnessLabel, inboxCell, resetHint, stateDot, workspaceSegments } from './topbar.js';
 import { durationLabel } from './topgrid.js';
 
 export type TuiLayout = 'top' | 'left';
@@ -155,6 +155,11 @@ function participantBlock(p: ParticipantState, opts: { stale: boolean }, g: Pane
   // 6.7 workspace: model and branch*dirty, quiet; omitted when unknown (full detail in /who).
   const ws = workspaceSegments(p, opts.stale).slice(1); // drop the leading " · "
   if (ws.length) lines.push(fitLine([{ text: '  ' }, ...ws], g.width));
+  // M7: which snapshot the count summarizes (its check time). Covered is shown as covered, unknown not at all.
+  if (!opts.stale && p.inbox) {
+    const count = inboxCell(p, false);
+    lines.push(fitLine([{ text: '  ' }, ...(count.length ? count : [{ text: 'inbox covered', dim: true }]), { text: ` · as of ${formatTime(p.inbox.checkedAt)}`, dim: true }], g.width));
+  }
   return { head: heads, detail: lines };
 }
 

@@ -8,7 +8,7 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import { colorFor, cols, fitLine, lineCols, sanitize, type Line, type Segment } from './format.js';
 import { contextBar, numberWidth, RESET_MARK, usageBar } from './bars.js';
-import { accountNotes, activityLabel, gitLabel, harnessLabel, resetHint, shortModel, stateDot } from './topbar.js';
+import { accountNotes, activityLabel, gitLabel, harnessLabel, inboxCell, resetHint, shortModel, stateDot } from './topbar.js';
 
 const GAP = '  ';
 const pad = (line: Line, width: number): Line => (lineCols(line) >= width ? line : [...line, { text: ' '.repeat(width - lineCols(line)) }]);
@@ -40,7 +40,7 @@ function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; 
   const state: Line = opts.stale
     ? [{ text: `last known: ${status.text}`, dim: true }]
     : [{ text: status.text, color: status.color, bold: loud, dim: !loud && p.activity !== 'idle' }];
-  const cells: Line[] = [name, state, opts.stale ? [] : contextBar(p.usage, { stale: false, bar: opts.bars, numberWidth: opts.numberWidth })];
+  const cells: Line[] = [name, state, inboxCell(p, opts.stale), opts.stale ? [] : contextBar(p.usage, { stale: false, bar: opts.bars, numberWidth: opts.numberWidth })];
   cells.push(opts.model && p.workspace?.model ? [{ text: sanitize(shortModel(p.workspace.model)), dim: true }] : []);
   const git = opts.branch ? gitLabel(p.workspace?.git ?? null) : null;
   cells.push(git ? [{ text: git, dim: true }] : []);

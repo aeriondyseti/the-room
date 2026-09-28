@@ -194,8 +194,20 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   // Header, in priority order: who said it (never dropped) › to whom › reply ref › seq (dropped first).
   const core: Line = [{ text: formatTime(message.createdAt), dim: true }, { text: ' ' }];
   if (message.kind === 'stop_request') core.push({ text: ' STOP REQUEST ', color: 'red', inverse: true, bold: true }, { text: ' ' });
+  // M7 crossing guard: urgency and "sent over uncovered messages" are never dropped; their detail is.
+  const crossing = message.crossing;
+  if (crossing?.urgent) core.push({ text: ' URGENT ', color: 'yellow', inverse: true, bold: true }, { text: ' ' });
   core.push({ text: name(message.from.name), color: colorFor(message.from.name), bold: true });
   if (message.from.identity.mode === 'declared') core.push({ text: ' (declared)', dim: true, italic: true });
+  const crossed = crossing?.guard === 'urgent' && crossing.newSinceSnapshot !== 0;
+  if (crossed) core.push({ text: ' ⤫', color: 'yellow', bold: true });
+  const detail: Line = [];
+  if (crossed) {
+    const n = crossing.newSinceSnapshot;
+    detail.push({ text: n === null ? '  sent over an unknown number not covered' : `  sent over ${n} not covered`, color: 'yellow', dim: true });
+  }
+  if (crossing?.guard === 'legacy') detail.push({ text: '  unguarded', dim: true, italic: true });
+  if (crossing?.revisesAttemptId) detail.push({ text: '  revised after a blocked send', dim: true });
   const recipients: Line = [{ text: ' → ', dim: true }];
   if (message.addressing === 'broadcast') {
     recipients.push({ text: message.from.name === HUMAN ? 'everyone' : 'all', dim: true });
@@ -211,12 +223,16 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
     reply.push({ text: `  ↩ ${seq !== undefined ? `#${seq}` : 'earlier message'}`, dim: true });
   }
   const seqPart: Line = [{ text: `  #${message.seq}`, dim: true }];
+  // Dropped in order: seq, then the crossing detail, then the reply ref.
   const candidates = [
-    [...core, ...recipients, ...reply, ...seqPart],
+    [...core, ...recipients, ...reply, ...detail, ...seqPart],
+    [...core, ...recipients, ...reply, ...detail],
     [...core, ...recipients, ...reply],
     [...core, ...recipients],
   ];
   lines.push(fitLine(candidates.find((l) => lineCols(l) <= ctx.width) ?? candidates.at(-1)!, ctx.width));
+  // The urgent reason is the sender's stated justification: shown whole (wrapped), never truncated.
+  if (crossing?.urgent) lines.push(...bodyLines(`why urgent: ${crossing.urgent.reason}`, ctx.width, { text: '', color: 'yellow', italic: true }));
 
   const bodyStyle: Segment = message.kind === 'system' ? { text: '', dim: true, italic: true } : { text: '' };
   lines.push(...bodyLines(message.body, ctx.width, bodyStyle));
