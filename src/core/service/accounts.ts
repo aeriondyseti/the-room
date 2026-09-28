@@ -17,6 +17,7 @@ export interface AccountMonitorDeps {
 export class AccountMonitor {
   private readonly current = new Map<string, AccountUsage>();
   private readonly lastGood = new Map<string, AccountUsage>();
+  private readonly published = new Map<string, AccountUsage>();
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
   private stopped = false;
@@ -61,12 +62,20 @@ export class AccountMonitor {
         sample = await provider.sample();
       } catch (err) {
         // Providers must not throw; if one does, treat it as a failed sample (one bad source never blocks others).
-        sample = unavailable(provider, `usage source failed: ${err instanceof Error ? err.message : String(err)}`, this.now());
+        // Fixed reason (a provider's error text could carry sensitive detail); keep the source's known identity so the
+        // TUI doesn't show a phantom second entry.
+        void err;
+        sample = unavailable(provider, 'the usage source failed unexpectedly', this.now(), this.current.get(provider.id)?.account);
       }
       const next = this.merge(provider.id, sample);
-      const prev = this.current.get(provider.id);
       this.current.set(provider.id, next);
-      if (!prev || changed(prev, next)) this.deps.publish({ type: 'account.updated', account: this.aged(next) });
+      // Compare what subscribers would SEE (age applied), so a reading that ages into `stale` is published too.
+      const view = this.aged(next);
+      const prevView = this.published.get(provider.id);
+      if (!prevView || changed(prevView, view)) {
+        this.published.set(provider.id, view);
+        this.deps.publish({ type: 'account.updated', account: view });
+      }
     }
   }
 
@@ -94,9 +103,9 @@ export class AccountMonitor {
   }
 }
 
-function unavailable(provider: AccountUsageProvider, reason: string, now: Date): AccountUsage {
+function unavailable(provider: AccountUsageProvider, reason: string, now: Date, known?: AccountUsage['account']): AccountUsage {
   return {
-    account: { harness: provider.harness, scope: 'profile', key: provider.id, sourceKey: provider.id },
+    account: known ? { ...known, scope: 'profile' } : { harness: provider.harness, scope: 'profile', key: provider.id, sourceKey: provider.id },
     buckets: [], status: 'unavailable', reason, source: provider.id, checkedAt: now.toISOString(), observedAt: null,
   };
 }

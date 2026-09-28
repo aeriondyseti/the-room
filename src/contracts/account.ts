@@ -58,14 +58,18 @@ export interface AccountUsage {
   reason?: string;
   /** Where it came from (e.g. "codex app-server account/rateLimits/read"). */
   source: string;
+  /** A fallback source stood in for the preferred one (e.g. the Claude statusline tap for the usage endpoint). */
+  fallback?: boolean;
   /** Last attempt, and last successful snapshot (they differ when the latest attempt failed). */
   checkedAt: string | null;
   observedAt: string | null;
 }
 
 /**
- * A read-only source of account usage for one harness. Implementations must never read credentials or auth files,
- * never start or configure a harness, and never throw: a failed sample returns `status: 'unavailable'` with a
+ * A read-only source of account usage for one harness. Implementations must never read credentials or auth files
+ * (one explicit, opt-in exception: the Claude usage-endpoint provider, enabled only by ROOM_CLAUDE_USAGE_API=on,
+ * reads the access token per request, keeps it in memory, and sends it only to its fixed endpoint; Kevin approved
+ * it 2026-09-28), never start or configure a harness, and never throw: a failed sample returns `status: 'unavailable'` with a
  * reason. The service's AccountMonitor turns a failure after an earlier success into `stale` (keeping the last good
  * values), and bounds how often each source is sampled (never per participant or per render).
  */

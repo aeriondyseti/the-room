@@ -12,7 +12,6 @@ import type { AccountUsage, AccountUsageProvider, UsageBucket, UsageWindow } fro
 export interface ClaudeTapRecord {
   version: 1;
   observedAt: string;
-  claudeVersion: string | null;
   windows: Record<string, { usedPercent: number | null; resetsAt: string | null }>;
 }
 
@@ -26,21 +25,22 @@ export function claudeTapPath(claudeConfigDir: string, baseDir: string = join(ho
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const pct = (v: unknown): number | null => { const n = num(v); return n !== null && n >= 0 && n <= 100 ? n : null; };
 
 /** Extract the tap record from a statusline input object (anything else in it is ignored and never stored). */
 export function tapRecordFrom(input: unknown, now: Date): ClaudeTapRecord | null {
   if (!input || typeof input !== 'object') return null;
-  const i = input as { rate_limits?: unknown; version?: unknown };
+  const i = input as { rate_limits?: unknown };
   if (!i.rate_limits || typeof i.rate_limits !== 'object') return null;
   const windows: ClaudeTapRecord['windows'] = {};
   for (const [key, w] of Object.entries(i.rate_limits as Record<string, unknown>)) {
     if (!/^[a-z0-9_]{1,40}$/i.test(key) || !w || typeof w !== 'object') continue;
     const v = w as { used_percentage?: unknown; resets_at?: unknown };
     const resets = num(v.resets_at);
-    windows[key] = { usedPercent: num(v.used_percentage), resetsAt: resets === null ? null : new Date(resets * 1000).toISOString() };
+    windows[key] = { usedPercent: pct(v.used_percentage), resetsAt: resets === null ? null : new Date(resets * 1000).toISOString() };
   }
   if (Object.keys(windows).length === 0) return null;
-  return { version: 1, observedAt: now.toISOString(), claudeVersion: typeof i.version === 'string' ? i.version.slice(0, 40) : null, windows };
+  return { version: 1, observedAt: now.toISOString(), windows };
 }
 
 export async function writeTapRecord(path: string, record: ClaudeTapRecord): Promise<void> {

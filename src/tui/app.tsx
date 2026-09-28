@@ -60,6 +60,8 @@ const MAX_DRAFT_ROWS = 5;
 const MAX_SUGGESTIONS = 6;
 /** Participant chips wrap over at most this many top-bar lines (then "+N more · /who"). */
 const TOP_BAR_PARTICIPANT_LINES = 2;
+/** How often the top bar re-renders its reset countdowns. */
+const TOP_BAR_CLOCK_MS = 30_000;
 
 /** Errors that prove a send never reached the service (so "Not sent" is true). Anything else is an unknown outcome. */
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
@@ -105,11 +107,18 @@ function Room({
   const window = useWindowSize();
   const colsTotal = Math.max(20, width ?? window.columns);
   const rows = Math.max(12, height ?? window.rows);
+  // A slow clock so reset countdowns ("↻2h12m") stay current between events.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), TOP_BAR_CLOCK_MS);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }, []);
   // Top bar (6.6): participants as chips and subscription usage across the top; the conversation gets the full width.
   const stale = view.connection.state !== 'connected';
   const topLines = useMemo(
-    () => [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono })],
-    [view.participants, view.accounts, colsTotal, stale, t.mono],
+    () => [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale })],
+    [view.participants, view.accounts, colsTotal, stale, t.mono, clock],
   );
   const convWidth = colsTotal - 1;
   const banner = view.connection.state !== 'connected' || (view.notice !== null && view.loaded);

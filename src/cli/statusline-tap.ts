@@ -40,13 +40,16 @@ export async function runStatuslineTap(argv: string[]): Promise<number> {
     // Never break the status line over a tap problem.
   }
   const sep = argv.indexOf('--');
-  const command = (sep >= 0 ? argv.slice(sep + 1) : argv).join(' ').trim();
+  // The calling shell already unquoted these; re-quote any argument with spaces/quotes so paths survive.
+  const quote = (a: string) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
+  const command = (sep >= 0 ? argv.slice(sep + 1) : argv).map(quote).join(' ').trim();
   if (!command) return 0;
   return await new Promise<number>((resolve) => {
     // The statusline setting is a shell command string (the user's own), so run it through the shell as Claude does.
     const child = spawn(command, { shell: true, stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
     child.on('error', () => resolve(1));
     child.on('close', (code) => resolve(code ?? 1));
+    child.stdin.on('error', () => {}); // the wrapped command may exit before reading all input
     child.stdin.end(input);
   });
 }

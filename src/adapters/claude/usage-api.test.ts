@@ -82,6 +82,23 @@ test('combined provider: the endpoint when it works; otherwise the statusline ta
   assert.equal((await up.sample()).buckets.length, 2, 'endpoint (with Fable)');
   const down = claudeCombinedProvider(claudeUsageApiProvider({ claudeConfigDir: dir, fetch: async () => ({ status: 503, body: '' }), now: () => T0 }), tap);
   const fb = await down.sample();
-  assert.deepEqual([fb.status, fb.buckets.length], ['ok', 1]);
+  assert.deepEqual([fb.status, fb.buckets.length, fb.fallback], ['ok', 1, true], 'never worked: the tap stands in, flagged');
   assert.match(fb.reason ?? '', /usage endpoint unavailable \(.*HTTP 503.*\); showing statusline data/);
+
+  // Once the endpoint has worked, a later failure is returned as-is (the monitor keeps the Fable reading as stale).
+  let status = 200;
+  const flaky = claudeCombinedProvider(claudeUsageApiProvider({ claudeConfigDir: dir, fetch: async () => ({ status, body: JSON.stringify(RESPONSE) }), now: () => T0 }), tap);
+  assert.equal((await flaky.sample()).buckets.length, 2);
+  status = 429;
+  const after = await flaky.sample();
+  assert.deepEqual([after.status, after.fallback ?? false], ['unavailable', false], 'no swap to the smaller tap shape');
+});
+
+test('limits fallbacks: session → 5h and weekly_all → weekly when the top-level buckets are absent (placeholders ignored)', () => {
+  const b = bucketsFromUsageResponse({ limits: [
+    { kind: 'session', percent: 0, resets_at: null }, // placeholder
+    { kind: 'session', percent: 9, resets_at: '2026-09-28T18:00:00Z' },
+    { kind: 'weekly_all', percent: 33, resets_at: '2026-10-04T09:00:00Z' },
+  ] }, T0.toISOString())!;
+  assert.deepEqual(b[0]!.windows.map((w) => [w.durationMinutes, w.usedPercent]), [[300, 9], [10_080, 33]]);
 });

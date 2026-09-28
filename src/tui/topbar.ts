@@ -114,13 +114,15 @@ function pctSegments(label: string, w: UsageWindow | undefined, opts: { mono: bo
 }
 
 /** One account: pinned 5h + weekly for the main bucket, then each other bucket's weekly (e.g. "Fable weekly"). */
-export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: number }): Line {
+export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: number; disconnected?: boolean }): Line {
   const now = opts.now ?? Date.now();
   const name: Segment = { text: HARNESS_LABEL[a.account.harness] ?? a.account.harness, bold: true };
   if (a.status === 'unavailable') return [name, { text: ` usage unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, dim: true }];
-  const stale = a.status === 'stale';
+  const stale = a.status === 'stale' || !!opts.disconnected;
   const out: Line = [name];
-  const [main, ...others] = a.buckets;
+  // The main (5h + weekly) bucket is the harness's own bucket (or one carrying a 5h window), never just the first.
+  const main = a.buckets.find((b) => b.id === a.account.harness) ?? a.buckets.find((b) => b.windows.some((w) => w.durationMinutes === 300)) ?? a.buckets[0];
+  const others = a.buckets.filter((b) => b !== main);
   const byMinutes = (b: UsageBucket | undefined, m: number) => b?.windows.find((w) => w.durationMinutes === m);
   for (const p of PINNED) out.push({ text: '  ' }, ...pctSegments(p.label, byMinutes(main, p.minutes), { mono: opts.mono, stale, now }));
   for (const b of others) {
@@ -128,12 +130,14 @@ export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: nu
     if (!weekly) continue;
     out.push({ text: '  ' }, ...pctSegments(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly, { mono: opts.mono, stale, now }));
   }
-  if (stale) out.push({ text: ' (stale)', dim: true, italic: true });
+  if (a.fallback) out.push({ text: ' (via statusline, no model limits)', dim: true, italic: true });
+  if (opts.disconnected) out.push({ text: ' (last known)', dim: true, italic: true });
+  else if (a.status === 'stale') out.push({ text: ' (stale)', dim: true, italic: true });
   return out;
 }
 
 /** Account usage lines: all on one line when they fit, else one per account (each fitted to the width). */
-export function accountLines(accounts: readonly AccountUsage[], opts: { width: number; mono: boolean; now?: number }): Line[] {
+export function accountLines(accounts: readonly AccountUsage[], opts: { width: number; mono: boolean; now?: number; disconnected?: boolean }): Line[] {
   if (accounts.length === 0) return [];
   const parts = accounts.map((a) => accountSegments(a, opts));
   const joined: Line = parts.flatMap((p, i) => (i === 0 ? p : [{ text: '   │   ', dim: true }, ...p]));

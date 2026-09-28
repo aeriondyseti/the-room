@@ -57,14 +57,17 @@ test('never succeeded → unavailable as reported; a throwing provider never blo
   assert.deepEqual(m2.snapshot().map((a) => [a.account.harness, a.status]), [['claude', 'unavailable'], ['codex', 'ok']]);
 });
 
-test('an old reading ages into stale (values kept, labelled with its age)', async () => {
+test('an old reading ages into stale (values kept, labelled with its age) and that change is PUBLISHED', async () => {
   let now = T0;
-  const { m } = monitor([ok(40)], () => now);
+  const { m, events } = monitor([ok(40)], () => now);
   await m.refresh();
+  assert.equal(events.length, 1);
   now = new Date(T0.getTime() + 20 * 60_000);
-  const [a] = m.snapshot();
-  assert.equal(a!.status, 'stale');
-  assert.match(a!.reason ?? '', /20 min old/);
+  await m.refresh(); // same raw reading, but now aged
+  const last = events.at(-1);
+  assert.equal(events.length, 2, 'crossing the stale threshold is news to a connected TUI');
+  assert.equal(last?.type === 'account.updated' && last.account.status, 'stale');
+  assert.match(m.snapshot()[0]!.reason ?? '', /20 min old/);
 });
 
 // ---- Claude statusline tap -----------------------------------------------------------------------------------

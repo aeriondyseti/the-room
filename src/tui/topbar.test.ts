@@ -51,6 +51,15 @@ test('stale readings keep values but are labelled; unavailable says why; monochr
   assert.match(lineText(accountSegments(acct(), { mono: true, now: NOW })), /weekly 90%!/);
 });
 
+test('disconnected → "(last known)" and no warning colour; a tap fallback is labelled; main bucket chosen by id, not position', () => {
+  const dis = accountSegments(acct(), { mono: false, now: NOW, disconnected: true });
+  assert.match(lineText(dis), /\(last known\)$/);
+  assert.equal(dis.find((s) => s.text === '90%')?.color, undefined, 'no live warning colour for last-known values');
+  assert.match(lineText(accountSegments(acct({ fallback: true }), { mono: false, now: NOW })), /\(via statusline, no model limits\)/);
+  const reordered = acct({ buckets: [{ id: 'claude-fable', label: 'Fable', windows: [{ kind: 'x', durationMinutes: 10_080, usedPercent: 5, resetsAt: null }] }, ...acct().buckets] });
+  assert.match(lineText(accountSegments(reordered, { mono: false, now: NOW })), /^Claude {2}5h 38%.* {2}Fable weekly 5%$/);
+});
+
 test('accounts share one line when they fit, else one line each (never wider than the terminal)', () => {
   const two = [acct(), acct({ account: { harness: 'codex', scope: 'account', key: 'c', sourceKey: 'c' } })];
   assert.equal(accountLines(two, { width: 200, mono: false, now: NOW }).length, 1);

@@ -70,9 +70,17 @@ export function bucketsFromUsageResponse(body: unknown, observedAt: string): Usa
     return { kind: key, durationMinutes: minutes, usedPercent, resetsAt: b ? iso(b.resets_at) : null, observedAt,
       ...(usedPercent === null ? { reason: `the usage endpoint reported no ${minutes === 300 ? '5h' : 'weekly'} value` } : {}) };
   };
-  const buckets: UsageBucket[] = [{ id: 'claude', windows: [win('five_hour', 300), win('seven_day', 10_080)] }];
-  const seen = new Set<string>();
   const limits = Array.isArray(r.limits) ? (r.limits as Array<Record<string, unknown>>) : [];
+  // Fallbacks when the top-level bucket is absent (ccstatusline): limits kind 'session' (5h) / 'weekly_all' (weekly).
+  // An unscoped entry with 0% and no reset time is a placeholder, not a reading.
+  const fromLimit = (kind: string, key: string, minutes: number, primary: UsageWindow): UsageWindow => {
+    if (primary.usedPercent !== null) return primary;
+    const l = limits.find((x) => x?.kind === kind && !(Number(x.percent ?? 0) === 0 && (x.resets_at ?? null) === null));
+    const usedPercent = l ? pct(l.percent) : null;
+    return usedPercent === null ? primary : { kind: key, durationMinutes: minutes, usedPercent, resetsAt: iso(l!.resets_at), observedAt };
+  };
+  const buckets: UsageBucket[] = [{ id: 'claude', windows: [fromLimit('session', 'five_hour', 300, win('five_hour', 300)), fromLimit('weekly_all', 'seven_day', 10_080, win('seven_day', 10_080))] }];
+  const seen = new Set<string>();
   for (const l of limits) {
     if (l?.kind !== 'weekly_scoped') continue;
     const model = (l.scope as { model?: { display_name?: unknown } } | null | undefined)?.model?.display_name;
@@ -130,16 +138,25 @@ export function claudeUsageApiProvider(opts: { claudeConfigDir: string; timeoutM
   };
 }
 
-/** Prefer the endpoint; if it's unavailable, fall back to the statusline tap (when present), noting why. */
+/**
+ * Prefer the endpoint. Once it has succeeded, a failure is returned as-is so the AccountMonitor keeps the last
+ * endpoint reading (incl. model-specific limits like Fable) as labelled `stale` rather than swapping in the tap's
+ * smaller shape. Only while the endpoint has never worked do we show the tap, marked as a fallback.
+ */
 export function claudeCombinedProvider(api: AccountUsageProvider, tap: AccountUsageProvider): AccountUsageProvider {
+  let apiEverOk = false;
   return {
     harness: 'claude',
     id: api.id,
     async sample(): Promise<AccountUsage> {
       const a = await api.sample();
-      if (a.status === 'ok') return a;
+      if (a.status === 'ok') {
+        apiEverOk = true;
+        return a;
+      }
+      if (apiEverOk) return a;
       const t = await tap.sample();
-      return t.status === 'ok' ? { ...t, reason: `usage endpoint unavailable (${a.reason ?? 'unknown'}); showing statusline data (no model-specific limits)` } : a;
+      return t.status === 'ok' ? { ...t, fallback: true, reason: `usage endpoint unavailable (${a.reason ?? 'unknown'}); showing statusline data` } : a;
     },
   };
 }

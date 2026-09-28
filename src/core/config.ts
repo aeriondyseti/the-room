@@ -90,6 +90,8 @@ export interface RoomConfig {
    * with the signed-in Claude Code login (read per request, memory only). 'off' (default) uses only the statusline tap.
    */
   claudeUsageApi: string;
+  /** Timeout for one Claude usage-endpoint request. */
+  claudeUsageTimeoutMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -135,6 +137,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   accountsPollMs: 120_000,
   accountsStaleMs: 15 * 60_000,
   claudeUsageApi: 'off',
+  claudeUsageTimeoutMs: 5_000,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -179,6 +182,7 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   accountsPollMs: 'ROOM_ACCOUNTS_POLL_MS',
   accountsStaleMs: 'ROOM_ACCOUNTS_STALE_MS',
   claudeUsageApi: 'ROOM_CLAUDE_USAGE_API',
+  claudeUsageTimeoutMs: 'ROOM_CLAUDE_USAGE_TIMEOUT_MS',
 };
 
 /** Doubling reconnect schedule from min to max (inclusive), e.g. 250, 500, 1000, 2000, 4000, 5000. */
