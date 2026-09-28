@@ -23,7 +23,7 @@ their own rows**.
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 1.1 | SQLite ledger | Astra | ✅ | v0.0.3; review: reviews/1.1.md; 43 combined tests. |
-| 1.2 | Service process and IPC | Astra | 🟡 | Named-pipe lifecycle, client, validation and registry integration. |
+| 1.2 | Service process and IPC | Astra | ✅ | v0.0.7; review: reviews/1.2.md; 102 combined tests. |
 | 1.3 | Dispatcher, states, and pause | Astra | ⬜ | |
 
 ## Milestone 2 — Adapters and agent access
@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 6 / 20 features complete · **current version: v0.0.6** · last tag: v0.0.6
+**Summary:** 7 / 20 features complete · **current version: v0.0.7** · last tag: v0.0.7
