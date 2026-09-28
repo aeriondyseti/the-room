@@ -68,7 +68,8 @@ The top bar shows each agent as a chip (status and context usage), and below tha
 
 - **Codex:** read-only from the running Codex daemon (`account/rateLimits/read`). No credentials or auth files are read. Codex currently reports only a weekly window, so its 5h shows `n/a`.
 - **Claude:** sources are tried cheapest first, and the first with a reading wins.
-  1. **ccstatusline's cache** (recommended; no credentials, no extra calls). If your statusline is
+  1. **ccstatusline's cache** (recommended; no credentials, no extra calls; default Claude profile only, since it
+     reflects your default Claude login). If your statusline is
      [ccstatusline](https://github.com/sirmalloc/ccstatusline), it already fetches plan usage (5h, weekly and
      model-specific limits such as Fable) and caches the numbers in `~/.cache/ccstatusline/usage.json`. The room just
      reads that file. When no Claude session is rendering a statusline, the file ages and is shown `(stale)`.
@@ -76,8 +77,9 @@ The top bar shows each agent as a chip (status and context usage), and below tha
      - The room service reads your Claude Code login token from `<claude config>/.credentials.json` per request,
        holds it only in memory, sends it only to `api.anthropic.com/api/oauth/usage`, and never stores, logs or
        refreshes it.
-     - Calls are throttled like ccstatusline: at most one every 5 minutes per profile, shared by every room service
-       on the machine. After a 429 it backs off for Retry-After (else 5 minutes).
+     - Calls are throttled like ccstatusline: roughly one every 5 minutes per profile, coordinated between room
+       services through a shared cache and a short reservation file (best effort, not a strict guarantee). After a 429
+       it backs off for Retry-After (else 5 minutes).
      - It's an undocumented endpoint, so it may change.
   3. **Statusline tap (no credentials):** wrap any statusline command, e.g.
      `"command": "node <vibe-pairing>/dist/cli/main.js statusline-tap -- npx ccstatusline"`. It stores only each
