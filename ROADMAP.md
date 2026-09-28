@@ -234,3 +234,8 @@ Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint bef
 - [ ] **6.3 Tech-debt triage** *(both; each works items in their own components)*
   **Done-when:** every 🔵 TECH-DEBT item with severity medium or higher is resolved or explicitly
   marked won't-fix with a reason.
+
+- [ ] **6.3a Root discovery and human-control debt** *(Astra)* — TD-0010 / TD-0005.
+  **Done-when:** inherited Git repository variables cannot redirect discovery into another repo;
+  linked worktrees remain shared; bare repositories require explicit ROOM_ROOT; existing human-only
+  service/CLI/MCP guard tests remain green and trusted-local limitations are documented.
