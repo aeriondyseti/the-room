@@ -1,6 +1,7 @@
 # Participant lifecycle: ghost cleanup, rename and kick (Milestone 8)
 
-Status: **draft 2, simplified for convergence** (fable owns this spec; Astra cross-reviews and amends). Sources:
+Status: **draft 3, agreed** (fable owns this spec; Astra agreed P1–P5 and the ownership in #448, adding the
+implementation details marked *(Astra)* below). Sources:
 - Kevin, 2026-09-28 (#435): a rename tool that needs no restart. (#440): rename plus a kick tool executed by
   unanimous consent of all agents other than the target, as a proper milestone. (#444): renames relabel in-flight
   messages; kick voters are all registered online agents. (#446): converge on the simplest spec with the least
@@ -42,16 +43,22 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
 - **Registry:** `renameParticipant(old, new)` moves the section under the registry lock, atomic replace, other
   sections preserved (invariant 7).
 - **Ledger, one transaction (Kevin: relabel in-flight):** the participant row moves to the new name; every
-  non-terminal delivery (queued, held, waiting, burst members) with `recipient = old` and the same target gets
-  `recipient = new`. Terminal deliveries and messages' `to` lists keep the old label as history. Coverage, tokens and
-  baselines are binding-scoped and unaffected.
-- **Order:** registry first (the truth), then the ledger; the startup reconcile repairs a crash in between. A
-  dispatcher claim by the old name after the relabel finds no queued row and skips; the new name's worker takes over
-  on the next kick, so nothing is sent twice (invariant 2).
+  **queued** delivery (including held, waiting and burst members) with `recipient = old` and the same target gets
+  `recipient = new`. *(Astra)* Rows that are submitted, uncertain, or mid native attempt are never relabelled: they
+  belong to an attempt already made under the old label. Terminal deliveries, `RoomMessage.to` and the frozen target
+  stay historical. Coverage, tokens and baselines are binding-scoped and unaffected.
+- **Order:** registry first (the truth), then the ledger; the startup reconcile repairs a crash in between.
+  *(Astra)* The old name's dispatcher worker re-reads its delivery after the async probe; a row that was relabelled
+  away must be treated as gone (skip, not fail) and the new name's worker woken, so nothing is sent twice (invariant
+  2) and nothing stalls.
 - **Announcement:** `participant.removed(old)`, `participant.updated(new)`, `delivery.updated` per relabelled
   delivery, and a **system message** "claude is now fable" to every agent and the human, delivered natively like any
-  message (invariant 1). Old-name sends fail `unknown_recipient` with a "renamed to" hint (cheap: the rename is
+  message (invariant 1). *(Astra)* The notice is **best effort across a crash**: labels are repaired by the reconcile,
+  but a crash between the registry write and the notice may lose the notice; M8 does not add a persisted intent
+  record to make it exactly-once. Old-name sends fail `unknown_recipient` with a "renamed to" hint (the rename is
   recorded).
+- **Envelope header:** a system message's native envelope says `ROOM NOTICE`, never `PEER MESSAGE` or
+  `HUMAN DIRECTIVE` (the formatter today only distinguishes human from everything else); it carries no authority.
 
 ## 4. 8.3 Kick by unanimous consent
 
@@ -61,6 +68,10 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
   in 10 min." Later calls for the same target while it is open are votes. Votes count once per binding, only from
   agents that are registered and online when the proposal opens (Kevin's rule); the target and the human's presence
   do not change the set.
+- **Online, defined from current evidence** *(Astra)*: a voter is an agent whose latest liveness check says
+  `online`, plus the authenticated proposer. `unknown` is never treated as offline (Codex reports unknown for a
+  usable thread owned by another daemon), so an unknown-status agent is **excluded from the voter set and named as
+  excluded** in the opening system message, which lists the frozen voter list. No new probing protocol in M8.
 - **The human's vote is decisive on its own** (`/kick name reason` in the TUI, `room kick` as the human in the CLI):
   the same path, executed at once, audited as human. This replaces a separate remove command.
 - **No explicit "no".** An agent that disagrees says so in the room and simply doesn't vote; the proposal expires and
@@ -114,4 +125,5 @@ fable breaks only true deadlocks, after trying to agree. None of these is decide
 - P4: the human's kick executes alone; no separate remove command.
 - P5: a kicked name may rejoin at once, visibly.
 
-Agreement record: (pending).
+Agreement record: **Astra agreed P1–P5 and the §6 ownership on 2026-09-28 (#448)**, adding the three details marked
+*(Astra)* in §3–4 and the `ROOM NOTICE` header, all adopted. No deadlock-breaking was needed.
