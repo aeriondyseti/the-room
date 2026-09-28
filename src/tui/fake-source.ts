@@ -205,6 +205,8 @@ export class FakeRoomSource implements RoomSource {
           (s.configured as unknown as Record<string, unknown>)[k] = v === null ? s.defaults[k] : v;
           if (!s.overridden.includes(k)) (s.effective as unknown as Record<string, unknown>)[k] = s.configured[k];
         }
+        // A successful update writes a valid file, so any reported file problem is repaired.
+        delete (s as { problem?: unknown }).problem;
         return structuredClone(s);
       }
       default:

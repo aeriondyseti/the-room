@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { toErrorInfo } from '../contracts/errors.js';
 import { fitLine, type Line } from './format.js';
-import { draftProblem, initialSettings, isDirty, settingsKey, settingsLines, type SettingsState } from './settings-view.js';
+import { canSave, draftProblem, initialSettings, isDirty, settingsKey, settingsLines, type SettingsState } from './settings-view.js';
 import type { RoomSource } from './source.js';
 import { useTheme } from './theme.js';
 
@@ -69,7 +69,8 @@ export function SettingsPane(props: { source: RoomSource; width: number; height:
     if (key.rightArrow) return edit('right');
     if (input === 'r') return edit('reset');
     if (key.return) {
-      if (!isDirty(state)) return props.onClose(null);
+      if (!canSave(state)) return props.onClose(null);
+      const repairing = state.view.problem !== undefined;
       const problem = draftProblem(state);
       if (problem) return setError(problem);
       setSaving(true);
@@ -78,7 +79,7 @@ export function SettingsPane(props: { source: RoomSource; width: number; height:
         (view) => {
           if (!mounted.current) return;
           const env = view.overridden.length ? ` (${view.overridden.length} still set by environment)` : '';
-          props.onClose({ tone: 'ok', text: `Settings saved; they apply to messages sent from now on${env}.` });
+          props.onClose({ tone: 'ok', text: repairing ? `Settings file repaired and saved; delivery uses it from now on${env}.` : `Settings saved; they apply to messages sent from now on${env}.` });
         },
         (e: unknown) => {
           if (!mounted.current) return;
