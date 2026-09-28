@@ -11,6 +11,7 @@ interface Snapshot {
   parts: Record<string, {next:number;chunkBytes:number;digest:string}>;
 }
 interface Cursor { snapshot: string }
+interface StoredSnapshot extends Omit<Snapshot,'version'> { version:2; parent:string|null }
 type ReviewOptions = Pick<InboxRequest,'snapshot'|'cursor'|'limit'|'baseline'>;
 const id=()=>randomBytes(24).toString('base64url');
 const bytes=(v:unknown)=>Buffer.byteLength(JSON.stringify(v),'utf8');
@@ -19,13 +20,29 @@ const bytes=(v:unknown)=>Buffer.byteLength(JSON.stringify(v),'utf8');
  * operations are synchronous so eligibility and send commit share a transaction.
  */
 export class InboxStore {
+  private cache=new Map<string,Snapshot>();
   constructor(private ledger:Ledger, private pageBytes=loadConfig().inboxPageBytes, private partBytes=loadConfig().inboxPartBytes) {
     if(pageBytes<8192||partBytes<4||partBytes>pageBytes/8)throw new Error('Invalid inbox byte budgets');
   }
   snapshot(scope:string,token?:string):Snapshot|null {
     if(!token||token.length>40)return null;
-    const state=this.ledger.crossing<Snapshot>(token,scope,'snapshot');
-    return state?.version===1?state:null;
+    const key=`${scope}|${token}`;
+    const root=this.ledger.crossing<Snapshot|StoredSnapshot>(token,scope,'snapshot');
+    if(!root){this.cache.delete(key);return null;}
+    const cached=this.cache.get(key);if(cached)return structuredClone(cached);
+    const covered=new Set<string>(),exempted=new Set<string>(),visited=new Set<string>();
+    let parts:Snapshot['parts']|undefined;let current:string|null=token;
+    while(current){
+      if(visited.has(current))return null;visited.add(current);
+      const node:Snapshot|StoredSnapshot|null=current===token?root:this.ledger.crossing(current,scope,'snapshot');
+      if(!node||(node.version!==1&&node.version!==2))return null;
+      parts??=node.parts;
+      for(const messageId of node.covered)covered.add(messageId);
+      for(const messageId of node.exempted)exempted.add(messageId);
+      current=node.version===2?node.parent:null;
+    }
+    const state:Snapshot={version:1,covered:[...covered],exempted:[...exempted],parts:parts??{}};
+    this.remember(key,state);return structuredClone(state);
   }
   uncovered(scope:string,token?:string):number|null {
     const state=this.snapshot(scope,token);if(!state)return null;
@@ -37,8 +54,20 @@ export class InboxStore {
     if(!this.ledger.inbox(scope).some(i=>i.message.id===messageId))throw new RoomError('not_found','Message is not addressed to this binding.');
     return this.issue(scope,{version:1,covered:[messageId],exempted:[],parts:{}});
   }
-  private issue(scope:string,state:Snapshot):string {
-    const token=id();this.ledger.putCrossing(token,scope,'snapshot',state);return token;
+  private remember(key:string,state:Snapshot):void {
+    this.cache.delete(key);this.cache.set(key,structuredClone(state));
+    while(this.cache.size>32)this.cache.delete(this.cache.keys().next().value!);
+  }
+  private issue(scope:string,state:Snapshot,parent?:string):string {
+    const previous=parent?this.snapshot(scope,parent):null;
+    if(parent&&previous&&JSON.stringify(previous)===JSON.stringify(state))return parent;
+    const covered=new Set(previous?.covered),exempted=new Set(previous?.exempted);
+    const stored:StoredSnapshot={version:2,parent:parent??null,
+      covered:state.covered.filter(value=>!covered.has(value)),exempted:state.exempted.filter(value=>!exempted.has(value)),parts:state.parts};
+    const token=id();this.ledger.putCrossing(token,scope,'snapshot',stored);
+    // Do not cache newly written rows here: an enclosing send transaction may
+    // still roll back. Caches only contain records read from persisted storage.
+    return token;
   }
   review(scope:string,options:ReviewOptions={}):InboxReviewPage {
     return this.ledger.transaction(()=>{
@@ -92,7 +121,7 @@ export class InboxStore {
       if(state.parts[key]?.next===chunks.length){state.covered.push(key);done.add(key);delete state.parts[key];}
     }
     const remaining=history.filter(i=>!done.has(i.message.id)).length;
-    const snapshot=this.issue(scope,state);
+    const snapshot=this.issue(scope,state,options.snapshot);
     let nextCursor:string|null=null;
     if(remaining){nextCursor=id();this.ledger.putCrossing(nextCursor,scope,'cursor',{snapshot});}
     return {items,snapshot,hasMore:remaining>0,nextCursor,remaining};

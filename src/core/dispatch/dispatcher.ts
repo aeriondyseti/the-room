@@ -83,14 +83,21 @@ export class Dispatcher {
    let envelope;
    try{
     envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);
-    if(!envelope.referenced&&this.snapshotFor){
-     const snapshot=this.snapshotFor(`${current.target.harness}:${current.target.sessionId}`,message.id);
-     envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars,{snapshot});
-     // An omitted token has no authority effect: issuing it never advances a
-     // global reviewed watermark. Only its eventual explicit use can authorize.
-    }
    }catch(error){
     this.change(current,d=>{d.state='failed';d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error:{code:'message_too_large',message:(error as Error).message}});});continue;
+   }
+   // Snapshot issuance is optional assistance. A storage/read failure must not be
+   // misreported as message_too_large or stop an otherwise valid native delivery.
+   if(!envelope.referenced&&this.snapshotFor){
+    const scope=`${current.target.harness}:${current.target.sessionId}`;let snapshot:string|undefined;
+    try{
+     snapshot=this.snapshotFor(scope,message.id);
+     const candidate=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars,{snapshot});
+     if(candidate.snapshot)envelope=candidate;
+     else this.ledger.discardCrossing(snapshot,scope,'snapshot');
+    }catch{
+     if(snapshot)try{this.ledger.discardCrossing(snapshot,scope,'snapshot');}catch{/* Best effort cleanup; use the plain envelope. */}
+    }
    }
    const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null,...(adapter.runtimeContext?{runtimeContext:{...adapter.runtimeContext}}:{})});});
    let result:SubmitResult;
