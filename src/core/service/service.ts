@@ -81,7 +81,7 @@ export class RoomService {
     }
     return moved;
   }
-  /** The display refresh after a committed request: never an error for the caller, and never a blocked ack. */
+  /** The display refresh after a committed request: awaited, but a failure only logs; it never becomes the caller's error. */
   private async refreshDisplay(fields:{pending:boolean}):Promise<void>{
     try{await this.syncDisplay(fields);}catch(error){console.error(`room: participant display refresh skipped: ${error instanceof Error?error.message:String(error)}`);}
   }

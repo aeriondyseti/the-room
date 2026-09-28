@@ -154,11 +154,12 @@ test('reconcile reports a primary-key collision once instead of claiming a full 
   // One message to both names while they were distinct bindings, then astra's binding departs and claude's binding
   // takes over the name astra: claude's queued row cannot move under "astra" (a row exists), so it stays stranded.
   const sent=await call(room,'send',{caller:{kind:'human'},to:['claude','astra'],body:'to both'});
+  const second=await call(room,'send',{caller:{kind:'human'},to:['claude','astra'],body:'to both again'});
   await writeFile(join(root,'session.toml'),`[participants.astra]\nharness = "codex"\nsession_id = "${a}"\n`);
   const errors:string[]=[];const spy=t.mock.method(console,'error',(...args:unknown[])=>{errors.push(args.map(String).join(' '));});
   try{assert.equal(await room.reconcile(),0);}finally{spy.mock.restore();}
   assert.equal(errors.filter(e=>e.includes('could not be relabelled')).length,1,'reported exactly once');
-  assert.match(errors[0]!,new RegExp(`departed name "claude".*"astra".*${sent.message.id}`));
+  assert.match(errors[0]!,new RegExp(`2 queued deliveries to departed name "claude".*"astra".*${sent.message.id}.*${second.message.id}`),'both stranded rows in the ONE report');
   assert.equal(room.ledger.delivery(sent.message.id,'claude').state,'queued');
   assert.equal(room.ledger.delivery(sent.message.id,'astra').state,'queued');
 });
