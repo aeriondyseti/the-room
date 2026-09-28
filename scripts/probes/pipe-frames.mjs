@@ -1,6 +1,6 @@
 // TD-0008 qualification probe: what does a Claude messaging pipe send back after auth + a user frame?
 // THROWAWAY FIXTURES ONLY: refuses any session whose registry name doesn't start with "vpfix-".
-// Logs frame types/keys and non-secret values; the peer token is never printed.
+// Logs frame types and key names only (never values); the peer token is never printed (scrubbed from every line).
 //   node scripts/probes/pipe-frames.mjs <sessionId> <case: idle|burst|badtoken> [listenMs]
 import { connect } from 'node:net';
 import { resolve } from 'node:path';
@@ -17,9 +17,12 @@ if (!String(record.name ?? '').startsWith('vpfix-')) throw new Error(`refusing: 
 const token = which === 'badtoken' ? 'not-the-token' : await reg.readPeerToken(record, deps);
 if (!token) throw new Error('no peer token');
 
-const redact = (v) => JSON.parse(JSON.stringify(v, (k, x) => (/token/i.test(k) ? '<redacted>' : x)));
+// Secrets never leave memory (invariant 6): frames are summarised as type + key names only (no values), and every
+// printed line is scrubbed of the literal token as a second guard (covers raw/malformed/error text too).
+const summarise = (v) => (v && typeof v === 'object' ? { type: v.type ?? null, keys: Object.keys(v).sort() } : { kind: typeof v });
+const scrub = (s) => (token ? String(s).split(token).join('<redacted>') : String(s));
 const t0 = Date.now();
-const log = (...a) => console.log(`+${String(Date.now() - t0).padStart(5)}ms`, ...a);
+const log = (...a) => console.log(scrub(`+${String(Date.now() - t0).padStart(5)}ms ${a.join(' ')}`));
 
 const socket = connect(record.messagingSocketPath);
 let buf = '';
@@ -30,11 +33,11 @@ socket.on('data', (d) => {
   while ((i = buf.indexOf('\n')) >= 0) {
     const line = buf.slice(0, i); buf = buf.slice(i + 1);
     if (!line.trim()) continue;
-    try { log('FRAME', JSON.stringify(redact(JSON.parse(line)))); } catch { log('RAW', line.slice(0, 300)); }
+    try { log('FRAME', JSON.stringify(summarise(JSON.parse(line)))); } catch { log('RAW (non-JSON)', `${line.length} bytes`); }
   }
 });
 socket.on('close', () => log('CLOSE'));
-socket.on('error', (e) => log('ERROR', e.code ?? e.message));
+socket.on('error', (e) => log('ERROR', e.code ?? 'error'));
 socket.on('connect', () => {
   log('connected');
   socket.write(JSON.stringify({ type: 'auth', token }) + '\n');

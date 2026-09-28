@@ -12,8 +12,11 @@ Probe: `scripts/probes/pipe-frames.mjs <sessionId> idle|burst|badtoken`.
 
 ## Conclusion
 
-- The receiver sends **no receipt or status frames** for ordinary `user` frames. There's nothing to parse into
-  "accepted" or "held" evidence, so TD-0008 is resolved by qualification, not new code.
+- **No receipt or status frames were observed** for ordinary `user` frames in these cases (idle, burst, bad token)
+  on Claude Code 2.1.283 over an 8-second listening window. This isn't a guarantee for other versions or states. With
+  nothing observed to parse into "accepted" or "held" evidence, TD-0008 is resolved by qualification, not new code;
+  re-run the probe after harness upgrades.
+- The probe logs frame types and key names only, and scrubs the literal token from every line (invariant 6).
 - The strings `peer_message_status` and `peer_idle_notice` in the binary are control actions a peer has to *request*
   (see probes/claude-background-results.md). They are not unsolicited acks, and using them would mean adopting an
   unqualified control protocol, which we don't do.
