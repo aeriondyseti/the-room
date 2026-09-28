@@ -68,7 +68,8 @@ function panelWindows(a: AccountUsage): PanelWindow[] {
   for (const b of a.buckets.filter((x) => x !== main)) {
     const name = sanitize(b.label ?? b.id);
     for (const w of [...b.windows].sort((x, y) => (x.durationMinutes ?? Infinity) - (y.durationMinutes ?? Infinity))) {
-      out.push({ label: w.durationMinutes === 10_080 ? name : `${name} ${durationLabel(w.durationMinutes)}`.trim(), w });
+      // Weekly is implied by the model name; other durations are spelled out; an unobserved duration says so.
+      out.push({ label: w.durationMinutes === 10_080 ? name : w.durationMinutes === null ? `${name} (?)` : `${name} ${durationLabel(w.durationMinutes)}`, w });
     }
   }
   // Two buckets with the same label keep distinct rows: the bucket id is appended to repeated labels.
@@ -81,7 +82,7 @@ function panelWindows(a: AccountUsage): PanelWindow[] {
 
 interface PanelGeom {
   width: number;
-  /** One label column for the whole panel (ctx and every window label). */
+  /** One label column for the whole panel (ctx and every window label); longer labels are ellipsised to it. */
   labelW: number;
   /** Bar cells (10 or 8), or 0 for plain numbers. */
   cells: number;
@@ -89,6 +90,8 @@ interface PanelGeom {
   numW: number;
   /** Width of the value column (bar or number). */
   valueW: number;
+  /** Reset times inline in their own column, or (when they can't fit) on their own row under the value column. */
+  resetsInline: boolean;
   now: number;
 }
 
@@ -97,26 +100,44 @@ function resetText(w: UsageWindow | null, now: number): string | null {
   return reset ? `${RESET_MARK}${reset}` : null;
 }
 
+/** Labels shrink before anything else gives way, but never below this (enough for "weekly"). */
+const MIN_LABEL = 6;
+
+/**
+ * The panel's shared columns. The value (bar or number) is never cut; labels are capped (ellipsised) to what the width
+ * allows; reset times stay inline if they fit, else each goes on its own row under the value — never cut (6.16 review).
+ * Preference: inline resets with 10-cell bars, then 8, then numbers; only then resets on their own rows.
+ */
 function panelGeometry(participants: readonly ParticipantState[], accounts: readonly AccountUsage[], opts: { width: number; stale: boolean; now: number }): PanelGeom {
   const windows = accounts.filter((a) => a.status !== 'unavailable').flatMap(panelWindows);
   const ctx = opts.stale ? [] : participants.map((p) => (p.usage?.status !== 'unavailable' ? p.usage?.context?.percent ?? null : null));
-  const labelW = Math.max(opts.stale || participants.length === 0 ? 0 : 3, ...windows.map((w) => cols(w.label)));
+  const widest = Math.max(opts.stale || participants.length === 0 ? 0 : 3, ...windows.map((w) => cols(w.label)));
   const numW = numberWidth([...ctx, ...windows.map((w) => w.w?.usedPercent)]);
   const resetW = Math.max(0, ...windows.map((w) => cols(resetText(w.w, opts.now) ?? '')));
   const numberOnlyW = numW + 2; // "99.9%!"
-  const rowW = (valueW: number) => 2 + labelW + 1 + valueW + (resetW ? 2 + resetW : 0);
-  for (const cells of [10, 8]) if (rowW(Math.max(cells, numberOnlyW)) <= opts.width) return { width: opts.width, labelW, cells, numW, valueW: Math.max(cells, numberOnlyW), now: opts.now };
-  return { width: opts.width, labelW, cells: 0, numW, valueW: numberOnlyW, now: opts.now };
+  const minLabel = Math.min(widest, MIN_LABEL);
+  for (const resetsInline of [true, false]) {
+    for (const cells of [10, 8, 0]) {
+      const valueW = cells ? Math.max(cells, numberOnlyW) : numberOnlyW;
+      const fixed = 2 + 1 + valueW + (resetsInline && resetW ? 2 + resetW : 0);
+      // With resets on their own rows they start at the value column, so the label also leaves room for the widest reset.
+      const labelW = Math.min(widest, opts.width - fixed, resetsInline || !resetW ? Infinity : opts.width - 3 - resetW);
+      if (labelW >= minLabel) return { width: opts.width, labelW, cells, numW, valueW, resetsInline, now: opts.now };
+    }
+  }
+  // Absurdly narrow: numbers, resets on their own rows, whatever label room is left.
+  return { width: opts.width, labelW: Math.max(1, opts.width - 3 - numberOnlyW), cells: 0, numW, valueW: numberOnlyW, resetsInline: false, now: opts.now };
 }
 
-/** `  label value  ↻ reset` in the panel's shared columns. */
-function metricRow(label: string, value: Line, reset: string | null, g: PanelGeom): Line {
-  const row: Line = [{ text: '  ' }, ...pad([{ text: label, dim: true }], g.labelW), { text: ' ' }, ...(reset ? pad(value, g.valueW) : value)];
-  if (reset) row.push({ text: '  ' }, { text: reset, dim: true });
-  return lineCols(row) > g.width ? fitLine(row, g.width) : row;
+/** `  label value  ↻ reset` in the panel's shared columns (the reset on its own row under the value when it can't be
+ * inline). The label is ellipsised to the label column; the value and reset are never cut. */
+function metricRows(label: string, value: Line, reset: string | null, g: PanelGeom): Line[] {
+  const lab: Line = cols(label) > g.labelW ? fitLine([{ text: label, dim: true }], g.labelW) : [{ text: label, dim: true }];
+  const row: Line = [{ text: '  ' }, ...pad(lab, g.labelW), { text: ' ' }, ...(reset && g.resetsInline ? pad(value, g.valueW) : value)];
+  if (!reset) return [row];
+  if (g.resetsInline) return [[...row, { text: '  ' }, { text: reset, dim: true }]];
+  return [row, [{ text: ' '.repeat(2 + g.labelW + 1) }, { text: reset, dim: true }]];
 }
-
-/** An agent as its head row(s) (name + state: always shown first) and its detail rows (ctx, model/branch: shown when room). */
 function participantBlock(p: ParticipantState, opts: { stale: boolean }, g: PanelGeom): { head: Line[]; detail: Line[] } {
   const live = opts.stale ? { glyph: '◌', color: 'gray' } : stateDot(p);
   const name: Line = [{ text: `${live.glyph} `, color: live.color }, { text: sanitize(p.name), color: opts.stale ? 'gray' : colorFor(p.name), bold: true }];
@@ -130,7 +151,7 @@ function participantBlock(p: ParticipantState, opts: { stale: boolean }, g: Pane
   const heads: Line[] = head ? [head] : [fitLine(name, g.width), fitLine([{ text: '  ' }, ...state], g.width)];
   const lines: Line[] = [];
   // Context in the panel's shared label/value columns. Not shown while disconnected (invariant 3).
-  if (!opts.stale) lines.push(metricRow('ctx', contextBar(p.usage, { stale: false, bar: g.cells > 0, cells: g.cells || undefined, numberWidth: g.numW, label: '' }), null, g));
+  if (!opts.stale) lines.push(...metricRows('ctx', contextBar(p.usage, { stale: false, bar: g.cells > 0, cells: g.cells || undefined, numberWidth: g.numW, label: '' }), null, g));
   // 6.7 workspace: model and branch*dirty, quiet; omitted when unknown (full detail in /who).
   const ws = workspaceSegments(p, opts.stale).slice(1); // drop the leading " · "
   if (ws.length) lines.push(fitLine([{ text: '  ' }, ...ws], g.width));
@@ -158,13 +179,15 @@ function accountBlock(a: AccountUsage, opts: { disconnected: boolean; compact: b
   const isState = (n: string): boolean => n === '(stale)' || n === '(last known)';
   const name: Line = [{ text: harnessLabel(a.account.harness), bold: true }];
   const state = notes.filter(isState).map((n) => n.replace(/^\((.*)\)$/, '$1'));
-  const head = (state.length ? spread(name, [{ text: state.join(' · '), dim: true, italic: true }], g.width) : null) ?? fitLine(name, g.width);
-  if (a.status === 'unavailable') return [head, ...wrapNote(`unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, g.width)];
+  const spreadHead = state.length ? spread(name, [{ text: state.join(' · '), dim: true, italic: true }], g.width) : null;
+  // The stale / last known qualifier is never dropped: right-aligned on the heading, or on its own row under it.
+  const headRows: Line[] = spreadHead ? [spreadHead] : [fitLine(name, g.width), ...(state.length ? wrapNote(state.join(' · '), g.width) : [])];
+  if (a.status === 'unavailable') return [...headRows, ...wrapNote(`unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, g.width)];
   const stale = a.status === 'stale' || opts.disconnected;
-  const lines: Line[] = [head, ...notes.filter((n) => !isState(n)).flatMap((n) => wrapNote(opts.compact ? shortNote(n) : n, g.width))];
+  const lines: Line[] = [...headRows, ...notes.filter((n) => !isState(n)).flatMap((n) => wrapNote(opts.compact ? shortNote(n) : n, g.width))];
   for (const w of panelWindows(a)) {
     const value: Line = w.w ? usageBar('', w.w.usedPercent, { stale, bar: g.cells > 0, cells: g.cells || undefined, numberWidth: g.numW }) : [{ text: '—', dim: true }];
-    lines.push(metricRow(w.label, value, resetText(w.w, g.now), g));
+    lines.push(...metricRows(w.label, value, resetText(w.w, g.now), g));
   }
   return lines;
 }

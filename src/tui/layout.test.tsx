@@ -272,3 +272,46 @@ test('side panel (6.16): every window of every model bucket is shown (a Spark 5h
   assert.match(text, /Spark 5h \[model-b\]/);
   assert.match(text, /^ {2}Spark \[model-a\]|^ {2}Spark +/m, 'the weekly Spark limit is named by its model');
 });
+const spark = (label: string): AccountUsage => ({ account: { harness: 'codex', scope: 'account', key: 'c', sourceKey: 'c' }, status: 'ok', source: 'd', checkedAt: null, observedAt: null, buckets: [
+  { id: 'codex', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 38, resetsAt: '2026-09-28T18:12:00Z' }, { kind: 's', durationMinutes: 10_080, usedPercent: 71, resetsAt: '2026-10-01T20:41:00Z' }] },
+  { id: 'codex_bengalfox', label, windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 61, resetsAt: '2026-09-28T19:00:00Z' }, { kind: 's', durationMinutes: 10_080, usedPercent: 12, resetsAt: '2026-10-01T20:41:00Z' }] },
+] });
+
+test('6.16 review: across widths no percentage or reset time is ever cut, and %, reset columns line up (labels ellipsise instead)', () => {
+  for (const width of [44, 40, 34, 32, 30, 28, 26, 24]) {
+    for (const label of ['Fable', 'GPT-5.3-Codex-Spark']) {
+      const text = sidePanelLines([agent('astra')], [spark(label)], { width, height: 40, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
+      const where = `width ${width}, label ${label}:\n${text.join('\n')}`;
+      for (const v of ['38.0%', '71.0%!', '61.0%', '12.0%', '42.0%']) assert.ok(text.some((l) => l.includes(v)), `${v} whole — ${where}`);
+      const resets = text.filter((l) => l.includes('↻'));
+      assert.equal(resets.length, 4, `every reset shown — ${where}`);
+      assert.ok(resets.every((l) => /↻ \S.*\S$/.test(l) && !/↻[^\n]*…/.test(l)), `no reset is cut — ${where}`);
+      const values = text.filter((l) => /\d\.\d%/.test(l));
+      assert.equal(new Set(values.map((l) => l.indexOf('%'))).size, 1, `% column aligned — ${where}`);
+      assert.equal(new Set(resets.map((l) => l.indexOf('↻'))).size, 1, `reset column aligned — ${where}`);
+      assert.ok(text.every((l) => cols(l) <= width), `never wider — ${where}`);
+    }
+  }
+});
+
+test('6.16 review: an unobserved window duration is labelled "(?)", never passed off as a second weekly; a narrow panel keeps the stale qualifier', () => {
+  const odd: AccountUsage = { ...spark('Spark'), buckets: [spark('Spark').buckets[0]!, { id: 'b', label: 'Spark', windows: [{ kind: 's', durationMinutes: 10_080, usedPercent: 3, resetsAt: null }, { kind: 'x', durationMinutes: null, usedPercent: 50, resetsAt: null }] }] };
+  const text = sidePanelLines([], [odd], { width: 40, height: 20, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
+  assert.ok(text.some((l) => /^ {2}Spark \(\?\)/.test(l) && l.includes('50.0%')), text.join('\n'));
+  const narrow = sidePanelLines([], [{ ...spark('Spark'), status: 'stale' }], { width: 14, height: 20, stale: true, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
+  assert.ok(narrow.some((l) => /last known/.test(l)), `the qualifier survives a narrow panel:\n${narrow.join('\n')}`);
+});
+
+test('6.16 review: every shown agent gets the same level of detail at every height', () => {
+  const ws = (name: string) => agent(name, { workspace: { model: 'gpt-6', cwd: null, cwdSource: null, observedAt: null, git: null } });
+  const four = [ws('a1'), ws('a2'), ws('a3'), ws('a4')];
+  for (let height = 8; height <= 24; height++) {
+    const text = sidePanelLines(four, [claude], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
+    const heads = text.map((l, i) => (/^● /.test(l) ? i : -1)).filter((i) => i >= 0);
+    const detail = heads.map((h, k) => {
+      const end = k + 1 < heads.length ? heads[k + 1]! : text.findIndex((l, i) => i > h && !/^ {2}\S/.test(l));
+      return (end < 0 ? text.length : end) - h - 1;
+    });
+    assert.equal(new Set(detail).size <= 1, true, `height ${height}: uneven detail ${JSON.stringify(detail)}\n${text.join('\n')}`);
+  }
+});
