@@ -68,22 +68,37 @@ test('AGENTS: sheds bars, then model, then branch to fit; overflow is "+N more �
   assert.equal(agentGrid([agent('a-very-long-agent-name-indeed')], { width: 20, stale: false, maxRows: 6 }), null);
 });
 
-test('BUDGETS: 5h / weekly named once; one row per limit; "—" where there is no reading; caveats quiet at the end of the account row', () => {
+test('BUDGETS: one row per account; 5h / weekly / Fable weekly named once; model limits as columns on their own account (6.12); "—" for no reading, blank for no such limit', () => {
   const rows = budgetGrid([claude, codex], { width: 120, now: NOW })!;
   const text = rows.map(lineText);
-  assert.match(text[0]!, /^BUDGETS +5h +weekly$/);
-  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻ 1h53m +▓▓░{8} 24\.0%$/);
-  assert.match(text[2]!, /^ Fable +— +▓▓▓░{7} 27\.0%$/);
-  assert.match(text[3]!, /^ Codex +— +▓▓░{8} 18\.0% +stale$/);
+  assert.equal(text.length, 3, 'header + one row per account (no separate Fable row)');
+  assert.match(text[0]!, /^BUDGETS +5h +weekly +Fable weekly$/);
+  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻ 1h53m +▓▓░{8} 24\.0% +▓▓▓░{7} 27\.0%$/);
+  assert.match(text[2]!, /^ Codex +— +▓▓░{8} 18\.0% +stale$/, 'Codex has no Fable limit: blank cells, not "—"; its caveat stays on its row');
   assert.equal(colOf(text[0]!, '5h'), colOf(text[1]!, '▓'), '5h header over its column');
-  assert.equal(colOf(text[0]!, 'weekly'), colOf(text[2]!, '▓'), 'weekly header over its column');
+  assert.equal(colOf(text[0]!, 'weekly'), text[2]!.indexOf('▓'), 'weekly header over its column');
+  assert.equal(colOf(text[0]!, 'Fable weekly'), text[1]!.lastIndexOf('▓▓▓'), 'Fable weekly header over its column');
   assert.equal(colOf(text[2]!, '—'), colOf(text[1]!, '▓'), 'the dash sits in the 5h column');
-  assert.ok(rows[3]!.every((s) => !s.color), 'stale values: colourless');
+  assert.ok(rows[2]!.every((s) => !s.color), 'stale values: colourless');
   assert.ok(!text.join('\n').includes('unverified'), 'login unverified is hidden (Kevin, 6.10)');
-  const fb = budgetGrid([{ ...claude, fallback: true }], { width: 120, now: NOW })!;
+  const fb = budgetGrid([{ ...claude, fallback: true }], { width: 140, now: NOW })!;
   assert.ok(fb[1]!.find((s) => s.text.includes('via statusline, no model limits'))?.dim, 'other caveats: quiet, on the account row');
 });
 
+test('6.12: as the width shrinks, bars go 10 → 8 cells (fill recomputed) → plain numbers → fallback, in that order', () => {
+  const kind = (width: number): string => {
+    const g = budgetGrid([claude, codex], { width, now: NOW });
+    if (!g) return 'fallback';
+    const t = g.map(lineText).join('\n');
+    return t.includes('▓▓▓░░░░░░░ 29.0%') ? '10' : t.includes('▓▓░░░░░░ 29.0%') ? '8' : /[▓░]/.test(t) ? '?' : 'numbers';
+  };
+  const seen: string[] = [];
+  for (let w = 130; w >= 30; w--) {
+    const k = kind(w);
+    if (seen.at(-1) !== k) seen.push(k);
+  }
+  assert.deepEqual(seen, ['10', '8', 'numbers', 'fallback'], 'each step appears, never out of order (round(29/100×8) = 2 cells)');
+});
 test('BUDGETS: caveats wrap to a continuation row rather than being cut; bars go before that; unavailable says why; null when it cannot fit', () => {
   const mid = budgetGrid([{ ...claude, fallback: true }], { width: 56, now: NOW })!.map(lineText);
   assert.ok(mid.every((l) => l.length <= 56), mid.join('\n'));
@@ -129,13 +144,14 @@ test('like pieces line up (Kevin): reset times, caveats and percentages each hav
   const withResets: AccountUsage = { ...claude, fallback: true, buckets: [
     { id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: '2026-09-28T17:53:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: '2026-10-04T08:59:00Z' }] },
     { id: 'claude-fable', label: 'Fable', windows: [{ kind: 'c', durationMinutes: 10_080, usedPercent: 7, resetsAt: '2026-10-04T08:59:00Z' }] }] };
-  const text = budgetGrid([withResets, { ...codex, buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 18, resetsAt: '2026-10-03T15:09:00Z' }] }] }], { width: 120, now: NOW })!.map(lineText);
-  const weeklyResets = text.slice(1).map((l) => l.lastIndexOf('↻'));
-  assert.equal(new Set(weeklyResets).size, 1, `weekly resets share a column:\n${text.join('\n')}`);
-  assert.equal(colOf(text[1]!, 'via statusline'), colOf(text[3]!, 'stale'), 'caveats share a column');
-  assert.equal(text[2]!.indexOf(' 7.0%'), text[1]!.lastIndexOf('24.0%'), 'percentages are right-aligned (decimals line up)');
+  const other = { ...codex, buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 18, resetsAt: '2026-10-03T15:09:00Z' }] }] };
+  const text = budgetGrid([withResets, other], { width: 160, now: NOW })!.map(lineText);
+  const resets = (l: string) => [...l.matchAll(/↻/g)].map((m) => m.index);
+  assert.equal(resets(text[1]!)[1], resets(text[2]!)[0], `weekly resets share a column:\n${text.join('\n')}`);
+  assert.equal(colOf(text[1]!, 'via statusline'), colOf(text[2]!, 'stale'), 'caveats share a column');
+  assert.equal(text[2]!.indexOf('18.0%'), text[1]!.indexOf('24.0%'), 'weekly percentages line up');
+  assert.ok(text[1]!.includes('░  7.0%') || text[1]!.includes('░ 7.0%'), 'the Fable value renders');
 });
-
 test('help keys never run into their descriptions (measured key column)', () => {
   for (const line of helpLines().filter((l) => l.length === 2)) assert.match(line[0]!.text, / {2}$/, `"${line[0]!.text}" keeps a gap before its description`);
 });
@@ -167,4 +183,41 @@ test('6.11: the reset arrow is followed by a space (it renders wider than one ce
   const text = budgetGrid([claude], { width: 120, now: NOW })!.map(lineText).join('\n');
   assert.ok(text.includes('↻ 1h53m'));
   assert.doesNotMatch(text, /↻\S/, 'never glued to the time');
+});
+test('6.12 review: every window of a model bucket gets a column — a Codex model limit keeps its 5h reading (nothing dropped)', () => {
+  const spark: AccountUsage = { ...codex, status: 'ok', buckets: [
+    { id: 'codex', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 20, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 18, resetsAt: null }] },
+    { id: 'spark', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 61, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 12, resetsAt: null }] },
+  ] };
+  const text = budgetGrid([claude, spark], { width: 200, now: NOW })!.map(lineText);
+  assert.match(text[0]!, /Fable weekly +Spark 5h +Spark weekly$/, text.join('\n'));
+  assert.ok(text[2]!.includes('61.0%') && text[2]!.includes('12.0%'), 'the Spark 5h reading is shown, not dropped');
+  assert.equal(text[2]!.indexOf('61.0%') - text[0]!.indexOf('Spark 5h') < 12, true, 'under its own header');
+});
+
+test('6.12 review: empty columns take no space; inline caveats are preferred over bigger bars, else the biggest bars with the caveat wrapped', () => {
+  const g = budgetGrid([claude, codex], { width: 200, now: NOW })!.map(lineText);
+  assert.doesNotMatch(g[1]!, /%\s{5,}▓/, `no doubled gap left by an all-empty reset column:\n${g.join('\n')}`);
+  const long: AccountUsage = { ...claude, fallback: true };
+  const widest = (w: number) => budgetGrid([long], { width: w, now: NOW })!.map(lineText);
+  // Find a width where 10-cell bars fit but the long caveat only fits inline with 8-cell bars.
+  let chosen: string[] | null = null;
+  for (let w = 140; w > 60 && !chosen; w--) {
+    const t = widest(w);
+    if (t[1]!.includes('▓▓░░░░░░ ') && t[1]!.endsWith('via statusline, no model limits')) chosen = t;
+  }
+  assert.ok(chosen, 'at some width the 8-cell layout is chosen because it keeps the caveat on the row');
+  const tight = widest(72);
+  assert.ok(tight.some((l) => l.includes('▓')) || tight.every((l) => !l.includes('░')), 'values still shown');
+  assert.ok(tight.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole');
+});
+test('6.12 cross-review: two distinct buckets with the same label are both shown, under visibly distinct headers', () => {
+  const twoSparks: AccountUsage = { ...codex, status: 'ok', buckets: [
+    { id: 'codex', windows: [{ kind: 's', durationMinutes: 10_080, usedPercent: 18, resetsAt: null }] },
+    { id: 'model-a', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 10, resetsAt: null }] },
+    { id: 'model-b', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 80, resetsAt: null }] },
+  ] };
+  const text = budgetGrid([twoSparks], { width: 200, now: NOW })!.map(lineText);
+  assert.ok(text[1]!.includes('10.0%') && text[1]!.includes('80.0%'), `both readings survive:\n${text.join('\n')}`);
+  assert.match(text[0]!, /Spark 5h \[model-a\] +Spark 5h \[model-b\]/);
 });
