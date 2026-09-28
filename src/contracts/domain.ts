@@ -72,6 +72,8 @@ export type MessageKind =
   | 'system';
 
 export interface RoomMessage {
+  /** M7 audit fields; absent on historical messages. */
+  crossing?: import('./crossing.js').MessageCrossingInfo;
   id: MessageId;
   /** Monotonic room sequence number; clients page and resume by it. */
   seq: number;
@@ -166,6 +168,8 @@ export interface UsageSnapshot {
 }
 
 export interface ParticipantState extends ParticipantRegistration {
+  /** M7 presentation snapshot; never implicitly authorizes a send. */
+  inbox?: import('./crossing.js').ParticipantInboxInfo | null;
   liveness: Liveness;
   livenessCheckedAt: string | null;
   activity: Activity;

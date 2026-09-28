@@ -15,6 +15,7 @@ import type {
 } from './domain.js';
 import type { ActivityItem, ActivityPage, ActivityRequest, ActivityStreamId } from './activity.js';
 import type { AccountUsage } from './account.js';
+import type { InboxRequest, InboxReviewPage, GuardedSendRequest, GuardedSendOutcome, WithdrawRequest, WithdrawOutcome } from './crossing.js';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -57,6 +58,9 @@ export type Caller =
 export type ClientKind = 'tui' | 'cli' | 'mcp';
 
 export interface RequestMap {
+  inbox: { params: InboxRequest; result: InboxReviewPage };
+  guarded_send: { params: GuardedSendRequest; result: GuardedSendOutcome };
+  withdraw: { params: WithdrawRequest; result: WithdrawOutcome };
   hello: {
     params: { client: ClientKind; clientVersion: string; protocolVersion: number };
     result: { serviceVersion: string; protocolVersion: number; roomRoot: string; pid: number };
@@ -143,6 +147,9 @@ export interface RequestMap {
 
 export type Method = keyof RequestMap;
 export const METHODS = [
+  'inbox',
+  'guarded_send',
+  'withdraw',
   'hello',
   'send',
   'read',
