@@ -14,14 +14,22 @@ const participant = (name: string, harness: 'claude' | 'codex', over: Partial<Pa
   ...over,
 });
 
+const usage = (percent: number | null, used: number, status: 'ok' | 'stale' = 'ok'): ParticipantState['usage'] => ({
+  source: 'claude-transcript',
+  status,
+  observedAt: new Date().toISOString(),
+  cumulative: { input: used, output: Math.round(used / 20), cacheRead: 0, cacheWrite: 0 },
+  context: { usedTokens: used, limitTokens: percent === null ? null : Math.round(used / (percent / 100)), percent },
+});
+
 export function demoSource(): FakeRoomSource {
   const source = new FakeRoomSource({
     roomLabel: 'demo',
     participants: [
-      participant('claude', 'claude', { activity: 'busy', pending: 1 }),
-      participant('astra', 'codex'),
-      participant('codex_reviewer', 'codex', { liveness: 'offline', activity: 'unknown', pending: 1 }),
-      participant('claude_builder', 'claude', { activity: 'waiting_permission' }),
+      participant('claude', 'claude', { activity: 'busy', pending: 1, usage: usage(54, 540_000) }),
+      participant('astra', 'codex', { usage: usage(43, 146_000) }),
+      participant('codex_reviewer', 'codex', { liveness: 'offline', activity: 'unknown', pending: 1, usage: usage(12, 41_000, 'stale') }),
+      participant('claude_builder', 'claude', { activity: 'waiting_permission', usage: usage(88, 880_000) }),
     ],
   });
   const kickoff = source.post(HUMAN, 'all', 'Morning! Plan for today: finish the TUI composer, then run the four-agent acceptance fixture.', {
@@ -37,5 +45,24 @@ export function demoSource(): FakeRoomSource {
     states: { astra: 'submitted' },
   });
   source.post('claude_builder', [HUMAN], 'I am blocked on a permission prompt in my pane (npm install). Can you approve it?', {});
+  const handoff = source.post(HUMAN, ['astra', 'claude'], 'Heads up: the service restarts in five minutes for an upgrade.', {
+    states: { astra: 'uncertain', claude: 'submitted' },
+  });
+  const t = handoff.message.createdAt;
+  source.setDelivery(handoff.message.id, 'astra', {
+    attempts: [
+      {
+        n: 1,
+        startedAt: t,
+        finishedAt: t,
+        outcome: 'uncertain',
+        evidence: null,
+        error: { code: 'internal', message: 'codex queue timed out after the message was handed over', hint: 'It may already have arrived; check before retrying.' },
+      },
+    ],
+  });
+  source.setDelivery(handoff.message.id, 'claude', {
+    attempts: [{ n: 1, startedAt: t, finishedAt: t, outcome: 'submitted', evidence: { kind: 'claude-pipe-write', pid: 32064 }, error: null }],
+  });
   return source;
 }
