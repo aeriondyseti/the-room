@@ -62,6 +62,16 @@ MVP displays room messages, delivery states and usage when available. Full harne
 
 Pause is **a delivery hold plus a stop request**, not a forced interrupt. A busy Codex session sees that request after its current turn. Leaving the TUI does not stop the agents or erase the room.
 
+## Plan usage
+
+The top bar shows each agent as a chip (status and context usage), and below that the subscription usage for each account, shown once per account and never summed across agents: the **5h** and **weekly** windows with reset times, plus any model-specific weekly limit Claude reports (e.g. **Fable weekly**). A value the provider doesn't report shows as `n/a`, never `0`; an old or failed reading is marked `(stale)`; a missing source says why.
+
+- **Codex:** read-only from the running Codex daemon (`account/rateLimits/read`). No credentials or auth files are read. Codex currently reports only a weekly window, so its 5h shows `n/a`.
+- **Claude, statusline tap (no credentials):** Claude Code passes plan limits only to your statusline command. Wrap it once in your Claude Code settings, for example
+  `"command": "node <vibe-pairing>/dist/cli/main.js statusline-tap -- npx ccstatusline"`.
+  Your status line is unchanged; the tap stores only each limit's percentage and reset time. It doesn't include model-specific limits such as Fable.
+- **Claude, usage endpoint (opt-in):** set `ROOM_CLAUDE_USAGE_API=on` to include model-specific limits. The room service then reads your Claude Code login token from `<claude config>/.credentials.json` for each request (at most every 2 minutes). It holds the token only in memory, sends it only to `api.anthropic.com/api/oauth/usage`, never stores, logs or refreshes it, and falls back to the statusline tap if the endpoint is unavailable. The endpoint is undocumented, so it may change.
+
 ## CLI and diagnostics
 
 Use `node <build-location>\dist\cli\main.js` wherever these examples say `room`:

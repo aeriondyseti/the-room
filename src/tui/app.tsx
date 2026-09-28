@@ -35,6 +35,7 @@ import {
 import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
+import { accountLines, activityLabel, livenessDot, participantLines } from './topbar.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { DEFAULT_CONFIG } from '../core/config.js';
@@ -48,9 +49,6 @@ export interface AppProps {
   height?: number;
   /** Messages loaded on first connect. */
   historyLimit?: number;
-  /** Participant panel width and the terminal width at which it appears (config: tuiPanelWidth / tuiPanelBreakpoint). */
-  panelWidth?: number;
-  panelBreakpoint?: number;
   /** Max pages read when catching up after a reconnect (config: tuiCatchUpMaxPages). */
   catchUpMaxPages?: number;
   /** Colour or monochrome (NO_COLOR / --no-color). */
@@ -60,8 +58,10 @@ export interface AppProps {
 const MAX_DRAFT_ROWS = 5;
 /** Command suggestions shown at once (more are summarised as "+N more"). */
 const MAX_SUGGESTIONS = 6;
-/** Layout guard (not a preference): below this the conversation column is unreadable, so the panel yields. */
-const MIN_CONVERSATION_WIDTH = 30;
+/** Participant chips wrap over at most this many top-bar lines (then "+N more · /who"). */
+const TOP_BAR_PARTICIPANT_LINES = 2;
+/** How often the top bar re-renders its reset countdowns. */
+const TOP_BAR_CLOCK_MS = 30_000;
 
 /** Errors that prove a send never reached the service (so "Not sent" is true). Anything else is an unknown outcome. */
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
@@ -83,8 +83,6 @@ function Room({
   width,
   height,
   historyLimit = DEFAULT_CONFIG.tuiHistoryLimit,
-  panelWidth = DEFAULT_CONFIG.tuiPanelWidth,
-  panelBreakpoint = DEFAULT_CONFIG.tuiPanelBreakpoint,
   catchUpMaxPages = DEFAULT_CONFIG.tuiCatchUpMaxPages,
 }: Omit<AppProps, 'theme'>) {
   const t = useTheme();
@@ -109,9 +107,20 @@ function Room({
   const window = useWindowSize();
   const colsTotal = Math.max(20, width ?? window.columns);
   const rows = Math.max(12, height ?? window.rows);
-  // The panel never squeezes the conversation below a readable width, whatever the tunables say.
-  const showPanel = colsTotal >= Math.max(panelBreakpoint, panelWidth + 1 + MIN_CONVERSATION_WIDTH);
-  const convWidth = colsTotal - (showPanel ? panelWidth + 1 : 0) - 1;
+  // A slow clock so reset countdowns ("↻2h12m") stay current between events.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), TOP_BAR_CLOCK_MS);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }, []);
+  // Top bar (6.6): participants as chips and subscription usage across the top; the conversation gets the full width.
+  const stale = view.connection.state !== 'connected';
+  const topLines = useMemo(
+    () => [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale })],
+    [view.participants, view.accounts, colsTotal, stale, t.mono, clock],
+  );
+  const convWidth = colsTotal - 1;
   const banner = view.connection.state !== 'connected' || (view.notice !== null && view.loaded);
   const loadFailed = !view.loaded && view.notice !== null;
   const names = useMemo(() => view.participants.map((p) => p.name), [view.participants]);
@@ -123,7 +132,7 @@ function Room({
   useEffect(() => setSuggestIdx(0), [draft.text]);
   const suggestionRows = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
   const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0) + suggestionRows;
-  const viewportHeight = Math.max(3, rows - 1 /* header */ - (banner ? 1 : 0) - composerHeight - 1 /* status */);
+  const viewportHeight = Math.max(3, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) /* top bar + rule */ - composerHeight - 1 /* status */);
 
   const seqById = useMemo(() => new Map(view.items.map((i) => [i.message.id, i.message.seq] as const)), [view.items]);
   const lines = useMemo(
@@ -423,10 +432,11 @@ function Room({
     <Box flexDirection="column" width={colsTotal} height={rows}>
       <Header view={view} width={colsTotal} />
       {banner && <Banner view={view} width={colsTotal} />}
+      {topLines.map((line, i) => (
+        <LineView key={`top-${i}`} line={line} />
+      ))}
+      <Text dimColor>{'─'.repeat(colsTotal)}</Text>
       <Box flexDirection="row" height={viewportHeight}>
-        {showPanel && (
-          <Participants participants={view.participants} humanName={humanName} height={viewportHeight} stale={view.connection.state !== 'connected'} panelWidth={panelWidth} />
-        )}
         <Box flexDirection="column" width={convWidth} paddingLeft={1} justifyContent={overlay ? 'flex-start' : 'flex-end'} overflow="hidden">
           {overlay === 'help' ? (
             <HelpOverlay />
@@ -551,7 +561,7 @@ function useRoomSync(
           items.push(...(await source.request('read', { limit: historyLimit, includeDeliveries: true })).items);
         }
         if (alive) {
-          dispatch({ type: 'snapshot', items, participants: who.participants, room: who.room });
+          dispatch({ type: 'snapshot', items, participants: who.participants, room: who.room, ...(who.accounts ? { accounts: who.accounts } : {}) });
           dispatch({ type: 'notice', notice: truncated ? 'Reconnected, but the catch-up was too long to load fully; newest messages may be missing — restart the TUI to reload.' : null });
         }
       } catch (err) {
@@ -692,70 +702,7 @@ function Banner({ view, width }: { view: RoomView; width: number }) {
   );
 }
 
-function Participants({ participants, humanName, height, stale, panelWidth }: { participants: ParticipantState[]; humanName: string; height: number; stale: boolean; panelWidth: number }) {
-  const t = useTheme();
-  // Two rows per participant (name, then status); keep room for the title and footer.
-  const capacity = Math.max(0, Math.floor((height - 4) / 2));
-  const shown = participants.slice(0, capacity);
-  const hidden = participants.length - shown.length;
-  return (
-    <Box flexDirection="column" width={panelWidth} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} paddingRight={1}>
-      <Text dimColor bold>PARTICIPANTS{stale ? ' · stale' : ''}</Text>
-      {participants.length === 0 && <Text dimColor>none yet</Text>}
-      {shown.map((p) => {
-        // While disconnected we can't vouch for liveness: grey everything out (invariant 3).
-        const live = stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
-        const status = stale ? { text: 'last known: ' + activityLabel(p).text } : activityLabel(p);
-        const label = usageLabel(p.usage);
-        // Monochrome can't show the warning colour, so a high reading gets a "!" instead.
-        const usage = t.mono && label.color ? { ...label, text: `${label.text}!` } : label;
-        // Leave a clear gap between a long name and its usage label: truncate the name, never the usage.
-        const nameRoom = panelWidth - 2 /* padding+border */ - 2 /* glyph */ - (stale ? 0 : usage.text.length + 1);
-        const name = lineText(fitLine([{ text: sanitize(p.name) }], Math.max(4, nameRoom)));
-        return (
-          <Box key={p.name} flexDirection="column">
-            <Box justifyContent="space-between" width={panelWidth - 2}>
-              <Text>
-                <Text color={t.color(live.color)}>{live.glyph} </Text>
-                <Text color={t.color(stale ? 'gray' : colorFor(p.name))} bold>{name}</Text>
-              </Text>
-              {!stale && <Text color={t.color(usage.color)} dimColor={usage.dim}>{usage.text}</Text>}
-            </Box>
-            <Text wrap="truncate" color={t.color(status.color)} dimColor={status.color === undefined}>
-              {'  '}{status.text}
-            </Text>
-          </Box>
-        );
-      })}
-      {hidden > 0 && <Text dimColor>+{hidden} more · /who</Text>}
-      <Text> </Text>
-      <Text dimColor wrap="truncate">you: {humanName}</Text>
-    </Box>
-  );
-}
-
-function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
-  switch (l) {
-    case 'online':
-      return { glyph: '●', color: 'green' };
-    case 'offline':
-      return { glyph: '○', color: 'gray' };
-    case 'rebind_needed':
-      return { glyph: '⚠', color: 'yellow' };
-    case 'unknown':
-      return { glyph: '◌', color: 'gray' };
-  }
-}
-
-/** Short status under a participant's name. Attention states get a color; the rest stay dim. */
-export function activityLabel(p: ParticipantState): { text: string; color?: string } {
-  const pending = p.pending > 0 ? ` · ${p.pending} queued` : '';
-  if (p.liveness === 'offline') return { text: `offline${pending}` };
-  if (p.liveness === 'rebind_needed') return { text: `rebind needed${pending}`, color: 'yellow' };
-  if (p.activity === 'waiting_permission') return { text: `needs approval${pending}`, color: 'yellow' };
-  if (p.activity === 'unknown') return { text: `status unknown${pending}` };
-  return { text: `${p.activity}${pending}` };
-}
+export { activityLabel } from './topbar.js';
 
 /** First-run guidance when nobody has joined yet; a short prompt once agents are here but nothing's been said. */
 export function EmptyState({ participants }: { participants: readonly ParticipantState[] }) {

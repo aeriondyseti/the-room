@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG, backoffSchedule, loadConfig } from './config.js';
 
 test('TUI tunables: defaults, env overrides, and the doubling reconnect schedule', () => {
-  assert.equal(DEFAULT_CONFIG.tuiPanelWidth, 26);
-  assert.equal(DEFAULT_CONFIG.tuiPanelBreakpoint, 90);
-  const c = loadConfig({ ROOM_TUI_PANEL_WIDTH: '30', ROOM_TUI_HISTORY_LIMIT: '100', ROOM_TUI_RECONNECT_MAX_MS: '2000' });
-  assert.deepEqual([c.tuiPanelWidth, c.tuiHistoryLimit, c.tuiReconnectMaxMs], [30, 100, 2000]);
+  assert.equal(DEFAULT_CONFIG.tuiHistoryLimit, 500);
+  const c = loadConfig({ ROOM_TUI_HISTORY_LIMIT: '100', ROOM_TUI_RECONNECT_MAX_MS: '2000' });
+  assert.deepEqual([c.tuiHistoryLimit, c.tuiReconnectMaxMs], [100, 2000]);
   assert.deepEqual(backoffSchedule(250, 5000), [250, 500, 1000, 2000, 4000, 5000]);
   assert.deepEqual(backoffSchedule(1000, 1000), [1000]);
-  assert.throws(() => loadConfig({ ROOM_TUI_PANEL_WIDTH: 'wide' }), /ROOM_TUI_PANEL_WIDTH/);
+  assert.throws(() => loadConfig({ ROOM_TUI_HISTORY_LIMIT: 'lots' }), /ROOM_TUI_HISTORY_LIMIT/);
 });
 
 test('defaults apply when no env overrides are set', () => {

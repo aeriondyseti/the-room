@@ -6,7 +6,17 @@ import { UsageObserver, usageObserverOptionsFrom } from '../../observer/index.js
 import { ActivityReader } from '../../observer/activity-reader.js';
 import { claudeActivityParser } from '../../observer/claude-activity.js';
 import { codexActivityParser } from '../../observer/codex-activity.js';
+import { claudeAccountUsageProvider } from '../../adapters/claude/rate-limits.js';
+import { claudeCombinedProvider, claudeUsageApiProvider } from '../../adapters/claude/usage-api.js';
+import { resolveClaudeConfigDir } from '../../adapters/claude/registry.js';
+import { CodexAccountProvider, codexAccountOptionsFrom } from '../../observer/codex-account.js';
 const root=process.argv[2];
+/** Claude plan usage: the statusline tap, plus (opt-in, Kevin-approved) the usage endpoint with the tap as fallback. */
+const claudeProvider=(claudeConfigDir:string,usageApi:string,timeoutMs:number)=>{
+  const tap=claudeAccountUsageProvider({claudeConfigDir});
+  if(usageApi!=='on')return tap;
+  return claudeCombinedProvider(claudeUsageApiProvider({claudeConfigDir,timeoutMs}),tap);
+};
 if(!root)throw new Error('Room service requires a canonical root argument.');
 try {
   const canonical=await realpath(root);
@@ -16,7 +26,8 @@ try {
     detailBytes:config.activityDetailBytes,windowItems:config.activityWindowItems,startBytes:config.activityStartBytes,maxLineBytes:config.activityMaxLineBytes,readBytes:config.activityReadBytes});
   const running=await startServer(canonical,{adapters:defaultAdapters(canonical),
     monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs},
-    activity:{reader:activity,intervalMs:config.activityPollMs}});
+    activity:{reader:activity,intervalMs:config.activityPollMs},
+    accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs}});
   for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>{void running.close().then(()=>{process.exitCode=0;});});
 }catch(error){
   // A competing auto-start won the OS bind. Its clients will find that service during readiness probes.

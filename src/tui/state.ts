@@ -1,12 +1,15 @@
 // Pure room-view state for the TUI: a snapshot (who + read) plus live events. No I/O here.
 import type { Delivery, MessageWithDeliveries, ParticipantState, RoomState } from '../contracts/domain.js';
 import type { RoomEvent } from '../contracts/ipc.js';
+import type { AccountUsage } from '../contracts/account.js';
 import type { ConnectionStatus } from './source.js';
 
 export interface RoomView {
   /** Ordered by seq; each message with its per-recipient deliveries. */
   items: MessageWithDeliveries[];
   participants: ParticipantState[];
+  /** Subscription usage, once per account/profile (6.6); empty when the service doesn't report any. */
+  accounts: AccountUsage[];
   room: RoomState;
   connection: ConnectionStatus;
   /** True once the first who+read snapshot has been applied. */
@@ -19,6 +22,7 @@ export interface RoomView {
 export const INITIAL_VIEW: RoomView = {
   items: [],
   participants: [],
+  accounts: [],
   room: { paused: false, pausedAt: null, stopRequestId: null },
   connection: { state: 'connecting' },
   loaded: false,
@@ -27,7 +31,7 @@ export const INITIAL_VIEW: RoomView = {
 };
 
 export type ViewAction =
-  | { type: 'snapshot'; items: MessageWithDeliveries[]; participants: ParticipantState[]; room: RoomState }
+  | { type: 'snapshot'; items: MessageWithDeliveries[]; participants: ParticipantState[]; room: RoomState; accounts?: AccountUsage[] }
   | { type: 'event'; event: RoomEvent }
   | { type: 'status'; status: ConnectionStatus }
   | { type: 'notice'; notice: string | null };
@@ -43,6 +47,7 @@ export function reduceView(view: RoomView, action: ViewAction): RoomView {
         ...view,
         items,
         participants: sortParticipants(action.participants),
+        accounts: action.accounts ?? view.accounts,
         room: action.room,
         loaded: true,
         lastSeq: Math.max(view.lastSeq, items.at(-1)?.message.seq ?? 0),
@@ -78,6 +83,10 @@ function applyEvent(view: RoomView, event: RoomEvent): RoomView {
       return { ...view, notice: `Room service stopping: ${event.reason}` };
     case 'activity.appended':
       return view; // the activity pane keeps its own state; the room view is unaffected
+    case 'account.updated': {
+      const others = view.accounts.filter((a) => a.account.sourceKey !== event.account.account.sourceKey);
+      return { ...view, accounts: [...others, event.account].sort((a, b) => a.account.harness.localeCompare(b.account.harness)) };
+    }
   }
 }
 

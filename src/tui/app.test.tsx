@@ -30,9 +30,8 @@ test('renders the conversation, participants and connection from the room snapsh
   const frame = plain(ui.lastFrame());
   assert.match(frame, /vibe-pairing/);
   assert.match(frame, /● connected/);
-  assert.match(frame, /PARTICIPANTS/);
-  assert.match(frame, /claude\s*│/);
-  assert.match(frame, /busy/);
+  assert.match(frame, /● astra idle/, 'participants as chips in the top bar');
+  assert.match(frame, /● claude busy/);
   assert.match(frame, /Kevin → everyone/);
   assert.match(frame, /message number 3/);
   assert.deepEqual(src.requests.map((r) => r.method).slice(0, 3), ['subscribe', 'who', 'read']);
@@ -130,15 +129,15 @@ test('a failed load says so and retries on r', async () => {
   assert.match(plain(ui.lastFrame()), /message number 1/);
 });
 
-test('while disconnected the participant panel is marked stale', async () => {
+test('while disconnected the participant chips are greyed "last known" (no liveness claim)', async () => {
   const src = room(1);
   const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
   await tick();
   src.setStatus({ state: 'disconnected' });
   await tick();
   const frame = plain(ui.lastFrame());
-  assert.match(frame, /PARTICIPANTS · stale/);
-  assert.match(frame, /last known: busy/);
+  assert.match(frame, /◌ claude last known: busy/);
+  assert.doesNotMatch(frame, /● claude/, 'no live dot while disconnected');
 });
 
 test('after a reconnect, delivery states of messages already on screen are refreshed', async () => {

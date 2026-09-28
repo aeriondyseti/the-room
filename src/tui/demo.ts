@@ -32,6 +32,30 @@ export function demoSource(): FakeRoomSource {
       participant('claude_builder', 'claude', { activity: 'waiting_permission', usage: usage(88, 880_000) }),
     ],
   });
+  const now = Date.now();
+  const at = (h: number) => new Date(now + h * 3_600_000).toISOString();
+  source.setAccounts([
+    {
+      account: { harness: 'claude', scope: 'profile', key: 'demo-claude', sourceKey: 'demo-claude' },
+      buckets: [
+        { id: 'claude', windows: [
+          { kind: 'five_hour', durationMinutes: 300, usedPercent: 38, resetsAt: at(2.2) },
+          { kind: 'seven_day', durationMinutes: 10_080, usedPercent: 71, resetsAt: at(80) },
+        ] },
+        { id: 'claude-fable', label: 'Fable', windows: [{ kind: 'seven_day_fable', durationMinutes: 10_080, usedPercent: 22, resetsAt: at(80) }] },
+      ],
+      status: 'ok', source: 'claude statusline tap', checkedAt: at(0), observedAt: at(0),
+    },
+    {
+      account: { harness: 'codex', scope: 'account', key: 'demo-codex', sourceKey: 'demo-codex' },
+      plan: 'pro',
+      buckets: [{ id: 'codex', windows: [
+        { kind: 'secondary', durationMinutes: 300, usedPercent: null, resetsAt: null, reason: 'Codex reports no 5h window for this plan' },
+        { kind: 'primary', durationMinutes: 10_080, usedPercent: 16, resetsAt: at(120) },
+      ] }],
+      status: 'ok', source: 'codex account/rateLimits/read', checkedAt: at(0), observedAt: at(0),
+    },
+  ]);
   const kickoff = source.post(HUMAN, 'all', 'Morning! Plan for today: finish the TUI composer, then run the four-agent acceptance fixture.', {
     states: { claude: 'replied', astra: 'replied', codex_reviewer: 'queued', claude_builder: 'submitted' },
   });

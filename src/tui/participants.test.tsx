@@ -37,10 +37,10 @@ test('relativeTime and participant summary', () => {
   assert.deepEqual(parts, ['3 agents', '2 online', '1 needs approval', '1 rebind needed']);
 });
 
-test('six participants: the panel shows what fits and points to /who for the rest; header summarizes', async () => {
+test('six participants: the top bar shows what fits and points to /who for the rest; header summarizes', async () => {
   const names = ['astra', 'claude', 'codex_reviewer', 'claude_builder', 'nova', 'orion'];
   const src = new FakeRoomSource({ participants: names.map((n, i) => agent(n, i === 3 ? { activity: 'waiting_permission' } : {})) });
-  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} />);
+  const ui = render(<App source={src} humanName="Kevin" width={70} height={16} />);
   const frame = await waitFor(() => plain(ui.lastFrame()), /6 agents · 6 online · 1 needs approval/);
   assert.match(frame, /\+\d+ more · \/who/);
   ui.stdin.write('/who');
@@ -92,7 +92,7 @@ test('/detail on a big broadcast in a short pane scrolls instead of clipping; ac
       attempts: [{ n: 1, startedAt: m.message.createdAt, finishedAt: m.message.createdAt, outcome: n === 'a6' ? 'failed' : 'submitted', evidence: n === 'a6' ? null : { kind: 'codex-queue', nativeId: 'q-' + n }, error: n === 'a6' ? { code: 'internal', message: 'codex queue exited with code 1 because the thread was archived by its owner', hint: 'rejoin the agent, then /retry' } : null }],
     });
   }
-  const ui = render(<App source={src} humanName="Kevin" width={70} height={16} />);
+  const ui = render(<App source={src} humanName="Kevin" width={70} height={18} />); // +2 rows for the top bar
   await waitFor(() => plain(ui.lastFrame()), /big broadcast/);
   ui.stdin.write('/detail');
   await new Promise((r) => setTimeout(r, 30));
