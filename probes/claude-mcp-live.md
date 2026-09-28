@@ -16,16 +16,21 @@ The chain is `node (mcp) → node (script) → timeout.exe → timeout.exe → <
 - A harness-launched MCP server (the normal path) has `claude.exe` as its direct parent (see
   probes/claude-identity-results.md), so it's unaffected.
 
-## Fix
-After the walk fails, fall back to the environment Claude exports to its tools:
-- Look up the registry record at `CLAUDE_PID`.
-- Accept it only when it is **live**, its start time is **verified**, and its `sessionId` equals
-  `CLAUDE_CODE_SESSION_ID`, so two independent signals agree.
+## Fix (as revised after review)
+There is an environment fallback, restricted to where it is sound:
+- It is **CLI-only** (`allowEnvFallback`), for `room join` or `room send` run from an agent's shell.
+- **The MCP server never uses it.** Harnesses launch MCP servers directly, so the parent-pid path applies.
+  The inherited `CLAUDE_*` environment isn't proof of who the caller is: a node-based harness started from a
+  Claude shell would inherit it too.
+- **Every process walked before the break must be a plain shell or launcher.** node.exe is excluded because
+  agy and Gemini are node.
+- **Then the live, start-time-verified record at `CLAUDE_PID` must carry exactly
+  `CLAUDE_CODE_SESSION_ID`.** It's labelled `claude-env-verified`.
 
-The walk depth default also went from 4 to 8, because shells and launchers stack up. The walk stays safe:
-ancestors must be verified, and another harness in the chain stops it.
+The walk depth default went from 4 to 8, because shells and launchers stack up. Ancestors must still be
+verified, and another harness in the chain stops the walk.
 
-## Result (after the fix)
+## Result (of this live run, before the review restricted the fallback to the CLI)
 ```
 room_join → Joined as "claude" (claude). Others can now reach you with to: "claude".
 room_who  → Participants (1): - claude (claude): unknown

@@ -24,7 +24,18 @@ export interface IdentityDeps {
   env: NodeJS.ProcessEnv;
   /** How far up the process tree to look for the owning Claude session (e.g. through a `cmd /c` shim). */
   maxAncestors?: number;
+  /**
+   * Allow the CLAUDE_PID + CLAUDE_CODE_SESSION_ID fallback when the process chain breaks. For the CLI run from an
+   * agent's shell only — never for the MCP server (harnesses launch it directly, so its parent is the harness).
+   * Even when allowed, every process walked before the break must be a known shell/launcher.
+   */
+  allowEnvFallback?: boolean;
 }
+
+/** Processes that may sit between a Claude shell and our CLI without being a harness of their own. */
+// Deliberately excludes node.exe: node-based harnesses (agy, gemini) run as node, so a node ancestor could be the
+// real caller. The CLI's own node process isn't walked (the walk starts at its parent).
+const SHELLS = /^(bash|sh|dash|zsh|cmd|pwsh|powershell|timeout|env|conhost|winpty|mintty)(\.exe)?$/i;
 
 const ID = /^[A-Za-z0-9-]{8,128}$/;
 
@@ -68,6 +79,7 @@ const OTHER_HARNESS = /^(codex|agy|gemini)(\.exe)?$/i;
 
 async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
   const envId = deps.env['CLAUDE_CODE_SESSION_ID'];
+  const walked: Array<string | null> = [];
   let pid: number | null = deps.ownParentPid;
   // Shells and launchers stack up between a harness and its tools (live: node → node → bash → bash → cmd →
   // claude.exe). Walking deeper is safe: ancestors must pass the start-time check and other harnesses stop it.
@@ -102,16 +114,20 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
         message: `This MCP server was launched by ${info.name}, which sent no thread identity; refusing to attribute the call to a Claude session above it.`,
       };
     }
-    pid = info?.ppid ?? null;
+    if (info === null) break; // the chain is broken here (e.g. an MSYS parent that already exited)
+    walked.push(info.name);
+    pid = info.ppid;
   }
-  // Fallback when the process chain is broken (e.g. Git Bash/MSYS fork emulation leaves parent pids pointing at
-  // exited processes): Claude exports CLAUDE_PID and CLAUDE_CODE_SESSION_ID to its tools. Accept only when the
-  // live, start-time-verified registry record at CLAUDE_PID has exactly that session id — two signals agree.
+  // CLI-only fallback when the process chain is broken (Git Bash/MSYS fork emulation leaves parent pids pointing at
+  // exited processes). CLAUDE_PID/CLAUDE_CODE_SESSION_ID are inherited, so they only count when (a) every process we
+  // walked before the break is a plain shell/launcher (no other harness could be the real caller), and (b) the live,
+  // start-time-verified record at CLAUDE_PID carries exactly that session id.
   const envPid = Number(deps.env['CLAUDE_PID']);
-  if (envId && Number.isInteger(envPid) && envPid > 0) {
+  const onlyShells = walked.length > 0 && walked.every((name) => name !== null && SHELLS.test(name));
+  if (deps.allowEnvFallback && onlyShells && envId && Number.isInteger(envPid) && envPid > 0) {
     const found = await lookupByPid(envPid, deps.claudeRegistry);
     if (found.status === 'live' && found.verified && found.record.sessionId === envId) {
-      return { ok: true, native: { harness: 'claude', sessionId: envId, source: 'claude-mcp-registry' } };
+      return { ok: true, native: { harness: 'claude', sessionId: envId, source: 'claude-env-verified' } };
     }
   }
   return {
@@ -119,7 +135,7 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
     code: 'identity_unresolved',
     message:
       'Could not identify the calling session (no Codex thread metadata and no owning Claude session found). ' +
-      'Use the CLI instead: `room send --as <name> …`.',
+      'Ask the human to add the room MCP server to this session and resume it (docs/ONBOARDING.md).',
   };
 }
 

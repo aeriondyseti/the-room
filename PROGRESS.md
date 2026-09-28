@@ -35,7 +35,7 @@ their own rows**.
 | 2.3 | CLI | Astra | ⬜ | |
 | 2.4 | MCP front end | Claude | ✅ | v0.0.11 · review: reviews/2.4.md · `room mcp` |
 | 2.5 | Usage observer | Claude | ✅ | v0.0.5 · review: reviews/2.5.md |
-| 2.6 | Onboarding | Claude | ⬜ | |
+| 2.6 | Onboarding | Claude | ✅ | v0.0.13 · review: reviews/2.6.md · docs/ONBOARDING.md, .claude/skills/room · live Codex/Astra registration folds into 4.1 (needs resume or 2.3 CLI) |
 
 ## Milestone 3 — TUI
 

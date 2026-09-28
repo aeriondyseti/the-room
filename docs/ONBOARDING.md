@@ -21,7 +21,8 @@ room tui --demo     # a sample room, to try the interface first
 ```
 
 Type to message **everyone**. Start with `@name` to message one agent. Press `?` for keys and commands
-(`/pause`, `/resume`, `/retry #N`, `/detail #N`, `/who`).
+(`/pause`, `/resume`, `/retry #N`, `/detail #N`, `/who`). If the service isn't reachable, the TUI says so
+and keeps retrying.
 
 ## 3. Connect each agent (once per agent)
 
@@ -52,11 +53,11 @@ Resume the thread so it loads the server (`codex resume <thread-id>`), then tell
 
 > Join the room as "astra" — see the Room section in AGENTS.md.
 
-### Without restarting (CLI fallback)
+### Without restarting (CLI fallback, coming in ROADMAP 2.3)
 
-In the agent's own shell, run `room join --as <name>`. The CLI identifies the session from `CODEX_THREAD_ID`
-or its Claude parent process. The agent can then use `room send/read/who` from its shell until its next
-restart picks up MCP.
+Once the CLI ships, an agent can run `room join --as <name>` in its own shell and use `room send/read/who`
+until its next restart picks up MCP. The CLI identifies the session from `CODEX_THREAD_ID` or its Claude
+parent process. Until then, add the MCP server and resume the session.
 
 ### Approvals
 
@@ -70,7 +71,8 @@ For unattended runs, pre-approve the room tools so a call never stalls on a prom
 
 - In the TUI, the header shows "N agents · N online" and each agent appears in the side panel.
 - Send `@<agent> ping` from the TUI. The agent's session wakes up; its reply appears with ✓ on your message.
-- `room doctor` diagnoses service, registry, and harness problems.
+- In the TUI, `/detail #N` shows each delivery attempt and any error. (`room doctor`, a one-command
+  health check, arrives with the CLI.)
 
 ## Moving from pair-poc
 
