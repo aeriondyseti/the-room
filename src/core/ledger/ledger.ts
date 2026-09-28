@@ -3,6 +3,8 @@ import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantState, RoomMessage, RoomState, Sender, TargetSnapshot } from '../../contracts/domain.js';
+import { HUMAN } from '../../contracts/domain.js';
+import { loadConfig } from '../config.js';
 import { RoomError } from '../../contracts/errors.js';
 
 export interface EnqueueInput {
@@ -12,6 +14,7 @@ export interface EnqueueInput {
   body: string;
   /** Original addressing intent, before expanding the registry; stable across retries/rebinds. */
   requestedRecipients: string[] | null;
+  /** Null target means the reserved human recipient only; offline agents retain their native target. */
   recipients: { name: string; target: TargetSnapshot | null }[];
   addressing: 'broadcast' | 'direct';
   replyTo?: string | null;
@@ -33,6 +36,9 @@ export class Ledger {
     this.file = path.join(root, '.room', 'room.db');
     this.db = new DatabaseSync(this.file);
     try {
+      const waitMs = loadConfig().sqliteBusyTimeoutMs;
+      if (!Number.isSafeInteger(waitMs) || waitMs > 2_147_483_647) throw new RoomError('bad_request', 'SQLite busy timeout exceeds its supported range.');
+      this.db.exec(`PRAGMA busy_timeout = ${waitMs}`);
       const version = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
       if (version.user_version > 1) throw new RoomError('unsupported_version', 'Room database was created by a newer version.');
       this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
@@ -106,7 +112,10 @@ export class Ledger {
       message.seq = Number(inserted.lastInsertRowid);
       this.db.prepare('UPDATE messages SET payload=? WHERE id=?').run(JSON.stringify(message), message.id);
       for (const recipient of input.recipients) {
-        if (!recipient.target) continue;
+        if (!recipient.target) {
+          if (recipient.name !== HUMAN) throw new RoomError('bad_request', 'Only the human recipient may omit a native delivery target.');
+          continue;
+        }
         const delivery: Delivery = {
           messageId: message.id, recipient: recipient.name, target: structuredClone(recipient.target),
           state: 'queued', held: input.held ?? false, waiting: null, repliedBy: null,

@@ -102,3 +102,22 @@ test('runtime participant snapshots and usage cursors survive reconnect independ
   finally { reopened.close(); }
   ledger.removeParticipant('astra'); assert.deepEqual(ledger.participants(),[]);
 });
+
+test('human messages are log-only; an agent without a native target cannot disappear from delivery accounting', async t => {
+  const { ledger } = await setup(t);
+  const saved = ledger.enqueue(input({requestedRecipients:['human'],recipients:[{name:'human',target:null}]}));
+  assert.equal(saved.deliveries.length,0); assert.deepEqual(saved.message.to,['human']);
+  assert.throws(()=>ledger.enqueue(input({recipients:[{name:'astra',target:null}]})),{code:'bad_request'});
+  assert.equal(ledger.list(0,10).items.length,1);
+});
+test('bounded SQLite busy timeout tolerates another process briefly owning the writer lock', async t => {
+  const { ledger, root } = await setup(t);
+  const { spawn } = await import('node:child_process');
+  const code = `import {DatabaseSync} from 'node:sqlite'; const db=new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('ready\\n'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200); db.exec('ROLLBACK'); db.close();`;
+  const child = spawn(process.execPath,['--input-type=module','-e',code,path.join(root,'.room','room.db')],{windowsHide:true});
+  t.after(()=>{child.kill();});
+  const exited = new Promise<void>((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error(`writer exited ${code}`)));});
+  await new Promise<void>((resolve,reject)=>{child.stdout.once('data',()=>resolve());child.once('error',reject);child.once('exit',code=>{if(code!==0)reject(Error('writer failed before readiness'));});});
+  assert.equal(ledger.enqueue(input()).message.seq,1);
+  await exited;
+});

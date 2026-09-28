@@ -1,6 +1,6 @@
 ---
 name: local-code-review
-description: Codex agents' local code review of the current sprint's changes — the sprint-workflow step-2 gate. Independent per-dimension reviewers plus an adversarial verifier per finding, each in a separate read-only context; only a complete run satisfies the gate. Use before merging any sprint/<id> branch.
+description: Lean independent sprint review using two focused reviewers and one batched adversarial verifier when needed (ADR-0007); only complete reviews satisfy the gate.
 ---
 
 # Local Code Review (Codex edition)
@@ -8,8 +8,7 @@ description: Codex agents' local code review of the current sprint's changes —
 This is the Codex counterpart of `.claude/skills/local-code-review/SKILL.md`. Claude's version runs on its
 Workflow tool; this one gets the same **find, then adversarially verify** structure from **separate
 read-only Codex contexts** (`codex exec`), or from Codex sub-agents if your host provides them. The
-scoring, the `complete` rule, and the report format are the same, so reviews from both agents are
-comparable. Owner: Astra may refine this file (announce changes over pair-poc).
+scoring, lean fan-out, complete rule, and report format follow ADR-0007 and Kevin's direct override. Owner: Astra may refine this file (announce changes over pair-poc).
 
 ## Principle
 Quality over quantity. Only findings verified at **confidence 80 or more** are actionable. The verifier's
@@ -21,51 +20,35 @@ job is to *refute*.
 - Collect the guidance: the CLAUDE.md invariants (numbered list), the feature's ROADMAP **Done-when**, and
   the relevant DESIGN.md and proposal.md sections.
 
-## 2. Review: one independent context per dimension
-Run **five** reviewers, each in a fresh read-only context. For example:
+## 2. Lean independent review (ADR-0007; Kevin's explicit override)
+Run **two** fresh read-only contexts, each capped at approximately six findings:
+1. Correctness, failure handling, and load-bearing invariants.
+2. Contracts, Done-when, guidance and conventions.
 
-```powershell
-codex exec --sandbox read-only -C <worktree> "<reviewer prompt for dimension D>"
-```
+Use Codex subagents or independent `codex exec` contexts. Keep prompts/diffs focused; do not fan out by
+finding or dimension. Each returns findings `{file,line,title,description,reason,suggested_fix}` or an
+explicit empty array. A failed/empty response is not a clean review.
 
-(run them in parallel if your host allows). The dimensions, with the same prompts as Claude's version:
-
-1. **guidance**: CLAUDE.md conventions, DESIGN/proposal decisions, the Done-when, and tunables in config.
-2. **bugs**: logic, edge cases, resource leaks in *changed* lines. Verify library APIs before claiming
-   they're wrong.
-3. **invariants**: audit each CLAUDE.md load-bearing invariant against the changed code.
-4. **silent**: swallowed errors, ignored return values, defaults masking failures.
-5. **interface**: types and contracts, naming, agreement with `src/contracts/`.
-
-Each reviewer returns JSON findings
-`{file, line, title, description, reason, suggested_fix}` for **changed lines only**, with no confidence
-score. A reviewer that crashes or returns nothing counts as a **failure**, not as "clean".
-
-## 3. Verify: one adversarial context per finding
-For each finding, run a fresh read-only verifier told to **refute** it. It returns
-`{confidence 0-100, verified, rationale}`, using this rubric verbatim:
-- 0 = false positive, or pre-existing on an unchanged line;
-- 25 = maybe, unverified;
-- 50 = real but minor or a nitpick;
-- 75 = verified, important, hits in practice;
-- 100 = certain, frequent, evidence-confirmed.
-
-For large or risky diffs (adapters, ledger, identity), use **three** verifiers with different lenses
-(correctness, invariant, does-it-trigger); a majority must confirm at 80 or more.
+## 3. Batched adversarial verification
+If there are findings, run **one** fresh read-only verifier to try to refute all of them in one batch.
+Return `{finding,confidence,verified,rationale}` for each. Skip this agent when both reviewers are clean.
+Use the rubric: 0 false positive; 25 unverified; 50 real but minor; 75 verified important; 100 certain.
+No per-finding verifier fanout, including for risky diffs. Normal review cost is two or three agents.
 
 ## 4. Classify and decide `complete`
-- **actionable:** a majority of the required votes confirm at 80 or more.
-- **techdebt:** not actionable, but some vote is 50 or more, or the median is 26 or more.
-- **discard:** everything else.
-- `complete = (no reviewer or verifier failures) and (no finding missing a required vote)`. If it's not
-  complete, re-run the failed parts. **A partial review never passes the gate**, and it is never replaced
-  by an inline self-review.
+- Actionable: verified with confidence at least 80; fix every such finding.
+- Tech debt: plausibly real deferred findings above 25; record reason and follow-up.
+- Discard: obvious false positives at 25 or below.
+- Complete requires both reviewers to succeed and a verdict for every finding (if any). Retry only
+  failed parts. Never substitute self-review for a missing independent review.
+- Cross-reviews of the other agent's work use at most one subagent. Re-review substantial fixes using
+  the same lean shape; otherwise use a focused check of the changed behavior.
 
 ## 5. Report and act
 - Write `reviews/<sprint-id>.md`:
   - base and head SHAs, `complete` and any failures;
   - findings grouped **Critical** / **Important**, each with `file:line`, reason, fix, and
-    votes/rationale;
+    verification/rationale;
   - the tech-debt list.
 - Append the tech-debt items to TECH-DEBT.md (next TD id).
 - Fix **all** actionable findings. If the fixes were substantial, re-run this skill on the new diff.
