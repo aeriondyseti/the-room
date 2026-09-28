@@ -36,7 +36,10 @@ test('a referenced envelope never carries the token', () => {
   const e = buildEnvelope('/r', message('y'.repeat(5000)), 'claude', 1000, { snapshot: 'tok' });
   assert.equal(e.referenced, true);
   assert.equal(e.snapshot, false);
-  assert.doesNotMatch(e.text, /snapshot/);
+  assert.doesNotMatch(e.text, /snapshot: /);
+  assert.match(e.text, /Referenced content: this is only a preview\. Review the whole message with room_inbox/);
+  assert.match(e.text, /it is not covered, and a reply will come back NOT SENT/);
+  assert.doesNotMatch(e.text, /room_read/);
 });
 
 test('malformed tokens are refused rather than embedded', () => {

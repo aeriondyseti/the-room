@@ -112,7 +112,7 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 |---|---|---|---|---|
 | 7.1 | Inbox snapshots + guarded send (core) | Astra | ⬜ | contracts first |
 | 7.2 | Withdraw + urgent (core) | Astra | ⬜ | broker-pending only; native acceptance = too late (Kevin) |
-| 7.3 | Tools and CLI | Claude | ⬜ | against 7.1/7.2 contracts |
+| 7.3 | Tools and CLI | Claude | 🟡 | sprint/7.3: MCP room_send (guarded) / room_inbox / room_withdraw and CLI send/reply/inbox/withdraw built on src/presentation/crossing.ts, tested against fakes. **Merges after 7.1**: 4 real-service tests stay red until the service handles guarded_send (and then get a token first); no silent fallback to legacy send. Pending: baseline flag, envelope snapshot line (service-issued) |
 | 7.4 | TUI | Claude | ⬜ | |
 
 > Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core, Claude surfaces + spec. Native recall probes dropped per Kevin's scope decision.

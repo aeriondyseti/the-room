@@ -12,12 +12,17 @@ import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import { MAX_FRAME_BYTES, type Caller } from '../contracts/ipc.js';
 import { sanitize } from '../tui/format.js';
 import {formatResult} from './format.js';
+import {guardedSendText, inboxPageText, withdrawText} from '../presentation/crossing.js';
 
-export const COMMANDS = ['send','reply','read','who','join','doctor','pause','resume','retry','shutdown','migrate'];
+export const COMMANDS = ['send','reply','read','inbox','withdraw','who','join','doctor','pause','resume','retry','shutdown','migrate'];
 export const COMMAND_HELP = `room send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
+          [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--client-message-id KEY] [--file PATH | --stdin | TEXT...]
-room reply ID|#N [--as NAME] [--file PATH | --stdin | TEXT...]
+room reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
+          [--file PATH | --stdin | TEXT...]
 room read [ID|#N] [--after N] [--limit N]
+room inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N]
+room withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
 room who
 room join --as NAME [--rebind]
 room doctor
@@ -25,7 +30,11 @@ room pause [--resend-stop] | resume | shutdown
 room retry ID|#N RECIPIENT [--confirm-uncertain]
 room migrate
 
-All commands accept --json. Exit: 0 success, 2 input/identity error, 3 unavailable/uncertain service.
+All commands accept --json. Exit: 0 success, 2 input/identity error, 3 unavailable/uncertain service,
+4 agent send not sent by the crossing guard (nothing queued; the output shows what to read first).
+Agent sends need --snapshot from room inbox or the delivery being answered. --urgent (with --reason)
+skips that check and goes ahead of queued ordinary messages; it is audited. The human is never guarded.
+withdraw cancels only deliveries not yet handed to a recipient's session; after that it is too late.
 Ordinary human sends broadcast; agents must choose --to. --as fallback is labelled declared.
 Use --file or --stdin to avoid shell quoting. -- ends option parsing.
 Pause holds future delivery and sends a stop request; it cannot interrupt a busy turn.
@@ -44,10 +53,12 @@ export interface CommandDeps {
   connect?: (root: string, autoStart: boolean) => Promise<Link>;
 }
 const flags: Record<string, string[]> = {
-  send:['as','to','reply-to','client-message-id','file','stdin'], reply:['as','to','client-message-id','file','stdin'], read:['after','limit'], who:[],
+  send:['as','to','reply-to','client-message-id','file','stdin','snapshot','urgent','reason','revises'],
+  reply:['as','to','client-message-id','file','stdin','snapshot','urgent','reason','revises'],
+  read:['after','limit'], inbox:['as','snapshot','cursor','limit'], withdraw:['as','recipients'], who:[],
   join:['as','rebind'], doctor:[], pause:['resend-stop'], resume:[], retry:['confirm-uncertain'], shutdown:[], migrate:[],
 };
-const booleans = new Set(['json','stdin','rebind','resend-stop','confirm-uncertain']);
+const booleans = new Set(['json','stdin','rebind','resend-stop','confirm-uncertain','urgent']);
 function parse(argv: string[], command: string) {
   const options: Record<string,string|true> = {}; const positional: string[] = []; let ended = false;
   for (let i=0;i<argv.length;i++) {
@@ -90,7 +101,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
   try {
     const {options:o,positional:p}=parse(argv,command); json=!!o.json;
     const text=(key:string)=>typeof o[key]==='string'?o[key] as string:undefined;
-    if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'?2:command==='read'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
+    if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'?2:command==='read'||command==='withdraw'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
     const cwd=deps.cwd??process.cwd(), config=loadConfig(deps.env??process.env);
     const root=await resolveRoomRoot(cwd,config.roomRoot??undefined);
     const identify=deps.identify??(name=>cliCaller(name,{
@@ -128,10 +139,35 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       const replyTo=replyRef?await ref(link,replyRef):null;
       let to=text('to')?.split(/[,\s]+/).map(x=>x.replace(/^@/,'').toLowerCase()).filter(Boolean)??null;
       if(to===null&&replyTo){const original=(await link.request('read',{messageId:replyTo})).items[0];if(!original)throw new RoomError('not_found','The message being replied to no longer exists.');to=[original.message.from.name];}
+      const reason=text('reason')?.trim()??'';
+      const guardFlags=o.snapshot!==undefined||!!o.urgent||o.reason!==undefined||o.revises!==undefined;
+      if(caller.kind==='human'&&guardFlags)throw new RoomError('bad_request','--snapshot, --urgent, --reason and --revises are for agent sends; the human is never guarded.');
+      if(caller.kind==='agent'&&o.urgent&&!reason)throw new RoomError('bad_request','An urgent send needs --reason.','Say why it cannot wait, or drop --urgent and send with --snapshot.');
+      if(caller.kind==='agent'&&!o.urgent&&o.reason!==undefined)throw new RoomError('bad_request','--reason is only used with --urgent.');
       const clientMessageId=text('client-message-id')??randomUUID();
       // Printed before dispatch so a lost response still leaves a usable idempotency key.
       err(sanitize(`client_message_id=${clientMessageId}`));
-      print(await link.request('send',{caller,to,body,replyTo,clientMessageId}));return 0;
+      if(caller.kind==='human'){print(await link.request('send',{caller,to,body,replyTo,clientMessageId}));return 0;}
+      const outcome=await link.request('guarded_send',{caller,to,body,replyTo,clientMessageId,
+        ...(text('snapshot')!==undefined?{snapshot:text('snapshot')!}:{}),...(o.urgent?{urgent:{reason}}:{}),...(text('revises')!==undefined?{revisesAttemptId:text('revises')!}:{})});
+      if(json)out(JSON.stringify(outcome));
+      else if(outcome.status==='not_sent')out(sanitize(guardedSendText(outcome,'cli')));
+      else{const extra=guardedSendText(outcome,'cli');out(formatResult('send',outcome.result)+(extra?'\n'+sanitize(extra):''));}
+      // 4: refused by the crossing guard with nothing queued, distinct from input (2) and service (3) errors.
+      return outcome.status==='sent'?0:4;
+    }
+    if(command==='inbox'){
+      if(caller.kind!=='agent')throw new RoomError('identity_mismatch','inbox reviews an agent\'s messages; no agent context was detected.','Run it from the agent\'s session, or pass --as NAME.');
+      const page=await link.request('inbox',{caller,...(text('snapshot')!==undefined?{snapshot:text('snapshot')!}:{}),...(text('cursor')!==undefined?{cursor:text('cursor')!}:{}),...(o.limit!==undefined?{limit:integer(o.limit,'limit')!}:{})});
+      out(json?JSON.stringify(page):sanitize(inboxPageText(page,'cli')));return 0;
+    }
+    if(command==='withdraw'){
+      if(p.length!==1)throw new RoomError('bad_request','withdraw requires a message ID or #number.');
+      const messageId=await ref(link,p[0]!);const seq=/^#?(\d+)$/.exec(p[0]!);
+      const recipients=text('recipients')?.split(/[,\s]+/).map(x=>x.replace(/^@/,'').toLowerCase()).filter(Boolean);
+      if(recipients&&recipients.length===0)throw new RoomError('bad_request','--recipients names nobody.');
+      const outcome=await link.request('withdraw',{caller,messageId,...(recipients?{recipients}:{})});
+      out(json?JSON.stringify(outcome):sanitize(withdrawText(outcome,seq?Number(seq[1]):undefined)));return 0;
     }
     if(command==='join') {
       const name=text('as');if(!name)throw new RoomError('bad_request','join requires --as NAME.');

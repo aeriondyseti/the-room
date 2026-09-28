@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { MessageWithDeliveries, ParticipantState } from '../contracts/domain.js';
 import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import type { Caller, Method, Params, Result } from '../contracts/ipc.js';
+import { formatMessages, guardedSendText, inboxPageText, withdrawText } from '../presentation/crossing.js';
 import {deliveryDetail} from '../presentation/delivery.js';
 import { VERSION } from '../version.js';
 import type { IdentityResult } from './identity.js';
@@ -70,7 +71,13 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         'Send a message to the room. It is delivered natively to each recipient (their session wakes up by itself) and ' +
         'the human sees every message. Address recipients explicitly: an agent name, several names, "human" for Kevin, ' +
         'or "all" (every other participant). When answering a message, pass its id (or #number) as reply_to so the sender ' +
-        'sees it as answered. Returns the message number and each recipient\'s delivery state.',
+        'sees it as answered.\n' +
+        'Crossing guard: pass snapshot, the token from your latest room_inbox result or from the delivery you are ' +
+        'answering. If anything addressed to you is not covered by it, the message is NOT sent: the result shows what ' +
+        'you missed plus a fresh snapshot. Read it, revise if needed, and send again with that snapshot and ' +
+        'revises_attempt_id. Keep your latest snapshot for the next send.\n' +
+        'urgent (with a reason) sends without the check and ahead of the recipient\'s not-yet-delivered messages. Use it ' +
+        'only for time-critical messages; it is audited and shown as URGENT. It never interrupts a turn already in progress.',
       inputSchema: {
         to: z
           .union([z.string(), z.array(z.string())])
@@ -78,6 +85,10 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           .describe('Recipient name(s): "astra", "astra, claude", ["astra","claude"], "human", or "all". Omit only when reply_to is supplied; defaults to that message\'s sender.'),
         text: z.string({ error: 'Provide the message body as a string in the text field.' }).min(1, 'Provide a non-empty message in the text field.').describe('Message content (markdown/plain text). Put the message body in this text field.'),
         reply_to: z.string().optional().describe('Message id or #number you are replying to.'),
+        snapshot: z.string().optional().describe('Your latest inbox snapshot token (from room_inbox, a not-sent result, or the delivery you are answering).'),
+        urgent: z.boolean().optional().describe('Send without the snapshot check, ahead of queued ordinary messages. Requires reason.'),
+        reason: z.string().optional().describe('Why this is urgent (required with urgent; shown to the recipient and the human).'),
+        revises_attempt_id: z.string().optional().describe('The attempt id from a NOT SENT result that this message replaces.'),
         client_message_id: z
           .string()
           .optional()
@@ -88,6 +99,9 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
     },
     async (args, extra) =>
       guard(async () => {
+        const reason = args.reason?.trim() ?? '';
+        if (args.urgent && !reason) throw new RoomError('bad_request', 'An urgent send needs a reason.', 'Add reason: why this cannot wait, or drop urgent and send with your snapshot.');
+        if (!args.urgent && reason) throw new RoomError('bad_request', 'reason is only used with urgent: true.', 'Set urgent: true, or remove reason.');
         const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
         const r = await room();
         const replyTo = args.reply_to ? await resolveMessageRef(r, args.reply_to) : null;
@@ -98,24 +112,91 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           if(!original)throw new RoomError('not_found','The message being replied to no longer exists.');
           to=[original.message.from.name];
         }else throw new RoomError('no_recipients','Provide to, or reply_to to address the original sender.');
-        const result = await r.request('send', {
+        const outcome = await r.request('guarded_send', {
           caller,
           to,
           body: args.text,
           replyTo,
           clientMessageId: args.client_message_id ?? randomUUID(),
+          ...(args.snapshot !== undefined ? { snapshot: args.snapshot } : {}),
+          ...(args.urgent ? { urgent: { reason } } : {}),
+          ...(args.revises_attempt_id !== undefined ? { revisesAttemptId: args.revises_attempt_id } : {}),
         });
-        return text(sendSummary(result, note));
+        if (outcome.status === 'not_sent') {
+          // Not a transport failure, but the send did not happen: flag it so the model cannot mistake it for success.
+          return { isError: true, content: [{ type: 'text', text: guardedSendText(outcome) + (note ? `\nNote: ${note}` : '') }] };
+        }
+        const extraText = guardedSendText(outcome);
+        return text(sendSummary(outcome.result, note) + (extraText ? `\n${extraText}` : ''));
       }),
   );
 
+  server.registerTool(
+    'room_inbox',
+    {
+      title: 'Review your inbox',
+      description:
+        'Messages addressed to you that your snapshot does not cover yet, oldest first, plus a new snapshot token that ' +
+        'covers what it returned. Pass your latest snapshot to get only what is new; without one you get everything ' +
+        'addressed to you. If the result says Incomplete, call again with the given cursor and snapshot. Use the final ' +
+        'snapshot with room_send.',
+      inputSchema: {
+        snapshot: z.string().optional().describe('Your latest snapshot token; omit to review from the start.'),
+        cursor: z.string().optional().describe('The cursor from an Incomplete result, to continue it.'),
+        limit: z.number().int().min(1).max(READ_MAX).optional().describe(`Most items to return (max ${READ_MAX}); the room also caps by size.`),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (args, extra) =>
+      guard(async () => {
+        const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
+        const r = await room();
+        const page = await r.request('inbox', {
+          caller,
+          ...(args.snapshot !== undefined ? { snapshot: args.snapshot } : {}),
+          ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+          ...(args.limit !== undefined ? { limit: args.limit } : {}),
+        });
+        return text(inboxPageText(page) + (note ? `\nNote: ${note}` : ''));
+      }),
+  );
+
+  server.registerTool(
+    'room_withdraw',
+    {
+      title: 'Withdraw a message you sent',
+      description:
+        'Cancel a message you sent, for recipients whose session has not been handed it yet. Once a recipient\'s session ' +
+        'has accepted it, it is too late: that recipient is reported as not withdrawn. The human sees messages as soon ' +
+        'as they are sent, so a withdraw never hides it from them. The message stays in history, marked withdrawn.',
+      inputSchema: {
+        message_id: z.string().describe('The id or #number of your message.'),
+        recipients: z.union([z.string(), z.array(z.string())]).optional().describe('Only these recipients (default: all original recipients).'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    async (args, extra) =>
+      guard(async () => {
+        const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
+        const r = await room();
+        const messageId = await resolveMessageRef(r, args.message_id);
+        const seqMatch = /^#?(\d+)$/.exec(args.message_id.trim());
+        const outcome = await r.request('withdraw', {
+          caller,
+          messageId,
+          ...(args.recipients !== undefined ? { recipients: parseRecipients(args.recipients) } : {}),
+        });
+        return text(withdrawText(outcome, seqMatch ? Number(seqMatch[1]) : undefined) + (note ? `\nNote: ${note}` : ''));
+      }),
+  );
   server.registerTool(
     'room_read',
     {
       title: 'Read room messages',
       description:
-        'Read recent room messages (newest last), messages after a given #number, or one message in full by id/#number ' +
-        '(use this when a delivery said the full text is available via room read).',
+        'Read recent room messages (newest last), messages after a given #number, or one message in full by id/#number. ' +
+        'This is history only: to review messages addressed to you before replying (including a long message a delivery ' +
+        'only previewed), use room_inbox, which is what your snapshot covers.',
       inputSchema: {
         message_id: z.string().optional().describe('A message id or #number to fetch in full.'),
         after: z.number().int().nonnegative().optional().describe('Only messages after this #number.'),
@@ -252,15 +333,6 @@ function sendSummary(result: MessageWithDeliveries & { deduplicated: boolean }, 
   if (states.length) lines.push(`Delivery: ${states.join('; ')}.`);
   if (note) lines.push(`Note: ${note}`);
   return lines.join('\n');
-}
-
-function formatMessages(items: MessageWithDeliveries[], full: boolean): string {
-  return items
-    .map(({ message: m, deliveries }) => {
-      const head = `#${m.seq} ${m.createdAt} ${m.from.name}${m.from.identity.mode === 'declared' ? ' (declared)' : ''} → ${m.addressing === 'broadcast' ? 'all' : m.to.join(', ')}${m.replyTo ? ` (reply to ${m.replyTo})` : ''}${m.kind === 'stop_request' ? ' [STOP REQUEST]' : ''}${full ? `\nid: ${m.id}` : ''}`;
-      return `${head}\n${m.body}${deliveries.length?'\nDelivery: '+deliveries.map(d=>`${d.recipient} ${deliveryDetail(d)}`).join('; '):''}`;
-    })
-    .join('\n\n');
 }
 
 function formatWho(participants: ParticipantState[], paused: boolean): string {
