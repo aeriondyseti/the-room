@@ -97,7 +97,7 @@ test('room errors come back with their code and hint', async () => {
 
 test('room_join with rebind passes the current binding as expectedPrevious', async () => {
   const f = fakeLink({
-    who: () => ({ participants: [{ name: 'astra', harness: 'codex', sessionId: 'old-thread-0000', liveness: 'offline', activity: 'unknown', pending: 0, usage: null, livenessCheckedAt: null }], room: { paused: false, pausedAt: null, stopRequestId: null } }),
+    who: () => ({ participants: [{ name: 'astra', harness: 'codex', sessionId: 'old-thread-0000', liveness: 'rebind_needed', activity: 'unknown', pending: 0, usage: null, livenessCheckedAt: null }], room: { paused: false, pausedAt: null, stopRequestId: null } }),
     join: () => ({ registration: { name: 'astra', harness: 'codex', sessionId: THREAD }, created: false, rebound: true }),
   });
   const { call } = await connectClient(f.link);
@@ -108,12 +108,29 @@ test('room_join with rebind passes the current binding as expectedPrevious', asy
   assert.equal(join.native.sessionId, THREAD);
 });
 
+test('room_rejoin: rebind never takes over a live name or another harness\'s name', async () => {
+  const who = (liveness: string, harness = 'codex') => () => ({ participants: [{ name: 'astra', harness, sessionId: 'old-thread-0000', liveness, activity: 'idle', pending: 0, usage: null, livenessCheckedAt: null }], room: { paused: false, pausedAt: null, stopRequestId: null } });
+  const live = await connectClient(fakeLink({ who: who('online'), join: () => assert.fail('must not join') }).link);
+  assert.match((await live.call('room_join', { name: 'astra', rebind: true })).text, /rebind_conflict: .*still online/);
+  const cross = await connectClient(fakeLink({ who: who('offline', 'claude'), join: () => assert.fail('must not join') }).link);
+  assert.match((await cross.call('room_join', { name: 'astra', rebind: true })).text, /rebind_conflict: .*claude session/);
+});
+
 test('room_read formats messages and a full fetch by #N', async () => {
-  const f = fakeLink({ read: (p) => ((p as Params<'read'>).messageId ? { items: [msg(5, { body: 'the full text' })], lastSeq: 5, hasMore: false } : { items: [msg(4), msg(5)], lastSeq: 5, hasMore: true }) });
+  const f = fakeLink({
+    read: (p) => {
+      const q = p as Params<'read'>;
+      if (q.messageId) return { items: [msg(5, { body: 'the full text' })], lastSeq: 25, hasMore: false };
+      if (q.afterSeq !== undefined && q.afterSeq !== null && q.limit === 1) return { items: [msg(q.afterSeq + 1)], lastSeq: 25, hasMore: true };
+      return { items: [msg(24), msg(25)], lastSeq: 25, hasMore: true };
+    },
+  });
   const { call } = await connectClient(f.link);
-  const list = await call('room_read', {});
-  assert.match(list.text, /#4 .* astra → claude\nbody 4/);
-  assert.match(list.text, /more available: room_read with after=5/);
+  const list = await call('room_read', { limit: 2 });
+  assert.match(list.text, /#24 .* astra → claude\nbody 24/);
+  assert.match(list.text, /older messages exist: room_read with after=21 limit=2/, 'latest reads point at OLDER history');
+  const forward = await call('room_read', { after: 3, limit: 2 });
+  assert.match(forward.text, /newer messages exist: room_read with after=25/);
   const one = await call('room_read', { message_id: '#5' });
   assert.match(one.text, /id: m5\nthe full text/);
 });
@@ -128,6 +145,9 @@ test('parseRecipients: all wins, @ and case are normalized, empty is an error', 
 
 const repo = mkdtempSync(join(tmpdir(), 'vp-mcp-real-'));
 execFileSync('git', ['init', '-q', repo]);
+// Isolation: the auto-started service inherits this env, so production adapter wiring can never reach a real
+// Codex install from tests (the fake thread ids below must not be queued anywhere real).
+process.env['ROOM_CODEX_EXECUTABLE'] = join(repo, 'no-such-codex.exe');
 after(async () => {
   try {
     const admin = await RoomClient.connect(repo, { client: 'cli', autoStart: false });

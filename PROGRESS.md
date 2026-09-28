@@ -33,7 +33,7 @@ their own rows**.
 | 2.1 | Codex adapter | Astra | ⬜ | |
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ⬜ | |
-| 2.4 | MCP front end | Claude | ⬜ | |
+| 2.4 | MCP front end | Claude | ✅ | review: reviews/2.4.md · `room mcp` |
 | 2.5 | Usage observer | Claude | ✅ | v0.0.5 · review: reviews/2.5.md |
 | 2.6 | Onboarding | Claude | ⬜ | |
 

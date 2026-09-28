@@ -9,10 +9,16 @@ export type IdentityResult =
   | { ok: true; native: NativeEvidence; note?: string }
   | { ok: false; code: 'identity_unresolved' | 'identity_mismatch'; message: string };
 
+export interface ProcessInfo {
+  ppid: number | null;
+  /** Executable name, e.g. "codex.exe" (null when unknown). */
+  name: string | null;
+}
+
 export interface IdentityDeps {
   claudeRegistry: ClaudeRegistryDeps;
-  /** Parent pid of `pid` (null when unknown). The MCP server's own parent is `process.ppid`. */
-  parentOf(pid: number): Promise<number | null>;
+  /** Parent pid + executable name of `pid`; throws when the process table can't be read. */
+  processInfo(pid: number): Promise<ProcessInfo | null>;
   /** This MCP process's parent pid (injectable for tests). */
   ownParentPid: number;
   env: NodeJS.ProcessEnv;
@@ -57,6 +63,9 @@ function codexIds(meta: Record<string, unknown> | undefined): Array<{ field: str
   return out;
 }
 
+/** Another harness in the chain means that harness launched us; never attribute its calls to a Claude above it. */
+const OTHER_HARNESS = /^(codex|agy|gemini)(\.exe)?$/i;
+
 async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
   const envId = deps.env['CLAUDE_CODE_SESSION_ID'];
   let pid: number | null = deps.ownParentPid;
@@ -64,6 +73,10 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
   for (let depth = 0; pid !== null && pid > 0 && depth <= limit; depth++) {
     const found = await lookupByPid(pid, deps.claudeRegistry);
     if (found.status === 'live') {
+      // Only the direct parent may be accepted with an unverifiable start time; walked ancestors must verify.
+      if (!found.verified && depth > 0) {
+        return { ok: false, code: 'identity_unresolved', message: "Couldn't verify the owning Claude session's process identity." };
+      }
       const sessionId = found.record.sessionId;
       const note =
         envId && envId !== sessionId
@@ -74,7 +87,20 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
     if (found.status === 'stale' || found.status === 'error') {
       return { ok: false, code: 'identity_unresolved', message: `Couldn't verify the calling Claude session: ${found.detail}.` };
     }
-    pid = await deps.parentOf(pid);
+    let info: ProcessInfo | null;
+    try {
+      info = await deps.processInfo(pid);
+    } catch {
+      return { ok: false, code: 'identity_unresolved', message: "Couldn't read the process table to find the calling session; try again." };
+    }
+    if (info?.name && OTHER_HARNESS.test(info.name)) {
+      return {
+        ok: false,
+        code: 'identity_unresolved',
+        message: `This MCP server was launched by ${info.name}, which sent no thread identity; refusing to attribute the call to a Claude session above it.`,
+      };
+    }
+    pid = info?.ppid ?? null;
   }
   return {
     ok: false,
@@ -85,28 +111,32 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
   };
 }
 
-/** Parent pid lookup via the OS process table (Windows: CIM). Cached briefly; null when unknown. */
-export function windowsParentOf(timeoutMs = 5_000): (pid: number) => Promise<number | null> {
-  let cache: { at: number; table: Map<number, number> } | null = null;
+/**
+ * Process info via the OS process table (Windows: CIM). A successful table is cached briefly; a failed load is
+ * NOT cached and throws, so a transient failure is reported as such rather than as "no owning session".
+ */
+export function windowsProcessInfo(timeoutMs = 5_000, cacheMs = 10_000): (pid: number) => Promise<ProcessInfo | null> {
+  let cache: { at: number; table: Map<number, ProcessInfo> } | null = null;
   const load = () =>
-    new Promise<Map<number, number>>((resolve) => {
+    new Promise<Map<number, ProcessInfo>>((resolve, reject) => {
       if (process.platform !== 'win32') return resolve(new Map());
       execFile(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }'],
+        ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.Name)" }'],
         { windowsHide: true, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 },
         (err, stdout) => {
-          const table = new Map<number, number>();
-          if (!err) for (const line of stdout.split(/\r?\n/)) {
-            const m = /^(\d+) (\d+)$/.exec(line.trim());
-            if (m) table.set(Number(m[1]), Number(m[2]));
+          if (err) return reject(err);
+          const table = new Map<number, ProcessInfo>();
+          for (const line of stdout.split(/\r?\n/)) {
+            const m = /^(\d+) (\d+) ?(.*)$/.exec(line.trim());
+            if (m) table.set(Number(m[1]), { ppid: Number(m[2]), name: m[3] || null });
           }
           resolve(table);
         },
       );
     });
   return async (pid) => {
-    if (!cache || Date.now() - cache.at > 10_000) cache = { at: Date.now(), table: await load() };
+    if (!cache || Date.now() - cache.at > cacheMs) cache = { at: Date.now(), table: await load() };
     return cache.table.get(pid) ?? null;
   };
 }

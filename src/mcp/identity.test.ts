@@ -22,7 +22,7 @@ function deps(records: Array<{ pid: number; sessionId: string; procStart?: strin
     processStartTime: async () => '1',
     pidDomain: 'test',
   };
-  return { claudeRegistry: registry, parentOf: async () => null, ownParentPid: 100, env: {}, ...over };
+  return { claudeRegistry: registry, processInfo: async () => null, ownParentPid: 100, env: {}, ...over };
 }
 
 test('Codex: per-call _meta.threadId identifies the caller; all supplied ids must agree', async () => {
@@ -47,9 +47,23 @@ test('Claude: the parent process registry identifies the caller; env is only a c
 });
 
 test('Claude: walks up through a launcher process to the owning session', async () => {
-  const d = deps([{ pid: 7, sessionId: CLAUDE }], { ownParentPid: 100, parentOf: async (pid) => (pid === 100 ? 50 : pid === 50 ? 7 : null) });
+  const tree: Record<number, { ppid: number; name: string }> = { 100: { ppid: 50, name: 'cmd.exe' }, 50: { ppid: 7, name: 'node.exe' } };
+  const d = deps([{ pid: 7, sessionId: CLAUDE }], { ownParentPid: 100, processInfo: async (pid) => tree[pid] ?? null });
   const r = await resolveCaller(undefined, d);
   assert.equal(r.ok && r.native.sessionId, CLAUDE);
+});
+
+test('a Codex host launched from inside a Claude session is never attributed to that Claude', async () => {
+  const tree: Record<number, { ppid: number; name: string }> = { 100: { ppid: 7, name: 'codex.exe' } };
+  const r = await resolveCaller({}, deps([{ pid: 7, sessionId: CLAUDE }], { ownParentPid: 100, processInfo: async (pid) => tree[pid] ?? null }));
+  assert.equal(r.ok, false);
+  assert.match(!r.ok ? r.message : '', /launched by codex\.exe/);
+});
+
+test('an unreadable process table is reported as such (retryable), not as "no session"', async () => {
+  const r = await resolveCaller({}, deps([], { processInfo: async () => { throw new Error('CIM timeout'); } }));
+  assert.equal(r.ok, false);
+  assert.match(!r.ok ? r.message : '', /Couldn't read the process table/);
 });
 
 test('no evidence → unresolved with the CLI fallback; env alone is not enough', async () => {

@@ -28,16 +28,31 @@ const READ_MAX = 100;
 
 export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   const server = new McpServer({ name: 'vibe-pairing-room', version: VERSION });
-  let link: RoomLink | null = null;
+  // One shared connection attempt at a time: concurrent first calls await the same promise (no leaked sockets).
+  let link: Promise<RoomLink> | null = null;
 
-  const room = async (): Promise<RoomLink> => {
+  const room = (): Promise<RoomLink> => {
     if (link) return link;
-    const fresh = await options.connect();
-    fresh.onDisconnect?.(() => {
-      if (link === fresh) link = null;
-    });
-    link = fresh;
-    return fresh;
+    const attempt = options.connect().then(
+      (fresh) => {
+        fresh.onDisconnect?.(() => {
+          if (link === attempt) link = null;
+        });
+        return fresh;
+      },
+      (err: unknown) => {
+        if (link === attempt) link = null;
+        throw err;
+      },
+    );
+    link = attempt;
+    return attempt;
+  };
+
+  /** Close the room connection (used when the MCP host goes away). */
+  (server as McpServer & { closeRoom?: () => void }).closeRoom = () => {
+    void link?.then((l) => l.close?.()).catch(() => {});
+    link = null;
   };
 
   const agentCaller = async (meta: Record<string, unknown> | undefined): Promise<{ caller: Caller; note?: string }> => {
@@ -66,7 +81,8 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           .optional()
           .describe('Optional idempotency key; reuse it when retrying the same message so it is never sent twice.'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      // Not idempotent unless the caller reuses client_message_id.
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async (args, extra) =>
       guard(async () => {
@@ -114,7 +130,16 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           includeDeliveries: true,
         });
         if (res.items.length === 0) return text(args.after !== undefined ? `No messages after #${args.after}.` : 'The room has no messages yet.');
-        return text(formatMessages(res.items, false) + (res.hasMore ? `\n(more available: room_read with after=${res.items.at(-1)!.message.seq})` : ''));
+        const limit = args.limit ?? READ_DEFAULT;
+        let more = '';
+        if (res.hasMore) {
+          // Cursor reads page forward (newer); latest reads have OLDER history before the first item.
+          more =
+            args.after !== undefined
+              ? `\n(newer messages exist: room_read with after=${res.items.at(-1)!.message.seq})`
+              : `\n(older messages exist: room_read with after=${Math.max(0, res.items[0]!.message.seq - 1 - limit)} limit=${limit})`;
+        }
+        return text(formatMessages(res.items, false) + more);
       }),
   );
 
@@ -156,7 +181,16 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         let expectedPrevious: { harness: 'claude' | 'codex'; sessionId: string } | null = null;
         if (args.rebind) {
           const current = (await r.request('who', {})).participants.find((p) => p.name === args.name);
-          if (current) expectedPrevious = { harness: current.harness, sessionId: current.sessionId };
+          if (current && current.sessionId !== who.native.sessionId) {
+            // A rebind moves YOUR name to your new session; it must never take over someone else's live name.
+            if (current.harness !== who.native.harness) {
+              throw new RoomError('rebind_conflict', `"${args.name}" belongs to a ${current.harness} session; a ${who.native.harness} session can't take it over.`, 'Pick a different name.');
+            }
+            if (current.liveness === 'online') {
+              throw new RoomError('rebind_conflict', `"${args.name}" is bound to a session that is still online.`, 'If that is really your old session, close it first; otherwise pick a different name.');
+            }
+            expectedPrevious = { harness: current.harness, sessionId: current.sessionId };
+          }
         }
         const res = await r.request('join', { name: args.name, native: who.native, expectedPrevious });
         const verb = res.created ? 'Joined' : res.rebound ? 'Rebound' : 'Already joined';
