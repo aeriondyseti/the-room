@@ -363,7 +363,10 @@ export class RoomService {
     if(this.kickTimer)clearTimeout(this.kickTimer);
     const now=Date.now();
     const retryAt=now+Math.max(1000,loadConfig().dispatchPollMs);
-    const next=this.ledger.openKickProposals().reduce((min,p)=>Math.min(min,p.voters.every(v=>v.votedAt!==null)?retryAt:Date.parse(p.expiresAt)),this.ledger.humanKickIntents().length?retryAt:Number.POSITIVE_INFINITY);
+    const next=this.ledger.openKickProposals().reduce((min,p)=>{
+      const deadline=Date.parse(p.expiresAt);
+      return Math.min(min,p.voters.every(v=>v.votedAt!==null)||deadline<=now?retryAt:deadline);
+    },this.ledger.humanKickIntents().length?retryAt:Number.POSITIVE_INFINITY);
     if(!Number.isFinite(next)){this.kickTimer=null;return;}
     this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.serialized(()=>this.recoverKickProposals()).catch(()=>this.scheduleKickExpiry());},Math.min(2_147_483_647,Math.max(1,next-Date.now())));
     this.kickTimer.unref();
@@ -384,7 +387,9 @@ export class RoomService {
       if(proposal.voters.every(v=>v.votedAt!==null)){
         try{await this.executeKick(proposal,proposal.target,proposal.reason);}catch{/* Keep the approved proposal for the next recovery attempt. */}
       }
-      else if(Date.parse(proposal.expiresAt)<=Date.now())await this.expireKickProposal(proposal);
+      else if(Date.parse(proposal.expiresAt)<=Date.now()){
+        try{await this.expireKickProposal(proposal);}catch{/* Keep it open and retry when the registry is readable. */}
+      }
     }
     this.scheduleKickExpiry();
   }

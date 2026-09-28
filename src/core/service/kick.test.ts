@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Caller, Method, Params, RequestFrame, Result, RoomEvent } from '../../contracts/ipc.js';
@@ -115,6 +115,20 @@ test('an expired proposal closes on restart without removing its target',async t
   assert.deepEqual((await call(room,'who',{})).participants.map(p=>p.name).sort(),['astra','fable','target']);
   assert.equal(room.ledger.openKickProposal({harness:'codex',sessionId:c}),null);
   assert.ok(room.ledger.list(null,10).items.some(item=>item.message.kind==='system'&&item.message.body.includes('expired')));
+});
+
+test('an unreadable registry cannot make expired-proposal recovery abort startup',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-expire-unreadable-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const now=new Date();
+  const proposal=openKickProposal({astra:{harness:'codex',session_id:a},fable:{harness:'codex',session_id:b},target:{harness:'codex',session_id:c}},room.ledger.participants(),
+    'target',{harness:'codex',sessionId:a},'will retry expiry',now,5000,600_000);
+  room.ledger.putKickProposal({...proposal,expiresAt:new Date(now.getTime()-1).toISOString()});
+  await room.close();await writeFile(join(root,'session.toml'),'[participants\n','utf8');
+  room=new RoomService(root);
+  await room.start();
+  assert.ok(room.ledger.openKickProposal({harness:'codex',sessionId:c}));
 });
 
 test('a human kick interrupted after registry removal completes its queued tombstones on restart',async t=>{
