@@ -111,6 +111,11 @@ Milestone 6+ only after the v0.1.0 tag.
     identity detection, mismatch refusal, and the declared fallback are labelled; `room join` writes
     only harness and session_id.
 
+- [x] **2.3b Human desktop ancestry** *(Astra)* — treat Explorer as the Windows desktop ancestry
+  root after native-agent checks, rather than rejecting its normally exited launcher.
+  **Done-when:** human terminal chain accepted; detected agent, Claude env evidence and ancestry
+  broken below the desktop still rejected; regression tests and independent review complete.
+
 - [x] **2.4 MCP front end** *(Claude)*
   - **Scope:** official MCP SDK stdio server exposing `room_send`, `room_read` (paginated, with message
     fetch), `room_who`, and `room_join`; per-call identity; `client_message_id`; clear tool descriptions.

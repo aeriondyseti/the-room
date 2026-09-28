@@ -34,6 +34,7 @@ their own rows**.
 | 2.1b | Codex observed activity | Astra | ✅ | v0.0.20; review: reviews/2.1b.md; 206 tests; live online/busy observed. |
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ✅ | v0.0.14; review: reviews/2.3.md; 175 tests. |
+| 2.3b | Human desktop ancestry | Astra | ✅ | v0.0.22; review: reviews/2.3b.md; 208 tests after TUI restart integration. |
 | 2.4 | MCP front end | Claude | ✅ | v0.0.11 · review: reviews/2.4.md · `room mcp` |
 | 2.5 | Usage observer | Claude | ✅ | v0.0.5 · review: reviews/2.5.md |
 | 2.5b | Participant monitor (liveness, activity, usage in the service) | Claude | ✅ | v0.0.15 · review: reviews/2.5b.md · 179 tests · Astra cross-review applied |
