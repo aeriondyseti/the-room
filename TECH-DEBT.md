@@ -18,6 +18,8 @@ keep a sprint focused, and "good enough for now" decisions worth revisiting.
 | TD-0004 | 2026-09-28 | 0.1 | review (silent) | `fromErrorInfo` downgrades unknown error codes to `internal` (the original code survives only in the message text) | 35/low | Codes are a closed set shared by both sides at one protocol version | If the protocol versions ever diverge, carry the original code in a field | 🔵 Open |
 | TD-0005 | 2026-09-28 | 0.1 | review (guidance/invariants) | `Caller {kind:'human'}` is asserted by the client frame; human authority relies on the connection's `hello` client kind (`tui`/`cli`, never `mcp`) | 45/medium | The connection-level rule is documented in the contract; enforcement belongs to the service | 1.2: the service enforces "human only from tui/cli connections" for send/pause/resume/retry/shutdown. 2.3: the CLI sends an agent caller whenever it detects agent context and refuses human-only commands there (the rule is in the Caller doc). Test both | 🔵 Open |
 
+| TD-0010 | 2026-09-28 | 0.2 cross-review | Claude R28 | Registry errors need contract RoomError codes, Windows rename contention needs bounded retry, lock release needs independent close/unlink cleanup and owner nonce; crash temp files need ignore coverage. Clarify comment normalization and extend migration/root/CAS tests. POSIX directory fsync is not provided. | medium | Registry writes remain atomic and preserve data; service integration is the right place for error plumbing and contention qualification. | Address Windows/error/cleanup points in 1.2; record comment formatting policy. Keep POSIX fsync deferred while platform is native Windows. | 🔵 Open |
+
 ---
 
 ### Notes

@@ -39,7 +39,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 1 — Room service core
 
-- [ ] **1.1 SQLite ledger** *(Astra)* *(§4.3)*
+- [x] **1.1 SQLite ledger** *(Astra)* *(§4.3)*
   - **Scope:**
     - `node:sqlite` schema: `messages`, `deliveries` with attempt history, `participants` runtime
       snapshots, `usage_cursors`;
