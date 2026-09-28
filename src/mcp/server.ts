@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { MessageWithDeliveries, ParticipantState } from '../contracts/domain.js';
 import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import type { Caller, Method, Params, Result } from '../contracts/ipc.js';
+import {deliveryDetail} from '../presentation/delivery.js';
 import { VERSION } from '../version.js';
 import type { IdentityResult } from './identity.js';
 
@@ -242,7 +243,7 @@ async function resolveMessageRef(r: RoomLink, ref: string): Promise<string> {
 
 function sendSummary(result: MessageWithDeliveries & { deduplicated: boolean }, note: string | undefined): string {
   const { message, deliveries } = result;
-  const states = deliveries.map((d) => `${d.recipient} ${d.waiting ? `waiting (${d.waiting.replace('_', ' ')})` : d.held ? 'held (room paused)' : d.state}`);
+  const states = deliveries.map((d) => `${d.recipient} ${deliveryDetail(d)}`);
   const lines = [
     result.deduplicated
       ? `Already sent as #${message.seq} (this retry was recognised; nothing was sent twice).`
@@ -255,9 +256,9 @@ function sendSummary(result: MessageWithDeliveries & { deduplicated: boolean }, 
 
 function formatMessages(items: MessageWithDeliveries[], full: boolean): string {
   return items
-    .map(({ message: m }) => {
+    .map(({ message: m, deliveries }) => {
       const head = `#${m.seq} ${m.createdAt} ${m.from.name}${m.from.identity.mode === 'declared' ? ' (declared)' : ''} → ${m.addressing === 'broadcast' ? 'all' : m.to.join(', ')}${m.replyTo ? ` (reply to ${m.replyTo})` : ''}${m.kind === 'stop_request' ? ' [STOP REQUEST]' : ''}${full ? `\nid: ${m.id}` : ''}`;
-      return `${head}\n${m.body}`;
+      return `${head}\n${m.body}${deliveries.length?'\nDelivery: '+deliveries.map(d=>`${d.recipient} ${deliveryDetail(d)}`).join('; '):''}`;
     })
     .join('\n\n');
 }

@@ -1,11 +1,9 @@
 import type {Delivery,MessageWithDeliveries} from '../contracts/domain.js';
 import type {Result} from '../contracts/ipc.js';
+import {deliveryDetail} from '../presentation/delivery.js';
 import {sanitize} from '../tui/format.js';
 
-function state(d:Delivery):string {
- const status=d.waiting?`waiting: ${d.waiting.replaceAll('_',' ')}`:d.held?'held (room paused)':d.state;
- return `${d.recipient}: ${status}${d.referenced?' (full text available with room read)':''}`;
-}
+const state=(d:Delivery)=>`${d.recipient}: ${deliveryDetail(d)}`;
 function message(item:MessageWithDeliveries):string {
  const m=item.message;
  return `#${m.seq} ${m.from.name}${m.from.identity.mode==='declared'?' (declared)':''} → ${m.to.join(', ')||'room'}${m.kind==='stop_request'?' [STOP REQUEST]':''}\nid: ${m.id}${m.replyTo?` · reply to ${m.replyTo}`:''}\n${m.body}${item.deliveries.length?'\nDelivery: '+item.deliveries.map(state).join('; '):''}`;

@@ -66,6 +66,12 @@ test('reply_to defaults to the original sender while a missing address still fai
   }finally{await client.close();}
 });
 
+test('room_read exposes uncertain delivery diagnostics and reconciliation guidance',async()=>{
+ const item={...msg(1),deliveries:[{recipient:'astra',state:'uncertain',held:false,waiting:null,attempts:[{error:{code:'service_unavailable',message:'Receipt lost.',hint:'Inspect the target queue before retrying.'}}]}]};
+ const f=fakeLink({read:()=>({items:[item],lastSeq:1,hasMore:false})});const{client,call}=await connectClient(f.link);
+ try{const result=await call('room_read',{});assert.match(result.text,/Receipt lost/);assert.match(result.text,/Inspect the target queue/);assert.match(result.text,/Reconcile/);}finally{await client.close();}
+});
+
 test('room_send resolves identity per call, parses recipients, resolves #N replies, and always sends a client_message_id', async () => {
   const f = fakeLink({
     read: () => ({ items: [msg(12)], lastSeq: 12, hasMore: false }),
@@ -187,7 +193,8 @@ test('integration: two Codex agents join and message each other through the real
   assert.equal(sent.isError, false, sent.text);
   const read = await call('room_read', { message_id: '#1' }, { threadId: B });
   assert.match(read.text, /alpha → beta/);
-  assert.ok(read.text.endsWith(text), 'exact multiline/quote/Unicode round trip');
+  assert.equal(read.text.split('\n').slice(2, 2 + text.split('\n').length).join('\n'), text, 'exact multiline/quote/Unicode body before delivery diagnostics');
+  assert.match(read.text, /Delivery: beta/);
   const who = await call('room_who', {}, { threadId: B });
   assert.match(who.text, /alpha \(codex\)/);
   const spoof = await call('room_send', { to: 'alpha', text: 'x' }, { threadId: '01a0e605-cccc-7000-8000-000000000003' });
