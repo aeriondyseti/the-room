@@ -31,6 +31,7 @@ import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, li
 import { detailLines } from './detail.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
+import { DEFAULT_CONFIG } from '../core/config.js';
 import { INITIAL_VIEW, reduceView, type RoomView, type ViewAction } from './state.js';
 
 export interface AppProps {
@@ -51,6 +52,8 @@ export interface AppProps {
 }
 
 const MAX_DRAFT_ROWS = 5;
+/** Layout guard (not a preference): below this the conversation column is unreadable, so the panel yields. */
+const MIN_CONVERSATION_WIDTH = 30;
 
 /** Errors that prove a send never reached the service (so "Not sent" is true). Anything else is an unknown outcome. */
 const DEFINITELY_NOT_SENT = new Set(['bad_request', 'unknown_recipient', 'no_recipients', 'message_too_large', 'dedup_conflict', 'identity_unresolved', 'identity_mismatch', 'not_registered', 'invalid_state', 'unsupported_version']);
@@ -66,7 +69,16 @@ export function App({ theme = COLOR_THEME, ...props }: AppProps) {
   );
 }
 
-function Room({ source, humanName, width, height, historyLimit = 500, panelWidth = 26, panelBreakpoint = 90, catchUpMaxPages = 50 }: Omit<AppProps, 'theme'>) {
+function Room({
+  source,
+  humanName,
+  width,
+  height,
+  historyLimit = DEFAULT_CONFIG.tuiHistoryLimit,
+  panelWidth = DEFAULT_CONFIG.tuiPanelWidth,
+  panelBreakpoint = DEFAULT_CONFIG.tuiPanelBreakpoint,
+  catchUpMaxPages = DEFAULT_CONFIG.tuiCatchUpMaxPages,
+}: Omit<AppProps, 'theme'>) {
   const t = useTheme();
   const { exit } = useApp();
   const [view, dispatch] = useReducer(reduceView, INITIAL_VIEW, (v): RoomView => ({ ...v, connection: source.status() }));
@@ -89,7 +101,8 @@ function Room({ source, humanName, width, height, historyLimit = 500, panelWidth
   const window = useWindowSize();
   const colsTotal = Math.max(20, width ?? window.columns);
   const rows = Math.max(12, height ?? window.rows);
-  const showPanel = colsTotal >= panelBreakpoint;
+  // The panel never squeezes the conversation below a readable width, whatever the tunables say.
+  const showPanel = colsTotal >= Math.max(panelBreakpoint, panelWidth + 1 + MIN_CONVERSATION_WIDTH);
   const convWidth = colsTotal - (showPanel ? panelWidth + 1 : 0) - 1;
   const banner = view.connection.state !== 'connected' || (view.notice !== null && view.loaded);
   const loadFailed = !view.loaded && view.notice !== null;

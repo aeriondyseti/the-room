@@ -62,6 +62,26 @@ test('code fences keep indentation, hard-wrap without re-flowing, sit behind a g
   assert.deepEqual(bodyLines('~~~\na\n~~~', 20).map(lineText), ['  ┌ code', '  │ a', '  └'], 'tilde fences work');
 });
 
+test('fences never drop text: inline ``` stays prose, the full info string shows, CommonMark-style closing', () => {
+  const inline = bodyLines('```npm test``` fails on main\nnext line', 60).map(lineText);
+  assert.deepEqual(inline, ['  ```npm test``` fails on main', '  next line'], 'inline triple backticks are prose, not a fence');
+  const info = bodyLines('```js const x = 1\ncode\n```', 60).map(lineText);
+  assert.deepEqual(info, ['  ┌ js const x = 1', '  │ code', '  └'], 'text after the fence is shown, not dropped');
+  const four = bodyLines('````md\n```\ninner\n```\n````\nafter', 60).map(lineText);
+  assert.deepEqual(four, ['  ┌ md', '  │ ```', '  │ inner', '  │ ```', '  └', '  after'], 'a longer fence closes only on a fence at least as long');
+  const mixed = bodyLines('~~~\n```\n~~~\nprose', 60).map(lineText);
+  assert.deepEqual(mixed, ['  ┌ code', '  │ ```', '  └', '  prose'], 'a closing fence must use the same character');
+  const longInfo = bodyLines('```' + 'a'.repeat(30) + '\nx\n```', 20).map(lineText);
+  assert.deepEqual(longInfo.slice(0, 3), ['  ┌ ' + 'a'.repeat(16), '    ' + 'a'.repeat(14), '  │ x'], 'a long info string wraps');
+});
+
+test('the panel never squeezes the conversation below a readable width, whatever the tunables say', async () => {
+  const src = new FakeRoomSource({ participants: [agent('astra')] });
+  const ui = render(<App source={src} humanName="Kevin" width={100} height={16} panelWidth={80} panelBreakpoint={90} />);
+  await tick();
+  assert.doesNotMatch(plain(ui.lastFrame()), /PARTICIPANTS/, '80-col panel + 30-col minimum > 100 cols: single column');
+});
+
 test('first run: no agents → welcome with join steps; agents but no messages → who is here', async () => {
   const empty = render(<App source={new FakeRoomSource({ participants: [] })} humanName="Kevin" width={100} height={20} />);
   await tick();

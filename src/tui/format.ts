@@ -236,7 +236,26 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   return lines;
 }
 
-const FENCE = /^\s*(```|~~~)\s*([^\s`]*)/;
+const FENCE_OPEN = /^\s*(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
+
+/**
+ * CommonMark-style opening fence: 3+ backticks or tildes plus an info string. A backtick fence whose info string
+ * contains a backtick is inline code (e.g. "```npm test``` fails"), not a fence, so that line stays prose.
+ */
+function openFence(line: string): { ch: string; len: number; info: string } | null {
+  const m = FENCE_OPEN.exec(line);
+  if (!m) return null;
+  const info = m[2]!.trim();
+  if (m[1]![0] === '`' && info.includes('`')) return null;
+  return { ch: m[1]![0]!, len: m[1]!.length, info };
+}
+
+/** A closing fence uses the same character, is at least as long as the opener, and has nothing else on the line. */
+function closesFence(line: string, open: { ch: string; len: number }): boolean {
+  const m = FENCE_CLOSE.exec(line);
+  return !!m && m[1]![0] === open.ch && m[1]!.length >= open.len;
+}
 
 /**
  * Message body → lines. Prose is word-wrapped; fenced code blocks (``` or ~~~) keep their indentation, are
@@ -251,17 +270,20 @@ export function bodyLines(body: string, width: number, style: Segment = { text: 
     if (prose.length) for (const t of wrapText(prose.join('\n'), width - INDENT.length)) out.push([{ text: INDENT }, { ...style, text: t }]);
     prose = [];
   };
-  let fence: string | null = null;
+  let fence: { ch: string; len: number } | null = null;
   for (const raw of text.split('\n')) {
-    const m = FENCE.exec(raw);
-    if (fence === null && m) {
+    const open: ReturnType<typeof openFence> = fence === null ? openFence(raw) : null;
+    if (open) {
       flushProse();
-      fence = m[1]!;
-      out.push([{ text: INDENT }, { text: `┌ ${sanitize(m[2] || 'code')}`, dim: true }]);
+      fence = open;
+      // The whole info string is shown (wrapped, never dropped — invariant 9).
+      hardWrap(sanitize(open.info || 'code'), width - INDENT.length - 2).forEach((part, i) =>
+        out.push([{ text: INDENT }, { text: `${i === 0 ? '┌' : ' '} ${part}`, dim: true }]),
+      );
       continue;
     }
     if (fence !== null) {
-      if (m && m[1] === fence && raw.trim() === fence) {
+      if (closesFence(raw, fence)) {
         out.push([{ text: INDENT }, { text: '└', dim: true }]);
         fence = null;
         continue;
