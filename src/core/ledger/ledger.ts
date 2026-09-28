@@ -78,10 +78,13 @@ export class Ledger {
     const row=this.db.prepare('SELECT payload FROM crossing_records WHERE id=? AND scope=? AND kind=?').get(id,scope,kind) as {payload:string}|undefined;
     return row ? JSON.parse(row.payload) as T : null;
   }
+  discardCrossing(id:string,scope:string,kind:string):void {
+    this.db.prepare('DELETE FROM crossing_records WHERE id=? AND scope=? AND kind=?').run(id,scope,kind);
+  }
   /** Addressed history follows the frozen native target even after a name rebind. */
   inbox(scope: string): MessageWithDeliveries[] {
     const rows=this.db.prepare(`SELECT DISTINCT m.id,m.seq FROM messages m JOIN deliveries d ON d.message_id=m.id
-      WHERE json_extract(d.payload,'$.target.harness') || ':' || json_extract(d.payload,'$.target.sessionId') = ? ORDER BY m.seq`).all(scope) as {id:string;seq:number}[];
+      WHERE json_extract(d.payload,'$.target.harness') || ':' || json_extract(d.payload,'$.target.sessionId') = ? AND m.sender_scope<>? ORDER BY m.seq`).all(scope,scope) as {id:string;seq:number}[];
     return rows.map(row=>this.read(row.id));
   }
   setInboxDisplay(scope:string,snapshot:string):void {

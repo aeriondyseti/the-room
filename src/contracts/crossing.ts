@@ -56,7 +56,8 @@ export interface InboxReviewPage {
   /** Explicit exemption, not evidence the omitted content was returned or read. */
   baseline?: { attemptId: string; exemptedCount: number; reason: string };
   /** Oldest first, only uncovered content. Cold start includes all retained
-   * addressed messages whose delivery target matches this native binding,
+   * addressed messages whose delivery target matches this native binding, excluding
+   * messages authored by that same native sender,
    * regardless of transport state. No inferred read frontier from delivery/reply.
    * Rejoining the same binding does not reset that history.
    */

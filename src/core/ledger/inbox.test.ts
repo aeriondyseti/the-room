@@ -56,3 +56,15 @@ test('partial coverage keeps original chunk boundaries after restart/config chan
  while(page.hasMore){page=store.review('codex:one',{snapshot:page.snapshot,cursor:page.nextCursor!,limit:1});for(const item of page.items)if(item.kind==='message_part')text+=item.text;}
  assert.equal(text,body);assert.equal(store.uncovered('codex:one',page.snapshot),0);
 });
+
+test('unchanged review reuses its token and growing coverage stores deltas rather than copied history',t=>{
+ const root=mkdtempSync(join(tmpdir(),'vp-inbox-'));const ledger=new Ledger(root);t.after(()=>{ledger.close();rmSync(root,{recursive:true,force:true,maxRetries:10});});
+ const post=(body:string)=>ledger.enqueue({sender:{name:'human',kind:'human',identity:{mode:'human',source:'tui'}},senderScope:'human',body,requestedRecipients:['a'],recipients:[{name:'a',target:{harness:'codex',sessionId:'one'}}],addressing:'direct'});
+ post('one');const store=new InboxStore(ledger);const first=store.review('codex:one');
+ assert.equal(store.review('codex:one',{snapshot:first.snapshot}).snapshot,first.snapshot);
+ const secondMessage=post('two');const second=store.review('codex:one',{snapshot:first.snapshot});
+ const raw=ledger.crossing<{parent:string;covered:string[]}>(second.snapshot,'codex:one','snapshot')!;
+ assert.equal(raw.parent,first.snapshot);assert.deepEqual(raw.covered,[secondMessage.message.id]);
+ assert.equal(new InboxStore(ledger).uncovered('codex:one',second.snapshot),0);
+ ledger.discardCrossing(second.snapshot,'codex:one','snapshot');assert.equal(store.uncovered('codex:one',second.snapshot),null);
+});
