@@ -11,10 +11,12 @@ import { cliCaller } from './identity.js';
 import { RoomError, toErrorInfo } from '../contracts/errors.js';
 import { MAX_FRAME_BYTES, type Caller } from '../contracts/ipc.js';
 import { sanitize } from '../tui/format.js';
+import {formatResult} from './format.js';
 
-export const COMMANDS = ['send','read','who','join','doctor','pause','resume','retry','shutdown','migrate'];
+export const COMMANDS = ['send','reply','read','who','join','doctor','pause','resume','retry','shutdown','migrate'];
 export const COMMAND_HELP = `room send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
           [--client-message-id KEY] [--file PATH | --stdin | TEXT...]
+room reply ID|#N [--as NAME] [--file PATH | --stdin | TEXT...]
 room read [ID|#N] [--after N] [--limit N]
 room who
 room join --as NAME [--rebind]
@@ -28,7 +30,8 @@ Ordinary human sends broadcast; agents must choose --to. --as fallback is labell
 Use --file or --stdin to avoid shell quoting. -- ends option parsing.
 Pause holds future delivery and sends a stop request; it cannot interrupt a busy turn.
 Retry, pause, resume, shutdown and legacy registry migration are human-only.
-Reusing --client-message-id safely reconciles a lost send response. No automatic resend.`;
+Reusing --client-message-id safely reconciles a lost send response. No automatic resend.
+reply and send --reply-to default to the original sender when --to is omitted.`;
 
 type Link = Pick<RoomClient, 'request' | 'close'>;
 export interface CommandDeps {
@@ -41,7 +44,7 @@ export interface CommandDeps {
   connect?: (root: string, autoStart: boolean) => Promise<Link>;
 }
 const flags: Record<string, string[]> = {
-  send:['as','to','reply-to','client-message-id','file','stdin'], read:['after','limit'], who:[],
+  send:['as','to','reply-to','client-message-id','file','stdin'], reply:['as','to','client-message-id','file','stdin'], read:['after','limit'], who:[],
   join:['as','rebind'], doctor:[], pause:['resend-stop'], resume:[], retry:['confirm-uncertain'], shutdown:[], migrate:[],
 };
 const booleans = new Set(['json','stdin','rebind','resend-stop','confirm-uncertain']);
@@ -87,7 +90,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
   try {
     const {options:o,positional:p}=parse(argv,command); json=!!o.json;
     const text=(key:string)=>typeof o[key]==='string'?o[key] as string:undefined;
-    if(command!=='send'&&p.length>(command==='retry'?2:command==='read'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
+    if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'?2:command==='read'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
     const cwd=deps.cwd??process.cwd(), config=loadConfig(deps.env??process.env);
     const root=await resolveRoomRoot(cwd,config.roomRoot??undefined);
     const identify=deps.identify??(name=>cliCaller(name,{
@@ -95,7 +98,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       claudeRegistry:defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir,deps.env??process.env),config.claudeProcStartTimeoutMs),
     },message=>err(sanitize(message))));
     const connect=deps.connect??((root,autoStart)=>RoomClient.connect(root,{client:'cli',autoStart}));
-    const print=(value:unknown)=>out(json?JSON.stringify(value):sanitize(JSON.stringify(value,null,2)));
+    const print=(value:unknown)=>out(json?JSON.stringify(value):formatResult(command,value));
     if(command==='migrate') {
       if((await identify(null)).kind!=='human')throw new RoomError('identity_mismatch','Only the human may migrate the registry.');
       print({registry:await migrateLegacyRegistry(root)});return 0;
@@ -108,23 +111,27 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
         if(Object.values(registry).some(p=>p.harness==='codex')&&!checks.codexExecutable){
           healthy=false;checks.codexError={code:'service_unavailable',message:'Registered Codex participants cannot receive messages: native executable missing.',hint:'Install Codex on PATH or set ROOM_CODEX_EXECUTABLE to the native codex.exe (not a shell wrapper).'};
         }
-      }catch(e){checks.registry=toErrorInfo(e);healthy=false;}
-      try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service=toErrorInfo(e);healthy=false;}
+      }catch(e){const info=toErrorInfo(e);checks.registry={...info,hint:info.code==='invalid_state'?'From a human terminal, run room migrate for the known legacy schema; preserve and repair unknown schemas manually.':info.hint};healthy=false;}
+      try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run room who or room tui to auto-start the service. If that fails, inspect .room/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
       print(checks);return healthy?0:3;
     }
     link=await connect(root,true);
     if(command==='read'){print(await link.request('read',{...(p[0]?{messageId:await ref(link,p[0])}:{}),afterSeq:integer(o.after,'after'),limit:integer(o.limit,'limit'),includeDeliveries:true}));return 0;}
     if(command==='who'){print(await link.request('who',{}));return 0;}
     const caller=await identify(text('as')??null);
-    if(command==='send') {
+    if(command==='send'||command==='reply') {
+      const replyRef=command==='reply'?p.shift():text('reply-to');
+      if(command==='reply'&&!replyRef)throw new RoomError('bad_request','reply requires a message ID or #number.');
       const sourceCount=Number(!!o.file)+Number(!!o.stdin)+Number(p.length>0);
       if(sourceCount!==1)throw new RoomError('bad_request','Provide exactly one message source: text, --file or --stdin.');
       const body=o.file?await readFile(text('file')!,'utf8'):o.stdin?await(deps.stdin??readStdin)():p.join(' ');
-      const to=text('to')?.split(/[,\s]+/).map(x=>x.replace(/^@/,'').toLowerCase()).filter(Boolean)??null;
+      const replyTo=replyRef?await ref(link,replyRef):null;
+      let to=text('to')?.split(/[,\s]+/).map(x=>x.replace(/^@/,'').toLowerCase()).filter(Boolean)??null;
+      if(to===null&&replyTo){const original=(await link.request('read',{messageId:replyTo})).items[0];if(!original)throw new RoomError('not_found','The message being replied to no longer exists.');to=[original.message.from.name];}
       const clientMessageId=text('client-message-id')??randomUUID();
       // Printed before dispatch so a lost response still leaves a usable idempotency key.
-      err(`client_message_id=${clientMessageId}`);
-      print(await link.request('send',{caller,to,body,replyTo:text('reply-to')?await ref(link,text('reply-to')!):null,clientMessageId}));return 0;
+      err(sanitize(`client_message_id=${clientMessageId}`));
+      print(await link.request('send',{caller,to,body,replyTo,clientMessageId}));return 0;
     }
     if(command==='join') {
       const name=text('as');if(!name)throw new RoomError('bad_request','join requires --as NAME.');
