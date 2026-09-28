@@ -11,6 +11,7 @@ import type {
   ParticipantState,
   RoomMessage,
   RoomState,
+  TargetSnapshot,
 } from './domain.js';
 
 export const PROTOCOL_VERSION = 1;
@@ -28,8 +29,10 @@ export interface NativeEvidence {
 }
 
 /**
- * Who is calling. Clients never assert a verified identity themselves: they pass evidence and/or a
- * declared name, and the service decides (invariant 5).
+ * Who is calling. Clients never assert a verified agent identity themselves: they pass evidence and/or a
+ * declared name, and the service decides (invariant 5). `{kind:'human'}` is authorized by the connection,
+ * not by the frame: the service accepts it only on connections whose `hello` declared client `tui` or
+ * `cli`, and rejects it from `mcp` (agents never act as the human).
  */
 export type Caller =
   | { kind: 'human' }
@@ -80,8 +83,11 @@ export interface RequestMap {
     params: {
       name: string;
       native: NativeEvidence;
-      /** Required to rebind an existing name to a new native session (no silent clobbering). */
-      expectedSessionId?: string | null;
+      /**
+       * Compare-and-swap guard: required to rebind an existing name to a different native session. Must equal
+       * the currently registered target (harness + sessionId), else `duplicate_name` (no silent clobbering).
+       */
+      expectedPrevious?: TargetSnapshot | null;
     };
     result: { registration: ParticipantRegistration; created: boolean; rebound: boolean };
   };
@@ -90,7 +96,8 @@ export interface RequestMap {
     result: { deliveries: Delivery[] };
   };
   retry: {
-    params: { messageId: MessageId; recipient: string };
+    /** Human-only: re-attempts a failed/uncertain delivery (an uncertain one may already have been delivered). */
+    params: { caller: { kind: 'human' }; messageId: MessageId; recipient: string };
     result: { delivery: Delivery };
   };
   pause: {
@@ -102,12 +109,17 @@ export interface RequestMap {
     result: { room: RoomState; released: number };
   };
   subscribe: {
-    /** Replays events after `afterSeq` (message events only), then streams live events on this connection. */
+    /**
+     * Replays `message.created` events for messages with seq > `afterSeq`, then streams live events on this
+     * connection. Delivery/participant/room updates are NOT replayed: after every (re)subscribe the client must
+     * refresh state with `who` and `read {includeDeliveries: true}` (or `deliveries`) before trusting its view.
+     */
     params: { afterSeq?: number | null };
     result: { subscribed: true; lastSeq: number };
   };
   shutdown: {
-    params: Record<string, never>;
+    /** Human-only (same connection rule as Caller `human`). */
+    params: { caller: { kind: 'human' } };
     result: { stopping: true };
   };
 }
@@ -166,17 +178,31 @@ export function encodeFrame(frame: Frame): string {
   return JSON.stringify(frame) + '\n';
 }
 
+export type FrameErrorKind = 'malformed' | 'too_large' | 'unsupported_version';
+
+/**
+ * Framing failure. `frames` carries any frames decoded from the same chunk *before* the bad line, so a caller
+ * can still process them before closing. `unsupported_version` lets the service reply with the
+ * `unsupported_version` error code before closing.
+ */
 export class FrameError extends Error {
-  constructor(message: string) {
+  readonly kind: FrameErrorKind;
+  frames: Frame[];
+
+  constructor(kind: FrameErrorKind, message: string, frames: Frame[] = []) {
     super(message);
     this.name = 'FrameError';
+    this.kind = kind;
+    this.frames = frames;
   }
 }
 
 /**
- * Incremental decoder for newline-delimited frames. Feed it chunks as they arrive; it returns complete
- * frames and keeps partial trailing data. Throws FrameError on oversized or malformed frames so the
- * connection can be closed instead of silently dropping data.
+ * Incremental decoder for newline-delimited frames. Feed it *decoded strings* (use
+ * `socket.setEncoding('utf8')` so multi-byte characters split across pipe chunks are reassembled); it returns
+ * complete frames and keeps partial trailing data. Throws FrameError on an oversized or malformed frame, with
+ * any frames decoded earlier in the same chunk attached, so the connection can be closed instead of silently
+ * dropping data.
  */
 export class FrameDecoder {
   private buffer = '';
@@ -189,11 +215,17 @@ export class FrameDecoder {
       const line = this.buffer.slice(0, newline);
       this.buffer = this.buffer.slice(newline + 1);
       if (line.trim() === '') continue;
-      frames.push(parseFrame(line));
+      try {
+        frames.push(parseFrame(line));
+      } catch (err) {
+        this.buffer = '';
+        if (err instanceof FrameError) err.frames = frames;
+        throw err;
+      }
     }
     if (Buffer.byteLength(this.buffer, 'utf8') > MAX_FRAME_BYTES) {
       this.buffer = '';
-      throw new FrameError(`frame exceeds ${MAX_FRAME_BYTES} bytes`);
+      throw new FrameError('too_large', `frame exceeds ${MAX_FRAME_BYTES} bytes`, frames);
     }
     return frames;
   }
@@ -205,28 +237,30 @@ export class FrameDecoder {
 }
 
 export function parseFrame(line: string): Frame {
-  if (Buffer.byteLength(line, 'utf8') > MAX_FRAME_BYTES) throw new FrameError(`frame exceeds ${MAX_FRAME_BYTES} bytes`);
+  if (Buffer.byteLength(line, 'utf8') > MAX_FRAME_BYTES) throw new FrameError('too_large', `frame exceeds ${MAX_FRAME_BYTES} bytes`);
   let value: unknown;
   try {
     value = JSON.parse(line);
   } catch {
-    throw new FrameError('frame is not valid JSON');
+    throw new FrameError('malformed', 'frame is not valid JSON');
   }
-  if (!isRecord(value) || value['v'] !== PROTOCOL_VERSION) {
-    throw new FrameError(`unsupported protocol version: ${isRecord(value) ? String(value['v']) : 'n/a'}`);
+  if (!isRecord(value)) throw new FrameError('malformed', 'frame is not a JSON object');
+  if (value['v'] !== PROTOCOL_VERSION) {
+    throw new FrameError('unsupported_version', `unsupported protocol version: ${String(value['v'])} (expected ${PROTOCOL_VERSION})`);
   }
   const type = value['type'];
   if (type === 'request') {
     if (typeof value['id'] !== 'string' || !isMethod(value['method']) || !isRecord(value['params'])) {
-      throw new FrameError('malformed request frame');
+      throw new FrameError('malformed', 'malformed request frame');
     }
   } else if (type === 'response') {
-    if (typeof value['id'] !== 'string' || typeof value['ok'] !== 'boolean') throw new FrameError('malformed response frame');
-    if (value['ok'] === false && !isRecord(value['error'])) throw new FrameError('malformed error response');
+    if (typeof value['id'] !== 'string' || typeof value['ok'] !== 'boolean') throw new FrameError('malformed', 'malformed response frame');
+    if (value['ok'] === false && !isRecord(value['error'])) throw new FrameError('malformed', 'malformed error response');
+    if (value['ok'] === true && !Object.hasOwn(value, 'result')) throw new FrameError('malformed', 'success response without result');
   } else if (type === 'event') {
-    if (!isRecord(value['event']) || typeof value['event']['type'] !== 'string') throw new FrameError('malformed event frame');
+    if (!isRecord(value['event']) || typeof value['event']['type'] !== 'string') throw new FrameError('malformed', 'malformed event frame');
   } else {
-    throw new FrameError(`unknown frame type: ${String(type)}`);
+    throw new FrameError('malformed', `unknown frame type: ${String(type)}`);
   }
   return value as unknown as Frame;
 }

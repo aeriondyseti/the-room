@@ -21,6 +21,10 @@ export interface RoomConfig {
   roomRoot: string | null;
   /** Explicit Codex executable (else resolved from PATH). */
   codexExecutable: string | null;
+  /** Max wait to acquire the session.toml registry lock before failing with an actionable error. */
+  registryLockTimeoutMs: number;
+  /** Poll interval while waiting for the registry lock. */
+  registryLockPollMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -34,6 +38,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   humanDisplayName: 'Kevin',
   roomRoot: null,
   codexExecutable: null,
+  registryLockTimeoutMs: 5_000,
+  registryLockPollMs: 50,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -47,6 +53,8 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   humanDisplayName: 'ROOM_HUMAN_NAME',
   roomRoot: 'ROOM_ROOT',
   codexExecutable: 'ROOM_CODEX_EXECUTABLE',
+  registryLockTimeoutMs: 'ROOM_REGISTRY_LOCK_TIMEOUT_MS',
+  registryLockPollMs: 'ROOM_REGISTRY_LOCK_POLL_MS',
 };
 
 /** Build the effective config from defaults + environment. Invalid numeric overrides throw (never silently ignored). */
@@ -57,8 +65,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RoomConfig {
     if (raw === undefined || raw === '') continue;
     const current = DEFAULT_CONFIG[key];
     if (typeof current === 'number') {
-      const n = Number(raw);
-      if (!Number.isInteger(n) || n <= 0) throw new Error(`${ENV_KEYS[key]} must be a positive integer, got "${raw}"`);
+      const n = /^[0-9]+$/.test(raw) ? Number(raw) : Number.NaN;
+      if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`${ENV_KEYS[key]} must be a positive decimal integer, got "${raw}"`);
       (config as unknown as Record<string, unknown>)[key] = n;
     } else {
       (config as unknown as Record<string, unknown>)[key] = raw;

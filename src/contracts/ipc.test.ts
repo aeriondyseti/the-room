@@ -50,6 +50,30 @@ test('decoder rejects malformed and oversized frames loudly', () => {
   assert.throws(() => new FrameDecoder().push('x'.repeat(MAX_FRAME_BYTES + 1)), /exceeds/);
 });
 
+test('frame errors are classified and keep frames decoded before the bad line', () => {
+  const good = encodeFrame(req);
+  try {
+    new FrameDecoder().push(good + 'garbage\n' + good);
+    assert.fail('expected FrameError');
+  } catch (err) {
+    assert.ok(err instanceof FrameError);
+    assert.equal(err.kind, 'malformed');
+    assert.equal(err.frames.length, 1, 'the valid frame before the bad line is preserved');
+  }
+  const kindOf = (line: string) => {
+    try {
+      parseFrame(line);
+      return 'ok';
+    } catch (err) {
+      return err instanceof FrameError ? err.kind : 'other';
+    }
+  };
+  assert.equal(kindOf(JSON.stringify({ v: 9, type: 'event', event: { type: 'x' } })), 'unsupported_version');
+  assert.equal(kindOf(JSON.stringify({ v: 1, type: 'response', id: 'x', ok: true })), 'malformed', 'success needs result');
+  assert.equal(kindOf(JSON.stringify({ v: 1, type: 'response', id: 'x', ok: true, result: null })), 'ok');
+  assert.equal(kindOf('[1,2]'), 'malformed');
+});
+
 test('method list matches the request map and guards unknown methods', () => {
   assert.equal(new Set(METHODS).size, METHODS.length);
   assert.equal(isMethod('send'), true);

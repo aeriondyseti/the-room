@@ -1,5 +1,14 @@
 // Adapter contract: the only way the dispatcher touches a harness (invariants 1, 2, 8).
-import type { ErrorInfo, Harness, MessageId, SubmitEvidence, TargetSnapshot, UnavailableReason } from './domain.js';
+import type {
+  Activity,
+  ErrorInfo,
+  Harness,
+  Liveness,
+  MessageId,
+  SubmitEvidence,
+  TargetSnapshot,
+  UnavailableReason,
+} from './domain.js';
 
 export interface SubmitRequest {
   target: TargetSnapshot;
@@ -25,8 +34,8 @@ export type SubmitResult =
   | { status: 'uncertain'; error: ErrorInfo };
 
 export interface LivenessProbe {
-  liveness: 'online' | 'offline' | 'rebind_needed' | 'unknown';
-  activity: 'idle' | 'busy' | 'waiting_permission' | 'unknown';
+  liveness: Liveness;
+  activity: Activity;
   detail?: string;
 }
 
@@ -43,17 +52,37 @@ export const SUBMIT_STATUSES = ['submitted', 'unavailable', 'failed', 'uncertain
 
 /** Runtime guard for results coming from adapters (defends the ledger from malformed adapter output). */
 export function isSubmitResult(value: unknown): value is SubmitResult {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  switch (v['status']) {
+  if (!isRecord(value)) return false;
+  switch (value['status']) {
     case 'submitted':
-      return typeof v['evidence'] === 'object' && v['evidence'] !== null;
+      return isSubmitEvidence(value['evidence']);
     case 'unavailable':
-      return (v['reason'] === 'offline' || v['reason'] === 'rebind_needed') && typeof v['detail'] === 'string';
+      return (value['reason'] === 'offline' || value['reason'] === 'rebind_needed') && typeof value['detail'] === 'string';
     case 'failed':
     case 'uncertain':
-      return typeof v['error'] === 'object' && v['error'] !== null;
+      return isErrorInfo(value['error']);
     default:
       return false;
   }
+}
+
+export function isSubmitEvidence(value: unknown): value is SubmitEvidence {
+  if (!isRecord(value)) return false;
+  if (value['kind'] === 'codex-queue') return value['nativeId'] === null || typeof value['nativeId'] === 'string';
+  if (value['kind'] === 'claude-pipe-write') return Number.isInteger(value['pid']) && (value['pid'] as number) > 0;
+  return false;
+}
+
+export function isErrorInfo(value: unknown): value is ErrorInfo {
+  return (
+    isRecord(value) &&
+    typeof value['code'] === 'string' &&
+    value['code'] !== '' &&
+    typeof value['message'] === 'string' &&
+    (value['hint'] === undefined || typeof value['hint'] === 'string')
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // `room` entry point. Sprint 0.1 provides only --version/--help; commands arrive in 2.3 (CLI) and 3.x (TUI).
 import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { VERSION } from '../version.js';
 
@@ -31,11 +32,19 @@ export function run(argv: string[], out: (s: string) => void = console.log, err:
 /** True when this module is the process entry point (not when imported by tests). */
 export function isEntryPoint(argv1: string | undefined, moduleUrl: string): boolean {
   if (argv1 === undefined) return false;
+  return canonical(argv1) === canonical(fileURLToPath(moduleUrl));
+}
+
+/** Resolve symlinks when possible; fall back to the absolute path rather than silently failing. */
+function canonical(path: string): string {
+  let resolved = resolve(path);
   try {
-    return pathToFileURL(realpathSync(argv1)).href === pathToFileURL(realpathSync(fileURLToPath(moduleUrl))).href;
+    resolved = realpathSync(resolved);
   } catch {
-    return false;
+    // e.g. the file was replaced after launch: compare the unresolved absolute paths instead.
   }
+  const href = pathToFileURL(resolved).href;
+  return process.platform === 'win32' ? href.toLowerCase() : href;
 }
 
 if (isEntryPoint(process.argv[1], import.meta.url)) process.exitCode = run(process.argv.slice(2));

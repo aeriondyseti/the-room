@@ -15,7 +15,19 @@ test('isSubmitResult accepts each well-formed outcome', () => {
 });
 
 test('isSubmitResult rejects malformed adapter output', () => {
-  for (const bad of [null, {}, { status: 'submitted' }, { status: 'unavailable', reason: 'gone', detail: '' }, { status: 'failed' }, { status: 'done' }]) {
+  for (const bad of [
+    null,
+    {},
+    { status: 'submitted' },
+    { status: 'submitted', evidence: {} },
+    { status: 'submitted', evidence: { kind: 'claude-pipe-write', pid: 0 } },
+    { status: 'submitted', evidence: { kind: 'codex-queue', nativeId: 5 } },
+    { status: 'unavailable', reason: 'gone', detail: '' },
+    { status: 'failed' },
+    { status: 'failed', error: {} },
+    { status: 'uncertain', error: { code: '', message: 'x' } },
+    { status: 'done' },
+  ]) {
     assert.equal(isSubmitResult(bad), false, JSON.stringify(bad));
   }
 });
