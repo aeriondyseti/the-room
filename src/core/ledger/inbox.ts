@@ -50,9 +50,11 @@ export class InboxStore {
     return this.ledger.inbox(scope).filter(i=>!done.has(i.message.id)).length;
   }
   /** Only called when the service returns the complete immutable body. */
-  envelopeToken(scope:string,messageId:string):string {
-    if(!this.ledger.inbox(scope).some(i=>i.message.id===messageId))throw new RoomError('not_found','Message is not addressed to this binding.');
-    return this.issue(scope,{version:1,covered:[messageId],exempted:[],parts:{}});
+  envelopeToken(scope:string,messageId:string|string[]):string {
+    const ids=typeof messageId==='string'?[messageId]:messageId;
+    const addressed=new Set(this.ledger.inbox(scope).map(i=>i.message.id));
+    if(!ids.length||ids.some(id=>!addressed.has(id)))throw new RoomError('not_found','Message is not addressed to this binding.');
+    return this.issue(scope,{version:1,covered:[...new Set(ids)],exempted:[],parts:{}});
   }
   private remember(key:string,state:Snapshot):void {
     this.cache.delete(key);this.cache.set(key,structuredClone(state));

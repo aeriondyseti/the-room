@@ -143,6 +143,9 @@ export interface Delivery {
   state: DeliveryState;
   /** Broker cancellation tombstone; absent on pre-M7 deliveries. */
   withdrawnAt?: string;
+  /** Earliest native submission time for ordinary chat; persisted across restart. */
+  notBefore?: string;
+  burst?: { id:string; startedAt:string; holdMs:number; maxHoldMs:number };
   /** Room scheduling lane; absent on historical rows means normal. */
   priority?: 'normal' | 'urgent';
   held: boolean;

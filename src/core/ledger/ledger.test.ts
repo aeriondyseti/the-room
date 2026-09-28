@@ -17,6 +17,33 @@ async function setup(t: TestContext) {
   t.after(async () => { ledger.close(); await rm(root, { recursive: true, force: true }); });
   return { root, ledger };
 }
+
+test('burst deadlines debounce up to the first-commit cap and persist across reopen',async t=>{
+ const {root,ledger}=await setup(t);
+ const epoch=Date.parse('2026-09-28T00:00:00Z');t.mock.timers.enable({apis:['Date'],now:epoch});
+ const burstInput=()=>input({holdMs:500,batchHeld:true,batchMaxHoldMs:1000});
+ const first=ledger.enqueue(burstInput());
+ t.mock.timers.tick(400);const second=ledger.enqueue(burstInput());
+ assert.equal(ledger.delivery(first.message.id,'astra').notBefore,new Date(epoch+900).toISOString());
+ t.mock.timers.tick(400);ledger.enqueue(burstInput());
+ assert.equal(ledger.delivery(first.message.id,'astra').notBefore,new Date(epoch+1000).toISOString());
+ assert.equal(ledger.delivery(second.message.id,'astra').notBefore,new Date(epoch+1000).toISOString());
+ const reopened=new Ledger(root);try{assert.equal(reopened.delivery(first.message.id,'astra').notBefore,new Date(epoch+1000).toISOString());}finally{reopened.close();}
+ t.mock.timers.tick(201);const afterCap=ledger.enqueue(burstInput());
+ assert.notEqual(afterCap.deliveries[0]!.burst!.id,first.deliveries[0]!.burst!.id);
+});
+
+test('intervening sender, changed policy and urgency prevent extending or joining an old burst',async t=>{
+ const {ledger}=await setup(t);t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-09-28T00:00:00Z')});
+ const policy={holdMs:500,batchHeld:true,batchMaxHoldMs:2000};
+ const first=ledger.enqueue(input(policy));
+ ledger.enqueue(input({...policy,senderScope:'codex:other',sender:{name:'other',kind:'agent',identity:{mode:'verified',source:'codex-env'}}}));
+ const third=ledger.enqueue(input(policy));assert.notEqual(third.deliveries[0]!.burst!.id,first.deliveries[0]!.burst!.id);
+ const changed=ledger.enqueue(input({...policy,holdMs:600}));assert.notEqual(changed.deliveries[0]!.burst!.id,third.deliveries[0]!.burst!.id);
+ const urgent=ledger.enqueue(input({...policy,crossing:{attemptId:'u',guard:'urgent',urgent:{reason:'time critical'},newSinceSnapshot:null,revisesAttemptId:null}}));
+ assert.equal(urgent.deliveries[0]!.notBefore,undefined);assert.equal(urgent.deliveries[0]!.burst,undefined);
+ const stop=ledger.enqueue(input({...policy,kind:'stop_request'}));assert.equal(stop.deliveries[0]!.notBefore,undefined);
+});
 test('message and deliveries persist atomically with full body and snapshot', async t => {
   const { root, ledger } = await setup(t);
   assert.equal(ledger.file, path.join(root, '.room', 'room.db'));
