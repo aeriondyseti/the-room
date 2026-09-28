@@ -25,6 +25,13 @@ export interface RoomConfig {
   registryLockTimeoutMs: number;
   /** Poll interval while waiting for the registry lock. */
   registryLockPollMs: number;
+  /** Claude config dir holding `sessions/` (else CLAUDE_CONFIG_DIR, else ~/.claude). */
+  claudeConfigDir: string | null;
+  /**
+   * After writing a message to a Claude pipe, how long to watch for the receiver closing the connection
+   * (e.g. an auth rejection) before reporting `submitted`. A close inside this window is reported `uncertain`.
+   */
+  claudeSubmitSettleMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -40,6 +47,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   codexExecutable: null,
   registryLockTimeoutMs: 5_000,
   registryLockPollMs: 50,
+  claudeConfigDir: null,
+  claudeSubmitSettleMs: 300,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -55,6 +64,8 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   codexExecutable: 'ROOM_CODEX_EXECUTABLE',
   registryLockTimeoutMs: 'ROOM_REGISTRY_LOCK_TIMEOUT_MS',
   registryLockPollMs: 'ROOM_REGISTRY_LOCK_POLL_MS',
+  claudeConfigDir: 'ROOM_CLAUDE_CONFIG_DIR',
+  claudeSubmitSettleMs: 'ROOM_CLAUDE_SUBMIT_SETTLE_MS',
 };
 
 /** Build the effective config from defaults + environment. Invalid numeric overrides throw (never silently ignored). */
