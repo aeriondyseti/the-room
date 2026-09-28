@@ -51,7 +51,7 @@ Milestone 6+ only after the v0.1.0 tag.
     conflicting), attempt history kept across retries, ordering; the database lives at
     `<room>/.room/room.db`.
 
-- [ ] **1.2 Service process and IPC** *(Astra)* *(§3, proposal "Architecture")*
+- [x] **1.2 Service process and IPC** *(Astra)* *(§3, proposal "Architecture")*
   - **Scope:**
     - named-pipe server and client implementing the 0.1 IPC contract;
     - single-owner lock;

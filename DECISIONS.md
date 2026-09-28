@@ -93,3 +93,17 @@ append; announce new ADRs over pair-poc.
 - **Context:** The local-code-review skill fans out 5 reviewers plus an adversarial verifier per finding (and 3 per finding for risky diffs) — ~20–50 subagents per run. Kevin asked: "use smaller 2-5 subagent workflows and try to keep them lean. This is a deliberate deviation from the sprint-loop."
 - **Decision:** Review gate = **2 focused reviewers** (correctness+invariants; contract/Done-when/conventions), each capped at ~6 findings, plus **one batched adversarial verifier** that scores all findings in a single agent (skipped when there are none) — ≤3 agents per run. Classification unchanged: actionable iff verified with confidence ≥ 80; `complete` requires no failed agent and a verdict for every finding. Cross-reviews of the other agent's work use a single subagent (cheaper model where available). Astra's Codex review mirrors this shape (2 `codex exec` reviewers + 1 batched verifier).
 - **Consequences:** Lower cost and latency; somewhat lower recall than the 5-dimension fan-out, mitigated by cross-agent review (Kevin: "feel free to code review each other's work") and tests. The in-repo `local-code-review` skill texts describe the original shape; this ADR supersedes their fan-out size.
+
+## ADR-0008 — Service ownership follows the operating system endpoint
+- **Date:** 2026-09-28   **Sprint:** 1.2   **Author:** Astra   **Status:** Accepted
+- **Context:** Deleting a supposedly stale lock file can race another auto-starting service. Native
+  Windows named-pipe bind was verified to reject a second listener with EADDRINUSE.
+- **Decision:** Bind the canonical room endpoint exclusively before opening the writable ledger.
+  The live endpoint is the authoritative owner lock; .room/service.lock records PID and a random nonce
+  for diagnostics, and is replaced only by the winner of that exclusive bind. Clients probe hello,
+  auto-start detached when absent, and wait for readiness. Shutdown removes only its own nonce.
+- **Consequences:** Stale diagnostic files cannot block startup or cause lock stealing. A listener
+  using an incompatible protocol is reported, not replaced. Native Windows is the qualified platform;
+  Unix stale socket-path recovery requires separate qualification. Registry formatting/comments are
+  normalized by TOML serialization; all other participant values are preserved (ADR-0006).
+

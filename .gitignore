@@ -11,3 +11,6 @@ node_modules/
 dist/
 # Node
 *.tsbuildinfo
+
+# Registry replacement files can remain after an interrupted process
+session.toml.*.tmp
