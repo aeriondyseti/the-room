@@ -1,0 +1,9 @@
+{
+  "codex_exe": "C:\\Users\\Kevin\\.codex\\packages\\standalone\\current\\bin\\codex.exe",
+  "codex_max_chars": 24000,
+  "participants": {
+    "claude": { "harness": "claude", "session_id": "67b7bc1e-0c3e-4ffa-9d51-a88eb52d61d8" },
+    "astra": { "harness": "codex", "session_id": "01a0e605-2485-7693-a111-97e35d22a97e" },
+    "kevin": { "harness": "human" }
+  }
+}

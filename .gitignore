@@ -2,3 +2,7 @@
 session.toml
 # Room runtime data
 .room/
+# Agent worktrees
+.claude/worktrees/
+# pair-poc message log
+.room-poc/
