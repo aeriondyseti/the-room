@@ -50,7 +50,7 @@ For unattended operation, approve the room tools through the harness's permissio
 | Tab | Complete a participant name |
 | Alt+Enter | Add a line to the message |
 | `/who` | Show participants, observed status and usage freshness |
-| `/layout [top|left]`, Ctrl+B | Switch between the top bar and a left panel; the choice is remembered for this room |
+| `/layout [top\|left]`, Ctrl+B | Switch between the top bar and a left panel; the choice is remembered for this room |
 | `/detail #12` | Inspect delivery attempts and errors |
 | `/pause` | Hold future deliveries and send a stop request |
 | `/resume` | Release held deliveries in order |
