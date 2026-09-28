@@ -21,6 +21,7 @@ export interface EnqueueInput {
   kind?: RoomMessage['kind'];
   clientMessageId?: string | null;
   held?: boolean;
+  crossing?: RoomMessage['crossing'];
 }
 export interface UsageCursor { source: string; offset: number; identity: string; updatedAt: string }
 interface MessageRow { seq: number; id: string; payload: string; fingerprint: string }
@@ -121,6 +122,7 @@ export class Ledger {
         from: structuredClone(input.sender), to: input.recipients.map(r => r.name),
         addressing: input.addressing, replyTo: input.replyTo ?? null, kind: input.kind ?? 'chat',
         body: input.body, clientMessageId: key,
+        ...(input.crossing ? {crossing:structuredClone(input.crossing)} : {}),
       };
       const inserted = this.db.prepare('INSERT INTO messages(id,sender_scope,client_key,fingerprint,payload) VALUES(?,?,?,?,?)').run(message.id, input.senderScope, key, fingerprint, JSON.stringify(message));
       message.seq = Number(inserted.lastInsertRowid);
@@ -141,13 +143,13 @@ export class Ledger {
     });
   }
 
-  private fingerprint(input: Pick<EnqueueInput, 'sender' | 'body' | 'requestedRecipients' | 'addressing' | 'replyTo' | 'kind'>): string {
+  private fingerprint(input: Pick<EnqueueInput, 'sender' | 'body' | 'requestedRecipients' | 'addressing' | 'replyTo' | 'kind' | 'crossing'>): string {
     return JSON.stringify({ senderKind:input.sender.kind, body:input.body,
       requestedRecipients:input.requestedRecipients===null?null:[...new Set(input.requestedRecipients)].sort(),
-      addressing:input.addressing,replyTo:input.replyTo??null,kind:input.kind??'chat' });
+      addressing:input.addressing,replyTo:input.replyTo??null,kind:input.kind??'chat',...(input.crossing?.urgent?{urgent:input.crossing.urgent}:{}) });
   }
   /** Check a retry before resolving current recipients, which may have left since the original send. */
-  findRetry(input: Pick<EnqueueInput, 'sender' | 'senderScope' | 'body' | 'requestedRecipients' | 'addressing' | 'replyTo' | 'kind' | 'clientMessageId'>): (MessageWithDeliveries & {deduplicated:true}) | null {
+  findRetry(input: Pick<EnqueueInput, 'sender' | 'senderScope' | 'body' | 'requestedRecipients' | 'addressing' | 'replyTo' | 'kind' | 'clientMessageId' | 'crossing'>): (MessageWithDeliveries & {deduplicated:true}) | null {
     if(input.clientMessageId===null||input.clientMessageId===undefined)return null;
     const previous=this.db.prepare('SELECT id,fingerprint FROM messages WHERE sender_scope=? AND client_key=?').get(input.senderScope,input.clientMessageId) as {id:string;fingerprint:string}|undefined;
     if(!previous)return null;

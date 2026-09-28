@@ -1,3 +1,6 @@
+import { randomBytes } from 'node:crypto';
+import { InboxStore } from '../ledger/inbox.js';
+import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.js';
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import { Ledger } from '../ledger/ledger.js';
@@ -20,12 +23,13 @@ const ACTIVITY_CURSORS='activity-reader';
 
 export class RoomService {
   readonly ledger: Ledger;
+  readonly inbox: InboxStore;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
-  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
+  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.inbox=new InboxStore(this.ledger);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   /** With a workspace provider, every participant reports workspace (null = not observed yet), so /who can say so. */
   private workspaceEnabled=false;
@@ -51,8 +55,27 @@ export class RoomService {
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
     switch(request.method) {
+      case 'inbox': {
+        const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        if(caller.sender.kind!=='agent')throw new RoomError('bad_request','Inbox snapshots belong to agent bindings.');
+        const options:Omit<InboxRequest,'caller'>={};
+        if(p.snapshot!==undefined)options.snapshot=text(p.snapshot,'snapshot');
+        if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
+        if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
+        if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
+        return this.inbox.review(caller.scope,options);
+      }
+      case 'guarded_send':
       case 'send': {
         const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        const guarded=request.method==='guarded_send';
+        if(!guarded&&caller.sender.kind==='agent')throw new RoomError('bad_request','Agent sends require guarded_send with an inbox snapshot.');
+        const urgent=p.urgent===undefined?null:{reason:text(record(p.urgent).reason,'urgent.reason')};
+        if(urgent&&urgent.reason.length>1000)throw new RoomError('bad_request','Urgency reason exceeds 1000 characters.');
+        const snapshot=optionalText(p.snapshot,'snapshot')??undefined;
+        const revisesAttemptId=optionalText(p.revisesAttemptId,'revisesAttemptId');
+        if(revisesAttemptId&&!this.ledger.crossing(revisesAttemptId,caller.scope,'blocked_send'))throw new RoomError('bad_request','Revised attempt does not belong to this sender.');
+        const crossing={attemptId:randomBytes(24).toString('base64url'),guard:(caller.sender.kind==='human'?'human':urgent?'urgent':'current') as 'human'|'urgent'|'current',urgent,newSinceSnapshot:caller.sender.kind==='agent'?this.inbox.uncovered(caller.scope,snapshot):null,revisesAttemptId};
         const body=text(p.body,'body');
         if(Buffer.byteLength(JSON.stringify(body),'utf8')>MAX_FRAME_BYTES/2)throw new RoomError('message_too_large','Message exceeds the room IPC body budget.');
         if(p.to!==null && p.to!==undefined && (!Array.isArray(p.to)||p.to.some(v=>typeof v!=='string')))throw new RoomError('bad_request','Recipients must be a string array.');
@@ -60,9 +83,13 @@ export class RoomService {
         if(!requested.length && caller.sender.kind==='agent')throw new RoomError('no_recipients','Agent messages require explicit recipients.');
         const broadcast=!requested.length || requested.includes('all');
         if(requested.includes('all') && requested.length!==1)throw new RoomError('bad_request','Use all alone or list specific names.');
-        const identity={sender:caller.sender,senderScope:caller.scope,body,requestedRecipients:broadcast?null:requested,
+        const identity={sender:caller.sender,senderScope:caller.scope,crossing,body,requestedRecipients:broadcast?null:requested,
           addressing:broadcast?'broadcast' as const:'direct' as const,replyTo:optionalText(p.replyTo,'replyTo'),clientMessageId:optionalText(p.clientMessageId,'clientMessageId')};
-        const retry=this.ledger.findRetry(identity);if(retry)return retry;
+        const retry=this.ledger.findRetry(identity);if(retry){
+          if(!guarded)return retry;
+          const meta=retry.message.crossing;
+          return {status:'sent',result:retry,attemptId:meta?.attemptId??retry.message.id,guard:meta?.guard??'legacy',newSinceSnapshot:meta?.newSinceSnapshot??null};
+        }
         const recipients=broadcast ? Object.keys(registry).filter(n=>n!==caller.sender.name) : requested;
         if(!recipients.length)throw new RoomError('no_recipients','No participants are enrolled for this message.');
         const targets=recipients.map(name=>{
@@ -72,7 +99,17 @@ export class RoomService {
           return {name,target:{harness:binding.harness,sessionId:binding.session_id}};
         });
         const saved=this.ledger.transaction(()=>{
-          const result=this.ledger.enqueue({sender:caller.sender,senderScope:caller.scope,body,requestedRecipients:broadcast?null:requested,
+          if(guarded&&caller.sender.kind==='agent'&&!urgent){
+            const uncovered=this.inbox.uncovered(caller.scope,snapshot);
+            if(uncovered!==0){
+              const reason=snapshot===undefined?'snapshot_required':uncovered===null?'snapshot_invalid':'snapshot_stale';
+              const inbox=this.inbox.review(caller.scope,uncovered===null?{}:{snapshot});
+              const rejected:GuardedSendOutcome={status:'not_sent',reason,attemptId:crossing.attemptId,inbox,guidance:'Nothing was sent. Review the returned content, continue paging if hasMore, then revise and retry with the returned snapshot.'};
+              this.ledger.putCrossing(crossing.attemptId,caller.scope,'blocked_send',{reason,at:new Date().toISOString(),revisesAttemptId,remaining:inbox.remaining});
+              return {result:null,replyDelivery:null,rejected};
+            }
+          }
+          const result=this.ledger.enqueue({sender:caller.sender,senderScope:caller.scope,crossing,body,requestedRecipients:broadcast?null:requested,
             recipients:targets,addressing:broadcast?'broadcast':'direct',replyTo:optionalText(p.replyTo,'replyTo'),
             clientMessageId:optionalText(p.clientMessageId,'clientMessageId'),held:this.ledger.roomState().paused});
           let replyDelivery=null;
@@ -80,15 +117,16 @@ export class RoomService {
             const prior=this.ledger.deliveries(result.message.replyTo).find(d=>d.recipient===caller.sender.name&&`${d.target.harness}:${d.target.sessionId}`===caller.scope);
             if(prior)replyDelivery=this.ledger.updateDelivery(prior.messageId,prior.recipient,d=>{d.state='replied';d.repliedBy=result.message.id;d.held=false;d.waiting=null;});
           }
-          return{result,replyDelivery};
+          return{result,replyDelivery,rejected:null};
         });
+        if(saved.rejected)return saved.rejected;
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
         }
-        return result;
+        return guarded?{status:'sent',result,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:result;
       }
       case 'read': {
         const id=optionalText(p.messageId,'messageId');

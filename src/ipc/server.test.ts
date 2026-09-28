@@ -34,7 +34,10 @@ test('service enforces MCP human restriction and native harness/source binding',
  await assert.rejects(client.request('join',{name:'other',native:{...native,source:'claude-ancestry'}}),{code:'bad_request'});
  await assert.rejects(client.request('send',{...send,caller:{kind:'agent',native,declaredName:'other'}}),{code:'identity_mismatch'});
  await assert.rejects(mcp.request('send',{...send,caller:{kind:'agent',native:null,declaredName:'astra'}}),{code:'identity_unresolved'});
- const reply=await mcp.request('send',{caller:{kind:'agent',native:{...native,source:'codex-mcp-meta'},declaredName:null},to:['human'],body:'hello human'});
+ const caller={kind:'agent' as const,native:{...native,source:'codex-mcp-meta' as const},declaredName:null};
+ const page=await mcp.request('inbox',{caller});
+ const outcome=await mcp.request('guarded_send',{caller,snapshot:page.snapshot,to:['human'],body:'hello human'});
+ assert.equal(outcome.status,'sent');if(outcome.status!=='sent')throw Error('Expected sent reply');const reply=outcome.result;
  assert.equal(reply.message.from.name,'astra');assert.equal(reply.deliveries.length,0);
 });
 test('subscribe replays stored messages in order, and reconnect can refresh held state',async t=>{
