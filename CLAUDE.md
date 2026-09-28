@@ -1,4 +1,4 @@
-# CLAUDE.md â€” Orientation & Operating Manual
+# CLAUDE.md — Orientation & Operating Manual
 
 **Read this first.** It exists so a fresh or compacted context (Claude, or Astra via AGENTS.md) can
 re-orient instantly and keep working **autonomously**, including overnight. It's the anchor, not the
@@ -15,7 +15,7 @@ without polling. Kevin watches and directs everything from a polished Ink TUI in
 
 **North star:** the model is never responsible for waking itself.
 
-â†’ Design: **[DESIGN.md](./DESIGN.md)** (summary and invariants) â†’ **[proposal.md](./proposal.md)** (full
+→ Design: **[DESIGN.md](./DESIGN.md)** (summary and invariants) → **[proposal.md](./proposal.md)** (full
 reconciled spec).
 
 ## Document spine (single sources of truth)
@@ -24,7 +24,7 @@ reconciled spec).
 |---|---|
 | **DESIGN.md** | Canonical *why*; summarizes and pins proposal.md. |
 | **ROADMAP.md** | Canonical *what/when*: features with **Owner** and **Done-when**. |
-| **PROGRESS.md** | Dashboard: the â¬œ/ðŸŸ¡/âœ… status of every feature, with owners. |
+| **PROGRESS.md** | Dashboard: the ⬜/🟡/✅ status of every feature, with owners. |
 | **DECISIONS.md** | ADR log; append for every *major* decision or deviation. |
 | **TECH-DEBT.md** | Deferred findings and shortcuts, with reasons. |
 | **IDEAS.md** | Parked ideas. **Not scope** until Kevin folds them in (Milestone 6 is after v0.1.0). |
@@ -35,7 +35,7 @@ reconciled spec).
 ## Re-orienting after a context reset (do this every time)
 
 1. Read this file.
-2. Open **PROGRESS.md** and find **your** current ðŸŸ¡ or next â¬œ feature whose dependencies are âœ….
+2. Open **PROGRESS.md** and find **your** current 🟡 or next ⬜ feature whose dependencies are ✅.
 3. Open **ROADMAP.md** and read that feature's scope and **Done-when**.
 4. Skim recent **DECISIONS.md** ADRs.
 5. Run `git log --oneline -15`, `git status` and `git worktree list`.
@@ -59,7 +59,7 @@ Then continue the loop.
    - log deferred findings in TECH-DEBT.md;
    - bump the `package.json` version to the reserved `0.0.N` (see below).
 
-A feature is **âœ… only when all five are done**. Use ðŸŸ¡ for in progress.
+A feature is **✅ only when all five are done**. Use 🟡 for in progress.
 
 ## Two-agent coordination (ADR-0002)
 
@@ -93,7 +93,7 @@ A feature is **âœ… only when all five are done**. Use ðŸŸ¡ for in progre
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). **Never push**, because there's no remote.
   Never work directly on `main`, except for the merge step.
 - **Ambiguity:** make the most reasonable call, **log an ADR**, and continue.
-- **Milestones are not stops** (ADR-0004). Release gates: MVP (M0â€“M4), then polish (M5), then
+- **Milestones are not stops** (ADR-0004). Release gates: MVP (M0–M4), then polish (M5), then
   **v0.1.0**, and only then Milestone 6 (IDEAS, tech debt).
 - **Stop only when truly irrecoverable:**
   - the roadmap is complete;
