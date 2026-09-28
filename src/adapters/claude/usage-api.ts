@@ -5,8 +5,9 @@
 // logged, returned or shown. The refresh token is never used: an expired token just reads as unavailable until Claude
 // Code refreshes it. Undocumented endpoint (as used by ccstatusline 2.2.30): shape changes degrade to unavailable.
 import { request } from 'node:https';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { AccountUsage, AccountUsageProvider, UsageBucket, UsageWindow } from '../../contracts/account.js';
 import { claudeProfileKey } from './rate-limits.js';
 
@@ -14,7 +15,7 @@ export const CLAUDE_USAGE_HOST = 'api.anthropic.com';
 export const CLAUDE_USAGE_PATH = '/api/oauth/usage';
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
-export type UsageFetch = (token: string, timeoutMs: number) => Promise<{ status: number; body: string }>;
+export type UsageFetch = (token: string, timeoutMs: number) => Promise<{ status: number; body: string; retryAfterSec?: number | null }>;
 
 /** GET the usage endpoint. Errors are fixed strings: nothing from the token, headers or response can leak. */
 export const httpsUsageFetch: UsageFetch = (token, timeoutMs) =>
@@ -30,7 +31,8 @@ export const httpsUsageFetch: UsageFetch = (token, timeoutMs) =>
           if (size > MAX_RESPONSE_BYTES) req.destroy(new Error('response too large'));
           else chunks.push(c);
         });
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }));
+        const ra = Number(res.headers['retry-after']);
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'), retryAfterSec: Number.isFinite(ra) && ra > 0 ? ra : null }));
         res.on('error', () => reject(new Error('response error')));
       },
     );
@@ -101,39 +103,100 @@ export function bucketsFromUsageResponse(body: unknown, observedAt: string): Usa
   return buckets;
 }
 
-export function claudeUsageApiProvider(opts: { claudeConfigDir: string; timeoutMs?: number; fetch?: UsageFetch; now?: () => Date }): AccountUsageProvider {
+/**
+ * Throttling (Kevin: the endpoint rate-limits; ccstatusline caches 180s and backs off 300s on 429). Every room service
+ * for this Claude profile shares one small cache file (numbers only, never the token or raw response):
+ *  - a good reading is reused for `minIntervalMs` (default 5 min) instead of calling again;
+ *  - a 429 sets a back-off until Retry-After (else `rateLimitBackoffMs`, default 5 min); nothing is called meanwhile;
+ *  - any other failure is reused for `errorRetryMs` (default 60s) so a broken endpoint isn't hammered.
+ */
+export interface UsageThrottle {
+  minIntervalMs: number;
+  rateLimitBackoffMs: number;
+  errorRetryMs: number;
+  /** Shared cache file; defaults to ~/.vibe-pairing/claude-usage-cache-<profile>.json. */
+  cachePath?: string;
+}
+/** Shared cache file for one Claude profile (every room service on this machine reuses it). */
+export function sharedUsageCachePath(claudeConfigDir: string): string {
+  return join(homedir(), '.vibe-pairing', `claude-usage-cache-${claudeProfileKey(claudeConfigDir)}.json`);
+}
+export const DEFAULT_USAGE_THROTTLE: UsageThrottle = { minIntervalMs: 5 * 60_000, rateLimitBackoffMs: 5 * 60_000, errorRetryMs: 60_000 };
+
+interface UsageCache { attemptedAt: number; result: AccountUsage; backoffUntil?: number }
+
+async function readCache(path: string): Promise<UsageCache | null> {
+  try {
+    const c = JSON.parse(await readFile(path, 'utf8')) as UsageCache;
+    return typeof c?.attemptedAt === 'number' && c.result ? c : null;
+  } catch {
+    return null;
+  }
+}
+async function writeCache(path: string, cache: UsageCache): Promise<void> {
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    const tmp = `${path}.${process.pid}.tmp`;
+    await writeFile(tmp, JSON.stringify(cache));
+    await rename(tmp, path);
+  } catch {
+    // best effort: the in-memory copy still throttles this process
+  }
+}
+
+export function claudeUsageApiProvider(opts: { claudeConfigDir: string; timeoutMs?: number; fetch?: UsageFetch; now?: () => Date; throttle?: Partial<UsageThrottle> }): AccountUsageProvider {
   const key = claudeProfileKey(opts.claudeConfigDir);
   const fetchUsage = opts.fetch ?? httpsUsageFetch;
   const now = opts.now ?? (() => new Date());
   const source = `claude ${CLAUDE_USAGE_HOST}${CLAUDE_USAGE_PATH}`;
-  return {
-    harness: 'claude',
-    id: `claude:${key}`,
-    async sample(): Promise<AccountUsage> {
+  const t: UsageThrottle = { ...DEFAULT_USAGE_THROTTLE, ...opts.throttle };
+  // No path = memory-only throttling (tests); the service passes the shared ~/.vibe-pairing file (see sharedUsageCachePath).
+  const cachePath = t.cachePath ?? null;
+  let memory: UsageCache | null = null;
+  const sampleNow = async (): Promise<{ result: AccountUsage; backoffUntil?: number }> => {
       const at = now();
       const base = { account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: key }, source, checkedAt: at.toISOString() };
       const unavailable = (reason: string): AccountUsage => ({ ...base, buckets: [], status: 'unavailable', reason, observedAt: null });
       const cred = await readAccessToken(opts.claudeConfigDir, at.getTime());
-      if ('reason' in cred) return unavailable(cred.reason);
-      let res: { status: number; body: string };
+      if ('reason' in cred) return { result: unavailable(cred.reason) };
+      let res: { status: number; body: string; retryAfterSec?: number | null };
       try {
         res = await fetchUsage(cred.token, opts.timeoutMs ?? 5_000);
       } catch {
-        return unavailable('the Claude usage endpoint could not be reached');
+        return { result: unavailable('the Claude usage endpoint could not be reached') };
       }
-      if (res.status === 401 || res.status === 403) return unavailable('the Claude usage endpoint refused the login (it may need Claude Code to refresh it)');
-      if (res.status === 429) return unavailable('the Claude usage endpoint is rate-limiting; will retry');
-      if (res.status < 200 || res.status >= 300) return unavailable(`the Claude usage endpoint returned HTTP ${res.status}`);
+      if (res.status === 401 || res.status === 403) return { result: unavailable('the Claude usage endpoint refused the login (it may need Claude Code to refresh it)') };
+      if (res.status === 429) {
+        const until = at.getTime() + (res.retryAfterSec ? res.retryAfterSec * 1000 : t.rateLimitBackoffMs);
+        return { result: unavailable(`the Claude usage endpoint is rate-limiting; next try after ${new Date(until).toISOString().slice(11, 16)} UTC`), backoffUntil: until };
+      }
+      if (res.status < 200 || res.status >= 300) return { result: unavailable(`the Claude usage endpoint returned HTTP ${res.status}`) };
       let parsed: unknown;
       try {
         parsed = JSON.parse(res.body);
       } catch {
-        return unavailable('the Claude usage endpoint returned an unreadable response');
+        return { result: unavailable('the Claude usage endpoint returned an unreadable response') };
       }
       const observedAt = at.toISOString();
       const buckets = bucketsFromUsageResponse(parsed, observedAt);
-      if (!buckets || !buckets.some((b) => b.windows.some((w) => w.usedPercent !== null))) return unavailable('the Claude usage endpoint response had no usable limits');
-      return { ...base, buckets, status: 'ok', observedAt };
+      if (!buckets || !buckets.some((b) => b.windows.some((w) => w.usedPercent !== null))) return { result: unavailable('the Claude usage endpoint response had no usable limits') };
+      return { result: { ...base, buckets, status: 'ok', observedAt } };
+  };
+  return {
+    harness: 'claude',
+    id: `claude:${key}`,
+    async sample(): Promise<AccountUsage> {
+      const at = now().getTime();
+      const cached = (cachePath ? await readCache(cachePath) : null) ?? memory;
+      if (cached) {
+        const age = at - cached.attemptedAt;
+        const reuse = cached.backoffUntil !== undefined ? at < cached.backoffUntil : cached.result.status === 'ok' ? age < t.minIntervalMs : age < t.errorRetryMs;
+        if (reuse) return { ...cached.result, checkedAt: new Date(at).toISOString() };
+      }
+      const { result, backoffUntil } = await sampleNow();
+      memory = { attemptedAt: at, result, ...(backoffUntil !== undefined ? { backoffUntil } : {}) };
+      if (cachePath) await writeCache(cachePath, memory);
+      return result;
     },
   };
 }
@@ -160,3 +223,4 @@ export function claudeCombinedProvider(api: AccountUsageProvider, tap: AccountUs
     },
   };
 }
+

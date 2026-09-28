@@ -7,15 +7,24 @@ import { ActivityReader } from '../../observer/activity-reader.js';
 import { claudeActivityParser } from '../../observer/claude-activity.js';
 import { codexActivityParser } from '../../observer/codex-activity.js';
 import { claudeAccountUsageProvider } from '../../adapters/claude/rate-limits.js';
-import { claudeCombinedProvider, claudeUsageApiProvider } from '../../adapters/claude/usage-api.js';
+import { claudeUsageApiProvider, sharedUsageCachePath } from '../../adapters/claude/usage-api.js';
+import { ccstatuslineCacheProvider, firstAvailable } from '../../adapters/claude/ccstatusline-cache.js';
+import { claudeProfileKey } from '../../adapters/claude/rate-limits.js';
 import { resolveClaudeConfigDir } from '../../adapters/claude/registry.js';
 import { CodexAccountProvider, codexAccountOptionsFrom } from '../../observer/codex-account.js';
 const root=process.argv[2];
-/** Claude plan usage: the statusline tap, plus (opt-in, Kevin-approved) the usage endpoint with the tap as fallback. */
+/**
+ * Claude plan usage, cheapest source first: ccstatusline's own cache (zero extra endpoint calls, no credentials; Kevin's
+ * statusline already refreshes it) → our throttled usage-endpoint call (opt-in ROOM_CLAUDE_USAGE_API=on) → the
+ * statusline tap (no model-specific limits).
+ */
 const claudeProvider=(claudeConfigDir:string,usageApi:string,timeoutMs:number)=>{
-  const tap=claudeAccountUsageProvider({claudeConfigDir});
-  if(usageApi!=='on')return tap;
-  return claudeCombinedProvider(claudeUsageApiProvider({claudeConfigDir,timeoutMs}),tap);
+  const key=claudeProfileKey(claudeConfigDir);
+  return firstAvailable(`claude:${key}`,[
+    ccstatuslineCacheProvider({profileKey:key}),
+    ...(usageApi==='on'?[claudeUsageApiProvider({claudeConfigDir,timeoutMs,throttle:{cachePath:sharedUsageCachePath(claudeConfigDir)}})]:[]),
+    claudeAccountUsageProvider({claudeConfigDir}),
+  ]);
 };
 if(!root)throw new Error('Room service requires a canonical root argument.');
 try {
