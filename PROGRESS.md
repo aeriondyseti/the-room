@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 11 / 20 features complete · **current version: v0.0.11** · last tag: v0.0.11
+**Summary:** 12 / 20 features complete · **current version: v0.0.13** · last tag: v0.0.13
