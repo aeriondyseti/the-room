@@ -130,6 +130,30 @@ export async function lookupSession(sessionId: string, deps: ClaudeRegistryDeps)
   return { status: 'live', record, verified: actual !== null };
 }
 
+/**
+ * The registry record owned by `pid` (used to identify which Claude session launched an MCP server).
+ * `absent` = no record for that pid; `stale` = the pid was reused (start time differs); `error` = unreadable.
+ */
+export async function lookupByPid(
+  pid: number,
+  deps: ClaudeRegistryDeps,
+): Promise<{ status: 'live'; record: ClaudeSessionRecord; verified: boolean } | { status: 'absent' | 'stale' | 'error'; detail: string }> {
+  let raw: string;
+  try {
+    raw = await readFile(join(deps.sessionsDir, `${pid}.json`), 'utf8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return code === 'ENOENT' ? { status: 'absent', detail: `no Claude session record for pid ${pid}` } : { status: 'error', detail: `cannot read session record (${code ?? 'unknown error'})` };
+  }
+  const record = parseRecord(raw, pid, deps.pidDomain);
+  if (record === 'unreadable') return { status: 'error', detail: 'the session record is being rewritten; try again' };
+  if (record === null) return { status: 'absent', detail: `pid ${pid} is not an addressable Claude session` };
+  if (!deps.isPidAlive(pid)) return { status: 'absent', detail: `Claude process ${pid} has exited` };
+  const actual = record.procStart === null ? null : await deps.processStartTime(pid);
+  if (actual !== null && actual !== record.procStart) return { status: 'stale', detail: `pid ${pid} now belongs to a different process` };
+  return { status: 'live', record, verified: actual !== null };
+}
+
 /** Read the peer token for a live record's pipe. Returns null when no valid key is published. */
 export async function readPeerToken(record: ClaudeSessionRecord, deps: ClaudeRegistryDeps): Promise<string | null> {
   const file = join(deps.sessionsDir, `${record.pid}.${keyHashForPipe(record.messagingSocketPath)}.key`);
