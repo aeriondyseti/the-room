@@ -165,3 +165,26 @@ test('both layouts show the same values; several agents on one subscription stil
   assert.equal(top.filter((l) => l.startsWith('Claude')).length, 1);
   assert.equal(left.filter((l) => l === 'Claude').length, 1);
 });
+test('review fixes: a short panel degrades usage (no bars/reset rows) then says "more usage", never silently; qualifiers stay on the account row', () => {
+  const stale = (harness: 'claude' | 'codex'): AccountUsage => ({ ...claude, status: 'stale', source: 's', account: { ...claude.account, harness, sourceKey: harness },
+    buckets: [{ id: harness, windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 38, resetsAt: '2026-09-28T18:00:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 71, resetsAt: '2026-10-02T09:00:00Z' }] }] });
+  const tall = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  assert.ok(tall.includes('Claude (stale)') && tall.includes('Codex (stale)'), 'the staleness qualifier rides on the account heading');
+  assert.ok(tall.some((l) => l.includes('▓')), 'room to spare: bars');
+  const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 12, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  assert.equal(short.length, 12);
+  assert.ok(short.every((l) => !l.includes('▓')), 'short: numbers only');
+  assert.ok(short.includes('Codex (stale)'), 'compact form keeps both accounts whole here');
+  const tiny = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 8, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+  assert.ok(tiny.includes('+ more usage · /layout top'), 'anything cut is announced');
+  for (const [i, l] of tiny.entries()) if (/^\s+(5h|weekly)/.test(l)) assert.ok(tiny.slice(0, i).some((h) => /\(stale\)$/.test(h)), 'every shown value has its qualifier above it');
+  const token = { source: 'claude-transcript' as const, status: 'stale' as const, observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } };
+  assert.equal(lineText(contextBar(token, { stale: false })), 'ctx 12k?', 'a stale token-only reading keeps its "?"');
+});
+
+test('review fixes: quick successive saves persist the latest choice', async () => {
+  const path = join(dir, 'serial', '.room', 'tui.json');
+  const results = await Promise.all([saveLayout(path, 'left'), saveLayout(path, 'top'), saveLayout(path, 'left')]);
+  assert.deepEqual(results, [true, true, true]);
+  assert.equal(await readSavedLayout(path), 'left');
+});

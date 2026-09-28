@@ -50,7 +50,11 @@ export function usageBar(label: string, percent: number | null, color: string, o
 export function contextBar(usage: UsageSnapshot | null | undefined, opts: { stale: boolean; bar?: boolean }): Line {
   if (!usage || usage.status === 'unavailable' || !usage.context) return [{ text: 'ctx n/a', dim: true }];
   const stale = opts.stale || usage.status === 'stale';
-  if (usage.context.percent === null) return [{ text: `ctx ${compact(usage.context.usedTokens)}`, color: stale ? undefined : PALETTE.context, dim: stale }];
+  if (usage.context.percent === null) {
+    const tokens: Line = [{ text: `ctx ${compact(usage.context.usedTokens)}`, color: stale ? undefined : PALETTE.context, dim: stale }];
+    if (usage.status === 'stale' && !opts.stale) tokens.push({ text: '?', dim: true });
+    return tokens;
+  }
   const line = usageBar('ctx', usage.context.percent, PALETTE.context, { stale, bar: opts.bar });
   if (usage.status === 'stale' && !opts.stale) line.push({ text: '?', dim: true });
   return line;

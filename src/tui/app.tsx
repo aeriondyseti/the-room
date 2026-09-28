@@ -36,7 +36,7 @@ import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, li
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
-import { leftPanelFits, sidePanelLines, type TuiLayout } from './sidepanel.js';
+import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { DEFAULT_CONFIG } from '../core/config.js';
@@ -136,18 +136,21 @@ function Room({
   const topLines = useMemo((): Line[] => {
     if (showLeft) return [];
     const lines = [...participantLines(view.participants, { width: colsTotal, stale, mono: t.mono, maxLines: TOP_BAR_PARTICIPANT_LINES }), ...accountLines(view.accounts, { width: colsTotal, mono: t.mono, now: clock, disconnected: stale })];
-    if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${Math.max(panelBreakpoint, panelWidth + 51)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
+    if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${leftPanelMinCols(panelWidth, panelBreakpoint)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
     return lines;
   }, [showLeft, layout, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
   const convWidth = colsTotal - (showLeft ? panelWidth + 1 : 0) - 1;
+  const saveGen = useRef(0);
   const switchLayout = (next: TuiLayout): Feedback => {
     setLayout(next);
+    const gen = ++saveGen.current;
     const fits = next === 'top' || leftFits;
     const what = next === 'top' ? 'top bar' : 'left panel';
     const note = fits ? '' : ` The terminal is too narrow for it right now, so the top bar shows until it's wider.`;
     if (onLayoutChange) {
       void onLayoutChange(next).then((ok) => {
-        if (!ok) setFeedback({ tone: 'error', text: `Layout: ${what} for now — the choice couldn't be saved, so the next launch uses the default.` });
+        // Only the latest choice reports a failure (an older, superseded save doesn't matter any more).
+        if (!ok && gen === saveGen.current) setFeedback({ tone: 'error', text: `Layout: ${what} for now — the choice couldn't be saved, so the next launch uses the default.` });
       });
     }
     return { tone: 'ok', text: `Layout: ${what}${onLayoutChange ? ' (remembered)' : ''}.${note} /layout or Ctrl+B switches back.` };

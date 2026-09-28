@@ -17,8 +17,11 @@ export function isTuiLayout(v: unknown): v is TuiLayout {
 export const MIN_CONVERSATION_WIDTH = 50;
 
 /** Whether the left panel fits: the conversation must keep a readable width whatever the tunables say. */
+export function leftPanelMinCols(panelWidth: number, breakpoint: number): number {
+  return Math.max(breakpoint, panelWidth + 1 + MIN_CONVERSATION_WIDTH);
+}
 export function leftPanelFits(totalCols: number, panelWidth: number, breakpoint: number): boolean {
-  return totalCols >= Math.max(breakpoint, panelWidth + 1 + MIN_CONVERSATION_WIDTH);
+  return totalCols >= leftPanelMinCols(panelWidth, breakpoint);
 }
 
 /** Word-wrap dim italic note text onto indented lines (notes are never truncated away). */
@@ -55,27 +58,36 @@ function participantBlock(p: ParticipantState, opts: { width: number; stale: boo
   return lines;
 }
 
-function accountBlock(a: AccountUsage, opts: { width: number; now: number; disconnected: boolean }): Line[] {
-  const head: Line = [{ text: harnessLabel(a.account.harness), bold: true }];
+/**
+ * One account. `compact` (for short panels): numbers without bars, reset hints only when they fit on the metric's row.
+ * The staleness qualifier rides on the account's own heading row, so a shown value is never separated from it.
+ */
+function accountBlock(a: AccountUsage, opts: { width: number; now: number; disconnected: boolean; compact: boolean }): Line[] {
+  const notes = accountNotes(a, opts.disconnected);
+  const isState = (n: string): boolean => n === '(stale)' || n === '(last known)';
+  const state = notes.filter(isState);
+  const head: Line = [{ text: harnessLabel(a.account.harness), bold: true }, ...state.map((n): Line[number] => ({ text: ` ${n}`, dim: true, italic: true }))];
   if (a.status === 'unavailable') return [fitLine(head, opts.width), ...wrapNote(`unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, opts.width)];
   const lines: Line[] = [fitLine(head, opts.width)];
-  const barred = accountWindows(a, { now: opts.now, disconnected: opts.disconnected, bars: true });
+  const barred = accountWindows(a, { now: opts.now, disconnected: opts.disconnected, bars: !opts.compact });
   const plain = accountWindows(a, { now: opts.now, disconnected: opts.disconnected, bars: false });
   barred.forEach((w, i) => {
     const metric = indented(w.metric, plain[i]!.metric, opts.width);
-    // The reset hint follows on the same row when it fits, else on an indented continuation row.
+    // The reset hint follows on the same row when it fits, else on an indented continuation row (not when compact).
     if (w.reset && lineCols(metric) + 1 + lineCols([w.reset]) <= opts.width) lines.push([...metric, { text: ' ' }, w.reset]);
     else {
       lines.push(metric);
-      if (w.reset) lines.push(fitLine([{ text: '    ' }, w.reset], opts.width));
+      if (w.reset && !opts.compact) lines.push(fitLine([{ text: '    ' }, w.reset], opts.width));
     }
   });
-  for (const note of accountNotes(a, opts.disconnected)) lines.push(...wrapNote(note, opts.width));
+  for (const note of notes.filter((n) => !isState(n))) lines.push(...wrapNote(note, opts.width));
   return lines;
 }
+
 /**
- * The left panel as lines of at most `width` columns and exactly `height` rows (padded). Plan usage is kept whole;
- * participants that don't fit are summarised as "+N more · /who" (never silently dropped).
+ * The left panel as lines of at most `width` columns and exactly `height` rows (padded). Participants that don't fit
+ * are summarised as "+N more · /who"; plan usage that doesn't fit first drops bars and reset rows, then ends with an
+ * explicit "more usage" marker — nothing is dropped silently.
  */
 export function sidePanelLines(
   participants: readonly ParticipantState[],
@@ -83,14 +95,21 @@ export function sidePanelLines(
   opts: { width: number; height: number; stale: boolean; mono: boolean; now?: number; humanName: string },
 ): Line[] {
   const now = opts.now ?? Date.now();
+  const height = Math.max(0, opts.height);
   const title: Line = [{ text: `AGENTS${opts.stale ? ' · last known' : ''}`, dim: true, bold: true }];
-  const usage: Line[] = accounts.length
-    ? [[{ text: ' ' }], [{ text: 'PLAN USAGE', dim: true, bold: true }], ...accounts.flatMap((a) => accountBlock(a, { width: opts.width, now, disconnected: opts.stale }))]
-    : [];
   const footer: Line[] = [[{ text: ' ' }], fitLine([{ text: `you: ${sanitize(opts.humanName)}`, dim: true }], opts.width)];
+  const usageFor = (compact: boolean): Line[] =>
+    accounts.length ? [[{ text: ' ' }], [{ text: 'PLAN USAGE', dim: true, bold: true }], ...accounts.flatMap((a) => accountBlock(a, { width: opts.width, now, disconnected: opts.stale, compact }))] : [];
+  // Usage gets what's left after the title, the footer and one agent row (an agent or the "+N more" marker).
+  const usageRoom = height - 1 - footer.length - 1;
+  let usage = usageFor(false);
+  if (usage.length > usageRoom) usage = usageFor(true);
+  if (usage.length > usageRoom) {
+    const keep = Math.max(0, usageRoom - 1);
+    usage = [...usage.slice(0, keep), fitLine([{ text: '+ more usage · /layout top', dim: true }], opts.width)].slice(0, Math.max(0, usageRoom));
+  }
   const blocks = participants.map((p) => participantBlock(p, opts));
-  // Room for participants once the title, usage and footer are placed (usage yields last, then the footer).
-  const room = opts.height - 1 - usage.length - footer.length;
+  const room = height - 1 - usage.length - footer.length;
   const body: Line[] = [];
   if (participants.length === 0) body.push([{ text: 'none yet', dim: true }]);
   let shown = 0;
@@ -101,9 +120,9 @@ export function sidePanelLines(
     shown++;
   }
   if (shown < blocks.length) body.push([{ text: `+${blocks.length - shown} more · /who`, dim: true }]);
-  const height = Math.max(0, opts.height);
-  // Content from the top; the footer sits at the bottom of the panel (padding goes between them).
-  const all = [title, ...body, ...usage].slice(0, Math.max(0, height - footer.length));
+  // Content from the top; the footer sits at the bottom of the panel (padding goes between them). On a panel too
+  // short even for this, the footer yields first.
+  const all = [title, ...body, ...usage].slice(0, height);
   while (all.length < height - footer.length) all.push([{ text: ' ' }]);
   all.push(...footer.slice(0, height - all.length));
   return all.map((l) => (lineCols(l) > opts.width ? fitLine(l, opts.width) : l));

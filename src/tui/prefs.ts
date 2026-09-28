@@ -1,6 +1,7 @@
 // Local TUI preferences (6.8): the viewer's layout choice, saved in the room's own runtime dir (`<room>/.room/tui.json`,
 // git-ignored). Never harness config or state (invariant 8). Best effort: an unreadable or unwritable file only means the
 // default layout next time; other keys in the file are preserved.
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isTuiLayout, type TuiLayout } from './sidepanel.js';
@@ -23,12 +24,21 @@ export async function readSavedLayout(path: string): Promise<TuiLayout | null> {
   return isTuiLayout(layout) ? layout : null;
 }
 
+// Saves run one at a time, in request order, so a quick toggle can never persist an older choice over a newer one.
+let queue: Promise<unknown> = Promise.resolve();
+
 /** Save the layout (atomic replace, other keys kept). Resolves false when it couldn't be saved. */
-export async function saveLayout(path: string, layout: TuiLayout): Promise<boolean> {
+export function saveLayout(path: string, layout: TuiLayout): Promise<boolean> {
+  const run = queue.then(() => writeLayout(path, layout));
+  queue = run;
+  return run;
+}
+
+async function writeLayout(path: string, layout: TuiLayout): Promise<boolean> {
   try {
     const next = { ...(await readRaw(path)), layout };
     await mkdir(join(path, '..'), { recursive: true });
-    const tmp = `${path}.${process.pid}.tmp`;
+    const tmp = `${path}.${randomUUID()}.tmp`;
     await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);
     await rename(tmp, path);
     return true;
@@ -38,7 +48,6 @@ export async function saveLayout(path: string, layout: TuiLayout): Promise<boole
 }
 
 /** Effective starting layout: --layout flag, else the saved choice, else ROOM_TUI_LAYOUT, else top. */
-export function startingLayout(flag: string | null, saved: TuiLayout | null, configured: string): TuiLayout {
-  if (flag !== null) return flag as TuiLayout;
-  return saved ?? (isTuiLayout(configured) ? configured : 'top');
+export function startingLayout(flag: TuiLayout | null, saved: TuiLayout | null, configured: TuiLayout): TuiLayout {
+  return flag ?? saved ?? configured;
 }
