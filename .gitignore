@@ -4,3 +4,5 @@ session.toml
 .room/
 # Agent worktrees
 .claude/worktrees/
+# pair-poc message log
+.room-poc/
