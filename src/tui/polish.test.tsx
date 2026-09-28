@@ -1,4 +1,5 @@
 // ROADMAP 5.1: theming, code blocks, first-run/empty states, runtime context in /detail, layout tunables.
+import './force-color.js'; // first: colour assertions must not depend on the caller's TTY
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
