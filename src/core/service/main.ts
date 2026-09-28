@@ -4,6 +4,7 @@ import { startServer } from '../../ipc/server.js';
 import { loadConfig } from '../config.js';
 import { UsageObserver, usageObserverOptionsFrom } from '../../observer/index.js';
 import { ActivityReader } from '../../observer/activity-reader.js';
+import { NativeWorkspaceProvider, workspaceOptionsFrom } from '../../observer/workspace.js';
 import { claudeActivityParser } from '../../observer/claude-activity.js';
 import { codexActivityParser } from '../../observer/codex-activity.js';
 import { claudeAccountUsageProvider } from '../../adapters/claude/rate-limits.js';
@@ -25,7 +26,7 @@ try {
   const activity=new ActivityReader({claudeProjectsDir:usage.claudeProjectsDir,codexSessionsDir:usage.codexSessionsDir,parsers:[claudeActivityParser,codexActivityParser],
     detailBytes:config.activityDetailBytes,windowItems:config.activityWindowItems,startBytes:config.activityStartBytes,maxLineBytes:config.activityMaxLineBytes,readBytes:config.activityReadBytes});
   const running=await startServer(canonical,{adapters:defaultAdapters(canonical),
-    monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs},
+    monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs,workspace:new NativeWorkspaceProvider(workspaceOptionsFrom(config))},
     activity:{reader:activity,intervalMs:config.activityPollMs},
     accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs}});
   for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>{void running.close().then(()=>{process.exitCode=0;});});
