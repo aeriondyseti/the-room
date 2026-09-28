@@ -40,7 +40,7 @@ test('git integration: clean/unborn, changes, cache, linked worktree and detache
   assert.equal((await reader.sample(dir)).staged,1);
   git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-qm','fixture');
   await writeFile(path.join(dir,'a.txt'),'second');git('add','a.txt');await writeFile(path.join(dir,'a.txt'),'third');await writeFile(path.join(dir,'untracked'),'u');clock+=11;
-  info=await reader.sample(dir);assert.equal(info.staged,1);assert.equal(info.modified,1);assert.equal(info.untracked,1);
+  info=await reader.sample(dir);assert.equal(info.staged,1);assert.equal(info.modified,1);assert.equal(info.untracked,1);assert.equal(info.dirty,2);
   const wt=path.join(dir,'linked worktree');git('worktree','add','--detach',wt,'HEAD');clock+=11;
   info=await reader.sample(wt);assert.equal(info.status,'ok');assert.equal(info.detached,true);assert.equal(info.branch,null);assert.equal(path.resolve(info.worktree!),path.resolve(wt));
   assert.equal((await reader.sample(await mkdtemp(path.join(tmpdir(),'vpfix-nongit-')))).status,'not_a_repo');
@@ -57,4 +57,22 @@ test('provider reads bounded recent records, replaces files and never throws for
   assert.equal((await provider.observe(target)).model,'replacement');
   assert.equal((await provider.observe({...target,sessionId:'../../bad'})).model,null);
   assert.equal((await provider.observe({...target,sessionId:'missing'})).cwd,null);
+});
+test('tail at an exact record boundary preserves the latest model',async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'vpfix-boundary-'));
+  const prefix=JSON.stringify({type:'turn_context',payload:{model:'old'}})+'\n';
+  const record=JSON.stringify({type:'turn_context',payload:{model:'latest'}});
+  const tail=record+' '.repeat(511-Buffer.byteLength(record))+'\n';
+  await writeFile(path.join(dir,'rollout-time-session-1.jsonl'),prefix+'x'.repeat(2000)+'\n'+tail);
+  const provider=new NativeWorkspaceProvider({codexSessionsDir:dir,claudeProjectsDir:dir,readBytes:1024,scanEntries:100,timeoutMs:1000,gitMaxBytes:10000,gitCacheMs:1000});
+  assert.equal((await provider.observe(target)).model,'latest');
+});
+test('observation deadline bounds a stalled read and coalesces repeated callers',async()=>{
+  const provider=new NativeWorkspaceProvider({codexSessionsDir:'unused',claudeProjectsDir:'unused',readBytes:1024,scanEntries:100,timeoutMs:10,gitMaxBytes:10000,gitCacheMs:1000});
+  let calls=0;let finish!:(info:import('../contracts/workspace.js').WorkspaceInfo)=>void;
+  // Fault injection only: simulate a filesystem operation the OS cannot cancel.
+  Object.defineProperty(provider,'read',{value:()=>{calls++;return new Promise(resolve=>{finish=resolve;});}});
+  assert.equal((await provider.observe(target)).model,null);
+  assert.equal((await provider.observe(target)).model,null);assert.equal(calls,1);
+  finish({model:null,cwd:null,cwdSource:null,git:null,observedAt:null});
 });

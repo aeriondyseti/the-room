@@ -38,10 +38,12 @@ export function parseWorkspaceRecords(records:unknown[],target:Target):Pick<Work
 }
 /** Read the initial metadata and recent complete records only; never allocate the whole rollout. */
 async function recentRecords(file:string,bytes:number):Promise<unknown[]> {
+  if(bytes<2)return []; // Too small even for the preceding-byte tail boundary check.
   const handle=await open(file,'r');
   try {
     const size=(await handle.stat()).size, chunk=Math.max(1,Math.floor(bytes/2));
-    const windows=size<=bytes?[[0,size]]:[[0,chunk],[size-chunk,chunk]];
+    // Include the preceding tail byte: LF means the first tail record is complete. Keep total bytes bounded.
+    const windows=size<=bytes?[[0,size]]:[[0,Math.max(0,chunk-1)],[size-chunk-1,chunk+1]];
     const values:unknown[]=[];
     for(const [offset,length] of windows as [number,number][]) {
       const buffer=Buffer.alloc(length);const {bytesRead}=await handle.read(buffer,0,length,offset);
@@ -56,10 +58,26 @@ async function recentRecords(file:string,bytes:number):Promise<unknown[]> {
 export class NativeWorkspaceProvider implements WorkspaceProvider {
   private readonly git:WorkspaceGit;
   private paths=new Map<string,string>();
+  private pending=new Map<string,Promise<WorkspaceInfo>>();
   constructor(private readonly options:WorkspaceOptions) {
     this.git=new WorkspaceGit({timeoutMs:options.timeoutMs,maxBytes:options.gitMaxBytes,cacheMs:options.gitCacheMs});
   }
   async observe(target:Target):Promise<WorkspaceInfo> {
+    const empty:WorkspaceInfo={model:null,cwd:null,cwdSource:null,git:null,observedAt:null};
+    const key=`${target.harness}:${target.sessionId}`;
+    // OS filesystem calls cannot all be cancelled. Keep the underlying operation single-flight even
+    // after a caller deadline, so an unavailable network share cannot accumulate one read per tick.
+    let task=this.pending.get(key);
+    if(!task) {
+      task=this.read(target).catch(()=>empty);
+      this.pending.set(key,task);
+      void task.finally(()=>this.pending.delete(key));
+    }
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{return await Promise.race([task,new Promise<WorkspaceInfo>(resolve=>{timer=setTimeout(()=>resolve(empty),this.options.timeoutMs);})]);}
+    finally{clearTimeout(timer);}
+  }
+  private async read(target:Target):Promise<WorkspaceInfo> {
     const empty:WorkspaceInfo={model:null,cwd:null,cwdSource:null,git:null,observedAt:null};
     try {
       if(!/^[a-zA-Z0-9-]+$/.test(target.sessionId))return empty;
@@ -67,7 +85,7 @@ export class NativeWorkspaceProvider implements WorkspaceProvider {
       let file=this.paths.get(key);
       let records:unknown[]|null=null;
       if(file) {try{records=await recentRecords(file,this.options.readBytes);}catch{this.paths.delete(key);file=undefined;}}
-      if(!file){file=await this.locate(target)??undefined;if(file){records=await recentRecords(file,this.options.readBytes);this.paths.set(key,file);}}
+      if(!file){file=await this.locate(target)??undefined;if(file){records=await recentRecords(file,this.options.readBytes);this.paths.set(key,file);if(this.paths.size>this.options.scanEntries)this.paths.delete(this.paths.keys().next().value!);}}
       if(!records)return empty;
       const fields=parseWorkspaceRecords(records,target);
       return {...fields,git:fields.cwd?await this.git.sample(fields.cwd):null,observedAt:new Date().toISOString()};
