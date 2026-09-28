@@ -30,9 +30,15 @@ export interface NativeEvidence {
 
 /**
  * Who is calling. Clients never assert a verified agent identity themselves: they pass evidence and/or a
- * declared name, and the service decides (invariant 5). `{kind:'human'}` is authorized by the connection,
- * not by the frame: the service accepts it only on connections whose `hello` declared client `tui` or
- * `cli`, and rejects it from `mcp` (agents never act as the human).
+ * declared name, and the service decides (invariant 5).
+ *
+ * `{kind:'human'}` rules (agents never act as the human):
+ * - The service accepts it only on connections whose `hello` declared client `tui` or `cli`; never `mcp`.
+ * - The CLI is also the agents' fallback surface, so the CLI MUST send `{kind:'agent', ...}` whenever it
+ *   detects agent context (CODEX_THREAD_ID, or a Claude session among its ancestor processes), and MUST
+ *   refuse human-only commands (pause, resume, retry, shutdown) in that context. It sends `human` only when no
+ *   agent context is detected. This is local routing hygiene in a trusted room, not isolation from
+ *   same-user processes (proposal "Messaging").
  */
 export type Caller =
   | { kind: 'human' }
@@ -85,7 +91,7 @@ export interface RequestMap {
       native: NativeEvidence;
       /**
        * Compare-and-swap guard: required to rebind an existing name to a different native session. Must equal
-       * the currently registered target (harness + sessionId), else `duplicate_name` (no silent clobbering).
+       * the currently registered target (harness + sessionId), else `rebind_conflict` (no silent clobbering).
        */
       expectedPrevious?: TargetSnapshot | null;
     };
@@ -188,12 +194,15 @@ export type FrameErrorKind = 'malformed' | 'too_large' | 'unsupported_version';
 export class FrameError extends Error {
   readonly kind: FrameErrorKind;
   frames: Frame[];
+  /** The offending request's id, when it could be read, so the service can send a correlated error response. */
+  readonly requestId: string | null;
 
-  constructor(kind: FrameErrorKind, message: string, frames: Frame[] = []) {
+  constructor(kind: FrameErrorKind, message: string, frames: Frame[] = [], requestId: string | null = null) {
     super(message);
     this.name = 'FrameError';
     this.kind = kind;
     this.frames = frames;
+    this.requestId = requestId;
   }
 }
 
@@ -246,7 +255,13 @@ export function parseFrame(line: string): Frame {
   }
   if (!isRecord(value)) throw new FrameError('malformed', 'frame is not a JSON object');
   if (value['v'] !== PROTOCOL_VERSION) {
-    throw new FrameError('unsupported_version', `unsupported protocol version: ${String(value['v'])} (expected ${PROTOCOL_VERSION})`);
+    const requestId = value['type'] === 'request' && typeof value['id'] === 'string' ? value['id'] : null;
+    throw new FrameError(
+      'unsupported_version',
+      `unsupported protocol version: ${String(value['v'])} (expected ${PROTOCOL_VERSION})`,
+      [],
+      requestId,
+    );
   }
   const type = value['type'];
   if (type === 'request') {

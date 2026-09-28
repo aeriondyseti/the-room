@@ -74,6 +74,17 @@ test('frame errors are classified and keep frames decoded before the bad line', 
   assert.equal(kindOf('[1,2]'), 'malformed');
 });
 
+test('unsupported_version errors carry the request id for a correlated response', () => {
+  try {
+    parseFrame(JSON.stringify({ v: 2, type: 'request', id: 'req-7', method: 'hello', params: {} }));
+    assert.fail('expected FrameError');
+  } catch (err) {
+    assert.ok(err instanceof FrameError);
+    assert.equal(err.kind, 'unsupported_version');
+    assert.equal(err.requestId, 'req-7');
+  }
+});
+
 test('method list matches the request map and guards unknown methods', () => {
   assert.equal(new Set(METHODS).size, METHODS.length);
   assert.equal(isMethod('send'), true);

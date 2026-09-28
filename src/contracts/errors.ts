@@ -11,6 +11,8 @@ export const ERROR_HINTS = {
   not_registered: 'Register first with `room join --as <name>` (or room_join).',
   duplicate_name: 'That name is taken by another session; choose a different name.',
   duplicate_binding: 'This session is already registered under another name; use that name.',
+  rebind_conflict:
+    'That name is bound to a different session. To move it to this session, repeat the join passing the current binding (shown by `room who`) as expectedPrevious.',
   dedup_conflict: 'That client_message_id was already used with a different message; use a new id.',
   message_too_large: 'Shorten the message, or split it into parts that each make sense on their own.',
   not_found: 'Check the id; `room read` lists recent message ids.',
