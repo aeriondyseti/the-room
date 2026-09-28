@@ -12,6 +12,8 @@ export interface UsageObserverOptions {
   /** `<codexHome>/sessions` — `YYYY/MM/DD/rollout-*-<threadId>.jsonl`. */
   codexSessionsDir: string;
   staleMs: number;
+  /** Known context-window sizes by model id, used when a transcript doesn't record the limit. */
+  contextLimits?: Readonly<Record<string, number>>;
   now?: () => number;
 }
 
@@ -135,7 +137,7 @@ export class UsageObserver {
         this.files.set(key, state);
       }
       for (const record of read.records) {
-        if (target.harness === 'claude') applyClaude(state, record);
+        if (target.harness === 'claude') applyClaude(state, record, this.options.contextLimits ?? {});
         else applyCodex(state, record);
       }
       if (!read.exists || state.cursor.offset === before) break;
@@ -182,7 +184,7 @@ export class UsageObserver {
   }
 }
 
-function applyClaude(state: FileState, record: unknown): void {
+function applyClaude(state: FileState, record: unknown, limits: Readonly<Record<string, number>>): void {
   const parsed = parseClaudeRecord(record);
   if (!parsed) return;
   state.sawUsage = true;
@@ -192,7 +194,8 @@ function applyClaude(state: FileState, record: unknown): void {
   }
   state.lastMessageId = parsed.messageId;
   if (parsed.sample.contextTokens !== null) {
-    state.context = { tokens: parsed.sample.contextTokens, limit: parsed.sample.contextLimit, at: parsed.sample.at };
+    const known = parsed.model !== null && Object.hasOwn(limits, parsed.model) ? limits[parsed.model]! : null;
+    state.context = { tokens: parsed.sample.contextTokens, limit: parsed.sample.contextLimit ?? known, at: parsed.sample.at };
   }
   if (parsed.sample.at) state.lastAt = parsed.sample.at;
 }

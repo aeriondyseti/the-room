@@ -24,6 +24,8 @@ export interface UsageSample {
 
 export interface ClaudeUsageRecord {
   messageId: string;
+  /** Model id from the record (used to look up a known context limit), when present. */
+  model: string | null;
   sample: UsageSample;
 }
 
@@ -45,6 +47,7 @@ export function parseClaudeRecord(value: unknown): ClaudeUsageRecord | null {
   if (input === null || output === null) return null;
   return {
     messageId: message['id'],
+    model: typeof message['model'] === 'string' ? message['model'] : null,
     sample: {
       at: typeof value['timestamp'] === 'string' ? value['timestamp'] : null,
       counters: { input, output, cacheRead, cacheWrite },

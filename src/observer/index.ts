@@ -11,5 +11,10 @@ import type { UsageObserverOptions } from './observer.js';
 export function usageObserverOptionsFrom(config: RoomConfig, env: NodeJS.ProcessEnv = process.env): UsageObserverOptions {
   const claudeDir = config.claudeConfigDir ?? env['CLAUDE_CONFIG_DIR'] ?? join(homedir(), '.claude');
   const codexHome = config.codexHome ?? env['CODEX_HOME'] ?? join(homedir(), '.codex');
-  return { claudeProjectsDir: join(claudeDir, 'projects'), codexSessionsDir: join(codexHome, 'sessions'), staleMs: config.usageStaleMs };
+  return {
+    claudeProjectsDir: join(claudeDir, 'projects'),
+    codexSessionsDir: join(codexHome, 'sessions'),
+    staleMs: config.usageStaleMs,
+    contextLimits: config.contextLimits,
+  };
 }

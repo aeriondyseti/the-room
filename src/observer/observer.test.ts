@@ -67,6 +67,17 @@ test('Claude: sums per-response usage across the session files, dedupes streamed
   assert.equal(snap.observedAt, T(1));
 });
 
+test('Claude: a configured per-model limit yields a percentage; unknown models stay null', async () => {
+  const d = dirs();
+  const p = join(d.claudeProjectsDir, 'X--repo');
+  mkdirSync(p);
+  writeFileSync(join(p, 'lim.jsonl'), claudeLine('m1', T(1), { in: 0, out: 1, cw: 0, cr: 250_000 }));
+  const o = new UsageObserver({ claudeProjectsDir: d.claudeProjectsDir, codexSessionsDir: d.codexSessionsDir, staleMs: 15 * 60_000, now: () => NOW, contextLimits: { 'claude-opus-5-5': 1_000_000 } });
+  assert.deepEqual((await o.snapshot({ harness: 'claude', sessionId: 'lim' })).context, { usedTokens: 250_000, limitTokens: 1_000_000, percent: 25 });
+  const none = new UsageObserver({ claudeProjectsDir: d.claudeProjectsDir, codexSessionsDir: d.codexSessionsDir, staleMs: 15 * 60_000, now: () => NOW, contextLimits: { 'other-model': 5 } });
+  assert.equal((await none.snapshot({ harness: 'claude', sessionId: 'lim' })).context?.percent, null);
+});
+
 test('Codex: cumulative totals with cached split out, context percent from the reported window', async () => {
   const d = dirs();
   const day = join(d.codexSessionsDir, '2026', '09', '27');
