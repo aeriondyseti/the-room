@@ -3,7 +3,7 @@
 
 // ---- parsing --------------------------------------------------------------------------------------------
 
-export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity';
+export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout';
 
 export interface CommandInfo {
   name: ComposerCommand;
@@ -17,6 +17,7 @@ export const COMMAND_CATALOGUE: readonly CommandInfo[] = [
   { name: 'activity', args: '@name', description: "an agent's tool calls, results and messages (read-only)" },
   { name: 'detail', args: '[#N]', description: 'delivery detail: attempts, evidence, errors' },
   { name: 'help', args: '', description: 'keys and commands' },
+  { name: 'layout', args: '[top|left]', description: 'switch between the top bar and the left panel (Ctrl+B toggles); remembered' },
   { name: 'pause', args: '[message]', description: 'hold new deliveries and ask every agent to stop' },
   { name: 'quit', args: '', description: 'leave the TUI (agents and the room keep running)' },
   { name: 'restart', args: '', description: 'restart the room service (e.g. after an upgrade); keeps queued messages' },

@@ -11,7 +11,7 @@ const ws = (over: Partial<WorkspaceInfo> = {}): WorkspaceInfo => ({ model: 'clau
 const agent = (over: Partial<ParticipantState> = {}): ParticipantState => ({ name: 'claude', harness: 'claude', sessionId: 's', liveness: 'online', livenessCheckedAt: null, activity: 'busy', pending: 0, usage: null, ...over });
 
 test('chip adds model and branch*dirty (unique count, never the overlapping sum); unknown parts are omitted', () => {
-  assert.match(lineText(participantChip(agent({ workspace: ws() }), { stale: false, mono: false })), /● claude busy usage n\/a · opus-5-5 · sprint\/6\.7\*3$/);
+  assert.match(lineText(participantChip(agent({ workspace: ws() }), { stale: false, mono: false })), /● claude busy ctx n\/a · opus-5-5 · sprint\/6\.7\*3$/);
   assert.equal(gitLabel(git({ dirty: 0 })), 'sprint/6.7', 'clean: no star');
   assert.equal(gitLabel(git({ detached: true, branch: null, dirty: 0 })), '@a1b2c3d4e5f6');
   assert.equal(gitLabel(git({ detached: true, branch: null })), '@a1b2c3d4e5f6*3');

@@ -3,7 +3,8 @@
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import type { GitInfo, WorkspaceInfo } from '../contracts/workspace.js';
-import { colorFor, cols, fitLine, lineCols, relativeTime, sanitize, usageLabel, type Line, type Segment } from './format.js';
+import { colorFor, cols, fitLine, lineCols, relativeTime, sanitize, type Line, type Segment } from './format.js';
+import { contextBar, PALETTE, usageBar } from './bars.js';
 
 export function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
   switch (l) {
@@ -28,8 +29,12 @@ export function activityLabel(p: ParticipantState): { text: string; color?: stri
   return { text: `${p.activity}${pending}` };
 }
 
-/** One participant chip: `● name status ctx N%`. While disconnected everything is greyed "last known" (invariant 3). */
-export function participantChip(p: ParticipantState, opts: { stale: boolean; mono: boolean }): Line {
+/**
+ * One participant chip: `● name status ctx ▓▓▓▓░░░░░░ 42.0% · model · branch*N`. Colours group by meaning (6.8): the
+ * name keeps its conversation colour, context is yellow, model and branch cyan, dirty count magenta. While disconnected
+ * everything is greyed "last known" (invariant 3). `bars: false` shows the context as a number only (tight widths).
+ */
+export function participantChip(p: ParticipantState, opts: { stale: boolean; mono: boolean; bars?: boolean }): Line {
   const live = opts.stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
   const status = activityLabel(p);
   const chip: Line = [
@@ -37,19 +42,31 @@ export function participantChip(p: ParticipantState, opts: { stale: boolean; mon
     { text: sanitize(p.name), color: opts.stale ? 'gray' : colorFor(p.name), bold: true },
     { text: ` ${opts.stale ? `last known: ${status.text}` : status.text}`, color: opts.stale ? undefined : status.color, dim: opts.stale || status.color === undefined },
   ];
-  if (!opts.stale) {
-    const u = usageLabel(p.usage);
-    // Monochrome can't show the warning colour, so a high reading gets a "!" instead.
-    chip.push({ text: ` ${u.text}${opts.mono && u.color ? '!' : ''}`, color: u.color, dim: u.dim });
-  }
+  if (!opts.stale) chip.push({ text: ' ' }, ...contextBar(p.usage, { stale: false, bar: opts.bars !== false }));
   // 6.7: model and git in compact form (full cwd/worktree/status live in /who). Unknown parts are simply omitted.
-  const ws = p.workspace;
-  if (ws?.model) chip.push({ text: ` · ${sanitize(shortModel(ws.model))}`, dim: true });
-  const git = gitLabel(ws?.git ?? null);
-  if (git) chip.push({ text: ` · ${git}`, dim: true });
+  chip.push(...workspaceSegments(p, opts.stale));
   return chip;
 }
 
+/** ` · model · branch*N` (coloured by group; grey while disconnected), or nothing when unknown. */
+export function workspaceSegments(p: ParticipantState, stale: boolean): Line {
+  const out: Line = [];
+  const ws = p.workspace;
+  if (ws?.model) out.push({ text: ' · ', dim: true }, { text: sanitize(shortModel(ws.model)), color: stale ? undefined : PALETTE.model, dim: stale });
+  const git = gitSegments(ws?.git ?? null, stale);
+  if (git.length) out.push({ text: ' · ', dim: true }, ...git);
+  return out;
+}
+
+/** gitLabel as segments: branch cyan, "*N" magenta; "no git" / "git ?" dim. */
+export function gitSegments(git: GitInfo | null, stale = false): Line {
+  const label = gitLabel(git);
+  if (!label || !git) return [];
+  if (git.status !== 'ok') return [{ text: label, dim: true }];
+  const star = git.dirty ? label.lastIndexOf(`*${git.dirty}`) : -1;
+  const where = star >= 0 ? label.slice(0, star) : label;
+  return [{ text: where, color: stale ? undefined : PALETTE.branch, dim: stale }, ...(star >= 0 ? [{ text: label.slice(star), color: stale ? undefined : PALETTE.changes, dim: stale }] : [])];
+}
 /** "claude-opus-5-5" → "opus-5-5"; other ids unchanged (bounded). */
 export function shortModel(model: string): string {
   return model.replace(/^claude-/, '').slice(0, 24);
@@ -92,42 +109,50 @@ const GAP: Segment = { text: '   ' };
 
 /**
  * Participant chips wrapped across at most `maxLines` lines of `width` columns; chips that don't fit are summarised
- * as "+N more · /who" (never silently dropped). A single chip wider than a line is truncated with an ellipsis.
+ * as "+N more · /who" (never silently dropped). Context bars are dropped (numbers kept) when that shows more chips or
+ * avoids truncating one; a single chip still wider than a line is truncated with an ellipsis.
  */
 export function participantLines(participants: readonly ParticipantState[], opts: { width: number; stale: boolean; mono: boolean; maxLines: number }): Line[] {
   if (participants.length === 0) return [[{ text: 'No agents yet · they appear here when they join', dim: true }]];
-  const chips = participants.map((p) => participantChip(p, opts));
+  const withBars = packChips(participants.map((p) => participantChip(p, { ...opts, bars: true })), opts.width, opts.maxLines);
+  if (withBars.hidden === 0 && !withBars.truncated) return withBars.lines;
+  const numeric = packChips(participants.map((p) => participantChip(p, { ...opts, bars: false })), opts.width, opts.maxLines);
+  return numeric.hidden < withBars.hidden || (numeric.hidden === withBars.hidden && !numeric.truncated) ? numeric.lines : withBars.lines;
+}
+
+function packChips(chips: readonly Line[], width: number, maxLines: number): { lines: Line[]; hidden: number; truncated: boolean } {
   const lines: Line[] = [];
   let current: Line = [];
-  let i = 0;
-  for (; i < chips.length; i++) {
+  let truncated = false;
+  for (let i = 0; i < chips.length; i++) {
     const chip = chips[i]!;
     const needed = (current.length ? cols(GAP.text) : 0) + lineCols(chip);
-    if (current.length && lineCols(current) + needed > opts.width) {
+    if (current.length && lineCols(current) + needed > width) {
       lines.push(current);
       current = [];
-      if (lines.length === opts.maxLines) break;
+      if (lines.length === maxLines) break;
     }
     if (current.length) current.push(GAP);
-    current.push(...(lineCols(chip) > opts.width ? fitLine(chip, opts.width) : chip));
+    if (lineCols(chip) > width) truncated = true;
+    current.push(...(lineCols(chip) > width ? fitLine(chip, width) : chip));
   }
-  if (lines.length < opts.maxLines && current.length) lines.push(current);
+  if (lines.length < maxLines && current.length) lines.push(current);
   const hidden = chips.length - countChips(lines);
   if (hidden > 0) {
     // Make room on the last line for the overflow marker, dropping trailing chips from it if needed.
     const more: Line = [{ text: `+${hidden} more · /who`, dim: true }];
     let last = lines.pop() ?? [];
     let extra = hidden;
-    while (last.length && lineCols(last) + cols(GAP.text) + lineCols(more) > opts.width) {
+    while (last.length && lineCols(last) + cols(GAP.text) + lineCols(more) > width) {
       last = dropLastChip(last);
       extra++;
     }
     const marker: Line = [{ text: `+${extra} more · /who`, dim: true }];
     lines.push(last.length ? [...last, GAP, ...marker] : marker);
+    return { lines, hidden: extra, truncated };
   }
-  return lines;
+  return { lines, hidden: 0, truncated };
 }
-
 // ---- subscription usage (6.6) ------------------------------------------------------------------------------
 
 const HARNESS_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
@@ -145,52 +170,99 @@ export function resetHint(iso: string | null, now: number = Date.now()): string 
   return `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function pctSegments(label: string, w: UsageWindow | undefined, opts: { mono: boolean; stale: boolean; now: number }): Line {
-  if (!w || w.usedPercent === null) return [{ text: `${label} n/a`, dim: true }];
-  const pct = Math.round(w.usedPercent);
-  const color = opts.stale ? undefined : pct >= 85 ? 'red' : pct >= 65 ? 'yellow' : undefined;
-  const reset = resetHint(w.resetsAt, opts.now);
-  return [
-    { text: `${label} ` , dim: true },
-    { text: `${pct}%${opts.mono && color ? '!' : ''}`, color, bold: !!color, dim: opts.stale },
-    ...(reset ? [{ text: ` ↻${reset}`, dim: true }] : []),
-  ];
+export function harnessLabel(harness: string): string {
+  return HARNESS_LABEL[harness] ?? harness;
 }
 
-/** One account: pinned 5h + weekly for the main bucket, then each other bucket's weekly (e.g. "Fable weekly"). */
-export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: number; disconnected?: boolean }): Line {
+/** One quota window: the metric (`5h ▓░░░░░░░░░ 7.0%`) and its reset hint (`↻2h10m`, magenta), kept apart so the left
+ * panel can move the reset to a continuation line. */
+export interface WindowMetric {
+  metric: Line;
+  reset: Segment | null;
+}
+
+/**
+ * An available account's windows: pinned 5h (brightMagenta) + weekly (brightBlue) for the main bucket, then each other
+ * bucket's weekly (e.g. "Fable weekly", brightBlue). Shared by the top bar and the left panel so their values match.
+ */
+export function accountWindows(a: AccountUsage, opts: { now?: number; disconnected?: boolean; bars?: boolean }): WindowMetric[] {
   const now = opts.now ?? Date.now();
-  const name: Segment = { text: HARNESS_LABEL[a.account.harness] ?? a.account.harness, bold: true };
-  if (a.status === 'unavailable') return [name, { text: ` usage unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, dim: true }];
   const stale = a.status === 'stale' || !!opts.disconnected;
-  const out: Line = [name];
+  const one = (label: string, w: UsageWindow | undefined, color: string): WindowMetric => {
+    const pct = w ? w.usedPercent : null;
+    const reset = pct === null ? null : resetHint(w?.resetsAt ?? null, now);
+    return { metric: usageBar(label, pct, color, { stale, bar: opts.bars }), reset: reset ? { text: `↻${reset}`, color: stale ? undefined : PALETTE.reset, dim: stale } : null };
+  };
   // The main (5h + weekly) bucket is the harness's own bucket (or one carrying a 5h window), never just the first.
   const main = a.buckets.find((b) => b.id === a.account.harness) ?? a.buckets.find((b) => b.windows.some((w) => w.durationMinutes === 300)) ?? a.buckets[0];
   const others = a.buckets.filter((b) => b !== main);
   const byMinutes = (b: UsageBucket | undefined, m: number) => b?.windows.find((w) => w.durationMinutes === m);
-  for (const p of PINNED) out.push({ text: '  ' }, ...pctSegments(p.label, byMinutes(main, p.minutes), { mono: opts.mono, stale, now }));
+  const out: WindowMetric[] = PINNED.map((p) => one(p.label, byMinutes(main, p.minutes), p.minutes === 300 ? PALETTE.fiveHour : PALETTE.weekly));
   for (const b of others) {
     const weekly = byMinutes(b, 10_080) ?? b.windows[0];
     if (!weekly) continue;
-    out.push({ text: '  ' }, ...pctSegments(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly, { mono: opts.mono, stale, now }));
+    out.push(one(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly, PALETTE.weekly));
   }
-  if (a.fallback) out.push({ text: ' (via statusline, no model limits)', dim: true, italic: true });
-  // A shared source whose login can't be verified says so on screen, not only in the IPC payload.
-  if (/unverified/i.test(a.source)) out.push({ text: ' (ccstatusline, login unverified)', dim: true, italic: true });
-  if (opts.disconnected) out.push({ text: ' (last known)', dim: true, italic: true });
-  else if (a.status === 'stale') out.push({ text: ' (stale)', dim: true, italic: true });
   return out;
 }
 
-/** Account usage lines: all on one line when they fit, else one per account (each fitted to the width). */
-export function accountLines(accounts: readonly AccountUsage[], opts: { width: number; mono: boolean; now?: number; disconnected?: boolean }): Line[] {
-  if (accounts.length === 0) return [];
-  const parts = accounts.map((a) => accountSegments(a, opts));
-  const joined: Line = parts.flatMap((p, i) => (i === 0 ? p : [{ text: '   │   ', dim: true }, ...p]));
-  if (lineCols(joined) <= opts.width) return [joined];
-  return parts.map((p) => fitLine(p, opts.width));
+/** A window as one piece: metric plus its reset hint. */
+export function windowLine(w: WindowMetric): Line {
+  return w.reset ? [...w.metric, { text: ' ' }, w.reset] : w.metric;
 }
 
+/** Qualifiers an account reading must carry on screen (fallback source, unverified login, staleness). */
+export function accountNotes(a: AccountUsage, disconnected = false): string[] {
+  const notes: string[] = [];
+  if (a.fallback) notes.push('(via statusline, no model limits)');
+  // A shared source whose login can't be verified says so on screen, not only in the IPC payload.
+  if (/unverified/i.test(a.source)) notes.push('(ccstatusline, login unverified)');
+  if (disconnected) notes.push('(last known)');
+  else if (a.status === 'stale') notes.push('(stale)');
+  return notes;
+}
+
+/** An account's pieces for the top bar: bold name first, then each window, then its qualifiers. */
+function accountPieces(a: AccountUsage, opts: { mono: boolean; now?: number; disconnected?: boolean; bars?: boolean }): Line[] {
+  const name: Line = [{ text: harnessLabel(a.account.harness), bold: true }];
+  if (a.status === 'unavailable') return [[...name, { text: ` usage unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, dim: true }]];
+  return [name, ...accountWindows(a, opts).map(windowLine), ...accountNotes(a, !!opts.disconnected).map((n): Line => [{ text: n, dim: true, italic: true }])];
+}
+
+/** One account on one line: name, its windows, then its qualifiers. */
+export function accountSegments(a: AccountUsage, opts: { mono: boolean; now?: number; disconnected?: boolean; bars?: boolean }): Line {
+  const [first, ...rest] = accountPieces(a, opts);
+  return rest.reduce<Line>((line, piece) => [...line, { text: '  ' }, ...piece], first ?? []);
+}
+
+/**
+ * Account usage lines for the top bar: all on one line when they fit; else each account wraps whole metrics onto
+ * indented continuation lines (never cutting a bar or a number). If a single metric can't fit even alone, bars are
+ * dropped for plain labelled percentages; only then is anything truncated.
+ */
+export function accountLines(accounts: readonly AccountUsage[], opts: { width: number; mono: boolean; now?: number; disconnected?: boolean }): Line[] {
+  if (accounts.length === 0) return [];
+  const joined: Line = accounts.map((a) => accountSegments(a, opts)).flatMap((p, i) => (i === 0 ? p : [{ text: '   │   ', dim: true }, ...p]));
+  if (lineCols(joined) <= opts.width) return [joined];
+  const wrapAll = (bars: boolean) => accounts.map((a) => accountPieces(a, { ...opts, bars }));
+  const fits = (pieces: Line[][]) => pieces.every((ps) => ps.every((piece, i) => lineCols(piece) + (i === 0 ? 0 : 2) <= opts.width));
+  const pieces = fits(wrapAll(true)) ? wrapAll(true) : wrapAll(false);
+  return pieces.flatMap((ps) => wrapPieces(ps, opts.width));
+}
+
+function wrapPieces(pieces: readonly Line[], width: number): Line[] {
+  const lines: Line[] = [];
+  let current: Line = [];
+  for (const piece of pieces) {
+    if (current.length && lineCols(current) + 2 + lineCols(piece) > width) {
+      lines.push(current);
+      current = [{ text: '  ' }];
+    } else if (current.length) current.push({ text: '  ' });
+    current.push(...piece);
+  }
+  if (current.length) lines.push(current);
+  return lines.map((l) => (lineCols(l) > width ? fitLine(l, width) : l));
+}
 function countChips(lines: readonly Line[]): number {
   // Each chip starts with a liveness glyph segment ("● ", "○ ", "◌ ", "⚠ ").
   return lines.reduce((n, l) => n + l.filter((s) => /^[●○◌⚠] $/.test(s.text)).length, 0);
