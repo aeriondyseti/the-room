@@ -67,7 +67,7 @@ export interface RequestMap {
   };
   kick: {
     /** One agent call opens or votes on a proposal; the human's call removes immediately. */
-    params: { caller: Caller; name: string; reason: string };
+    params: { caller: Caller; name: string; reason?: string };
     result: KickOutcome;
   };
   settings_get: { params: Record<string, never>; result: RoomSettingsView };

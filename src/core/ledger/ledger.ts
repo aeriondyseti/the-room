@@ -6,6 +6,7 @@ import type { Delivery, DeliveryAttempt, MessageWithDeliveries, ParticipantState
 import { HUMAN } from '../../contracts/domain.js';
 import { loadConfig } from '../config.js';
 import type { WithdrawOutcome, WithdrawDisposition } from '../../contracts/crossing.js';
+import type { KickProposal } from '../../contracts/lifecycle.js';
 import { RoomError } from '../../contracts/errors.js';
 
 export interface EnqueueInput {
@@ -74,6 +75,8 @@ export class Ledger {
         CREATE INDEX IF NOT EXISTS delivery_order ON deliveries(recipient,state);
         CREATE TABLE IF NOT EXISTS participants (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS participant_aliases (old_name TEXT PRIMARY KEY, native_scope TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS kick_proposals (id TEXT PRIMARY KEY, target_scope TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL);
+        CREATE UNIQUE INDEX IF NOT EXISTS kick_open_target ON kick_proposals(target_scope) WHERE status='open';
         CREATE TABLE IF NOT EXISTS usage_cursors (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_records (id TEXT PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS crossing_display (scope TEXT PRIMARY KEY, snapshot TEXT NOT NULL, checked_at TEXT NOT NULL);
@@ -262,7 +265,7 @@ export class Ledger {
           else if(d.state==='submitted'||d.attempts.some(a=>a.outcome==='submitted'))disposition='submitted';
           else if(d.state==='uncertain'||d.attempts.some(a=>a.outcome==='uncertain'))disposition='uncertain';
           else{
-            this.updateDelivery(messageId,recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.held=false;value.waiting=null;});
+            this.updateDelivery(messageId,recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.withdrawalCause='sender';value.held=false;value.waiting=null;});
             disposition='withdrawn';
           }
         }
@@ -293,12 +296,28 @@ export class Ledger {
     return this.queued(from).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&
       d.attempts.at(-1)?.outcome!=='in_flight'&&this.findDelivery(d.messageId,to)!==null).map(d=>d.messageId);
   }
+  kickQueued(name:string,target:Delivery['target']):Delivery[] {
+    return this.transaction(()=>this.queued(name).filter(d=>d.target.harness===target.harness&&d.target.sessionId===target.sessionId&&d.attempts.at(-1)?.outcome!=='in_flight')
+      .map(d=>this.updateDelivery(d.messageId,d.recipient,value=>{value.state='withdrawn';value.withdrawnAt=new Date().toISOString();value.withdrawalCause='kick';value.held=false;value.waiting=null;})));
+  }
   recordParticipantAlias(oldName:string,target:Delivery['target']):void {
     this.db.prepare('INSERT INTO participant_aliases(old_name,native_scope) VALUES(?,?) ON CONFLICT(old_name) DO UPDATE SET native_scope=excluded.native_scope').run(oldName,`${target.harness}:${target.sessionId}`);
   }
   participantAlias(oldName:string):string|null {
     const row=this.db.prepare('SELECT native_scope FROM participant_aliases WHERE old_name=?').get(oldName) as {native_scope:string}|undefined;
     return row?.native_scope??null;
+  }
+  /** Proposal records are durable; a unanimous open record can be completed after service restart. */
+  putKickProposal(proposal:KickProposal):void {
+    const scope=`${proposal.target.harness}:${proposal.target.sessionId}`;
+    this.db.prepare('INSERT INTO kick_proposals(id,target_scope,status,payload) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload').run(proposal.id,scope,proposal.status,JSON.stringify(proposal));
+  }
+  openKickProposal(target:Delivery['target']):KickProposal|null {
+    const row=this.db.prepare("SELECT payload FROM kick_proposals WHERE target_scope=? AND status='open'").get(`${target.harness}:${target.sessionId}`) as {payload:string}|undefined;
+    return row?JSON.parse(row.payload) as KickProposal:null;
+  }
+  openKickProposals():KickProposal[] {
+    return (this.db.prepare("SELECT payload FROM kick_proposals WHERE status='open'").all() as {payload:string}[]).map(row=>JSON.parse(row.payload) as KickProposal);
   }
   /** Update mutable state only; message, recipient and target snapshot cannot be replaced. */
   updateDelivery(messageId: string, recipient: string, update: (delivery: Delivery) => void): Delivery {

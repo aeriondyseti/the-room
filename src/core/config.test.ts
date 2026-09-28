@@ -41,6 +41,7 @@ test('invalid numeric overrides throw instead of being ignored', () => {
   const c = loadConfig({ ROOM_REGISTRY_LOCK_TIMEOUT_MS: '250', ROOM_REGISTRY_LOCK_POLL_MS: '5' });
   assert.equal(c.registryLockTimeoutMs, 250);
   assert.equal(c.registryLockPollMs, 5);
+  assert.equal(loadConfig({ ROOM_KICK_PROPOSAL_TTL_MS: '2000' }).kickProposalTtlMs, 2000);
 });
 
 test('TD-0023: the shutdown grace is a tunable (ROOM_MONITOR_STOP_GRACE_MS)', () => {

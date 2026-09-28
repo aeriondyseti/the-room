@@ -59,6 +59,8 @@ export class Dispatcher {
  }
  /** Wait for current work, then perform a fresh scheduler pass (including changed reachability). */
  async idle():Promise<void>{await Promise.allSettled(this.workers.values());await this.kick();await Promise.allSettled(this.workers.values());}
+ /** A lifecycle removal waits only for this recipient's in-flight native handoff. */
+ async settleRecipient(name:string):Promise<void>{const worker=this.workers.get(name);if(worker)await worker;}
  private change(delivery:Delivery,update:(d:Delivery)=>void):Delivery{
   const changed=this.ledger.updateDelivery(delivery.messageId,delivery.recipient,update);this.emit({type:'delivery.updated',delivery:changed});
   const previous=this.ledger.participants().find(p=>p.name===delivery.recipient&&p.harness===delivery.target.harness&&p.sessionId===delivery.target.sessionId);

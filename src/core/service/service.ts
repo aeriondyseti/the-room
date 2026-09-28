@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto';
+import type { KickOutcome, KickProposal } from '../../contracts/lifecycle.js';
 import { RoomSettings } from '../settings.js';
 import { InboxStore } from '../ledger/inbox.js';
 import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.js';
 import { Dispatcher } from '../dispatch/dispatcher.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import { Ledger } from '../ledger/ledger.js';
-import { joinParticipant, readRegistry, renameParticipant, type Registry } from '../registry/registry.js';
-import { HUMAN, SYSTEM, isValidParticipantName, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
+import { joinParticipant, readRegistry, renameParticipant, removeRegistryParticipant, type Registry } from '../registry/registry.js';
+import { HUMAN, SYSTEM, isValidParticipantName, type MessageWithDeliveries, type ParticipantRegistration, type ParticipantState, type TargetSnapshot } from '../../contracts/domain.js';
 import { MAX_FRAME_BYTES, type ClientKind, type RequestFrame, type RoomEvent } from '../../contracts/ipc.js';
 import { RoomError } from '../../contracts/errors.js';
 import { loadConfig } from '../config.js';
@@ -18,6 +19,7 @@ import type { AccountUsageProvider } from '../../contracts/account.js';
 import type { ActivityCursorState, ActivityReader } from '../../observer/activity-reader.js';
 import type { ActivityRequest } from '../../contracts/activity.js';
 import type { UsageCursor as ObserverCursor } from '../../observer/observer.js';
+import { openKickProposal, voteKickProposal } from './kick-vote.js';
 
 const OBSERVER_CURSORS='usage-observer';
 const ACTIVITY_CURSORS='activity-reader';
@@ -29,6 +31,8 @@ export class RoomService {
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
   private requestTail:Promise<void>=Promise.resolve();
+  private kickTimer:NodeJS.Timeout|null=null;
+  private serviceStarted=false;
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
@@ -66,8 +70,8 @@ export class RoomService {
     }
     return moved;
   }
-  async start():Promise<void>{await this.reconcile();this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
-  async close():Promise<void>{await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
+  async start():Promise<void>{await this.reconcile();await this.recoverKickProposals();this.serviceStarted=true;this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();}
+  async close():Promise<void>{this.serviceStarted=false;if(this.kickTimer)clearTimeout(this.kickTimer);await Promise.all([this.accounts?.stop(),this.activity?.stop(),this.monitor?.stop()]);await this.dispatcher.stop();this.ledger.close();}
   onEvent(listener: (event:RoomEvent)=>void): ()=>void { this.listeners.add(listener);return ()=>this.listeners.delete(listener); }
   publish(event:RoomEvent): void { for(const listener of this.listeners)listener(event); }
   /** Rename spans a registry write and a ledger relabel. Serialize room requests
@@ -76,10 +80,13 @@ export class RoomService {
    */
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
     if(!['send','guarded_send','rename','kick','join','retry','pause','resume','withdraw','inbox','who'].includes(request.method))return this.handleOne(request,client);
+    return this.serialized(()=>this.handleOne(request,client));
+  }
+  private async serialized<T>(work:()=>Promise<T>):Promise<T> {
     const previous=this.requestTail;let release!:()=>void;
     this.requestTail=new Promise<void>(resolve=>{release=resolve;});
     await previous;
-    try{return await this.handleOne(request,client);}finally{release();}
+    try{return await work();}finally{release();}
   }
   private async handleOne(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
@@ -224,6 +231,38 @@ export class RoomService {
         const noticeId=this.postSystemNotice(`${oldName} is now ${newName}.`,renamed,caller.sender.kind==='agent'?newName:null);
         return{oldName,registration:{name:newName,...target},relabeled:moved.length,noticeId};
       }
+      case 'kick': {
+        const registry=await readRegistry(this.root);
+        const caller=resolveCaller(p.caller,client,registry);
+        const name=text(p.name,'name');const reason=p.reason===undefined?null:text(p.reason,'reason');
+        if(reason&&reason.length>500)throw new RoomError('bad_request','Kick reason must be 1–500 characters.');
+        const binding=registry[name];if(!binding)throw new RoomError('unknown_recipient',`No registered agent named ${name}.`);
+        const target={harness:binding.harness,sessionId:binding.session_id};
+        const registration={name,...target};
+        if(caller.sender.kind==='human')return await this.executeKick(null,registration,text(reason,'reason'));
+        if(caller.sender.identity.mode!=='verified')throw new RoomError('identity_unresolved','Kick votes require verified native session identity.');
+        const own=registry[caller.sender.name]!;const voter={harness:own.harness,sessionId:own.session_id};
+        let proposal=this.ledger.openKickProposal(target);
+        if(proposal&&proposal.voters.every(v=>v.votedAt!==null))return await this.executeKick(proposal,proposal.target,proposal.reason);
+        if(proposal&&Date.parse(proposal.expiresAt)<=Date.now()){await this.expireKickProposal(proposal);proposal=null;}
+        if(!proposal){
+          if(!reason)throw new RoomError('bad_request','Opening a kick proposal requires a reason; later votes may omit it.');
+          proposal=openKickProposal(registry,await this.participants(registry),name,voter,reason,new Date(),loadConfig().participantRefreshMs,loadConfig().kickProposalTtlMs);
+          const opening=`${caller.sender.name} proposes removing ${name}: ${proposal.reason}. Voters: ${proposal.voters.map(v=>v.name).join(', ')}. ${proposal.excluded.length?`Not qualified as online: ${proposal.excluded.map(v=>`${v.name} (${v.reason})`).join(', ')}. `:''}Other listed voters may call room_kick for ${name}; expires ${proposal.expiresAt}.`;
+          const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(proposal!);return this.enqueueSystemNotice(opening,registry);});
+          this.publishSystemNotice(notice);this.scheduleKickExpiry();
+          if(proposal.voters.every(v=>v.votedAt!==null))return await this.executeKick(proposal,registration,proposal.reason);
+          return{status:'open',proposal,vote:'recorded'} satisfies KickOutcome;
+        }
+        const voted=voteKickProposal(proposal,voter,new Date());
+        if(voted.vote!=='recorded')return{status:'open',proposal:voted.proposal,vote:voted.vote} satisfies KickOutcome;
+        proposal=voted.proposal;
+        const count=proposal.voters.filter(v=>v.votedAt!==null).length;
+        const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(proposal!);return this.enqueueSystemNotice(`${caller.sender.name} agreed to remove ${name} (${count}/${proposal!.voters.length} votes).`,registry);});
+        this.publishSystemNotice(notice);
+        if(voted.unanimous)return await this.executeKick(proposal,proposal.target,proposal.reason);
+        return{status:'open',proposal,vote:'recorded'} satisfies KickOutcome;
+      }
       case 'deliveries': return {deliveries:this.ledger.read(text(p.messageId,'messageId')).deliveries};
       case 'activity': {
         const req:ActivityRequest={participant:text(p.participant,'participant')};
@@ -274,16 +313,78 @@ export class RoomService {
       default:throw new RoomError('bad_request','This request is handled by the IPC connection.');
     }
   }
-  /** One informational room message, delivered by the ordinary native path. */
+  /** The caller can commit this together with a proposal before publishing it. */
+  private enqueueSystemNotice(body:string,registry:Registry,exclude:string|null=null):MessageWithDeliveries {
+    const names=Object.keys(registry).filter(name=>name!==exclude);
+    return this.ledger.enqueue({sender:{name:SYSTEM,kind:'system',identity:{mode:'system',source:'service'}},senderScope:SYSTEM,
+      body,requestedRecipients:[...names,HUMAN],recipients:[...names.map(name=>({name,target:{harness:registry[name]!.harness,sessionId:registry[name]!.session_id}})),{name:HUMAN,target:null}],
+      addressing:'direct',kind:'system',held:this.ledger.roomState().paused});
+  }
+  private publishSystemNotice(result:MessageWithDeliveries):void {
+    this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
+    if(this.serviceStarted)void this.dispatcher.kick();
+  }
+  /** Renames remain valid if their informational notice fails after registry commit. */
   private postSystemNotice(body:string,registry:Registry,exclude:string|null=null):string|null {
-    try{
-      const names=Object.keys(registry).filter(name=>name!==exclude);
-      const result=this.ledger.enqueue({sender:{name:SYSTEM,kind:'system',identity:{mode:'system',source:'service'}},senderScope:SYSTEM,
-        body,requestedRecipients:[...names,HUMAN],recipients:[...names.map(name=>({name,target:{harness:registry[name]!.harness,sessionId:registry[name]!.session_id}})),{name:HUMAN,target:null}],
-        addressing:'direct',kind:'system',held:this.ledger.roomState().paused});
-      this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});void this.dispatcher.kick();
-      return result.message.id;
-    }catch{return null; /* Rename remains valid; notices are best effort across a crash/failure. */}
+    try{const result=this.enqueueSystemNotice(body,registry,exclude);this.publishSystemNotice(result);return result.message.id;}
+    catch{return null;}
+  }
+  private scheduleKickExpiry():void {
+    if(this.kickTimer)clearTimeout(this.kickTimer);
+    const now=Date.now();
+    const next=this.ledger.openKickProposals().reduce((min,p)=>Math.min(min,p.voters.every(v=>v.votedAt!==null)?now+Math.max(1000,loadConfig().dispatchPollMs):Date.parse(p.expiresAt)),Number.POSITIVE_INFINITY);
+    if(!Number.isFinite(next)){this.kickTimer=null;return;}
+    this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.serialized(()=>this.recoverKickProposals()).catch(()=>this.scheduleKickExpiry());},Math.min(2_147_483_647,Math.max(1,next-Date.now())));
+    this.kickTimer.unref();
+  }
+  private async expireKickProposal(proposal:KickProposal):Promise<void> {
+    if(proposal.status!=='open')return;
+    const registry=await readRegistry(this.root);
+    const expired:KickProposal={...proposal,status:'expired'};
+    const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(expired);return this.enqueueSystemNotice(`Kick proposal for ${proposal.target.name} expired without every listed vote.`,registry);});
+    this.publishSystemNotice(notice);
+    this.scheduleKickExpiry();
+  }
+  private async recoverKickProposals():Promise<void> {
+    for(const proposal of this.ledger.openKickProposals()){
+      if(proposal.voters.every(v=>v.votedAt!==null)){
+        try{await this.executeKick(proposal,proposal.target,proposal.reason);}catch{/* Keep the approved proposal for the next recovery attempt. */}
+      }
+      else if(Date.parse(proposal.expiresAt)<=Date.now())await this.expireKickProposal(proposal);
+    }
+    this.scheduleKickExpiry();
+  }
+  private async executeKick(proposal:KickProposal|null,target:ParticipantRegistration,reason:string):Promise<KickOutcome> {
+    const superseded=proposal?null:this.ledger.openKickProposal({harness:target.harness,sessionId:target.sessionId});
+    let registry=await readRegistry(this.root);
+    const bound=registry[target.name];
+    const same=(b:{harness:string;session_id:string})=>b.harness===target.harness&&b.session_id===target.sessionId;
+    if(bound&&!same(bound)){
+      if(proposal)await this.expireKickProposal(proposal);
+      throw new RoomError('rebind_conflict','Target binding changed during voting; open a new proposal.');
+    }
+    if(!bound){
+      if(!proposal)throw new RoomError('not_registered','The target is no longer registered.');
+      if(Object.values(registry).some(same)){
+        await this.expireKickProposal(proposal);
+        throw new RoomError('rebind_conflict','Target changed its name during voting; open a new proposal.');
+      }
+    }else registry=await removeRegistryParticipant(this.root,target.name,{harness:target.harness,session_id:target.sessionId});
+    // The native handoff may already be underway. It settles under the old label;
+    // only rows still queued afterward can receive a broker cancellation tombstone.
+    if(this.serviceStarted)await this.dispatcher.settleRecipient(target.name);
+    const cancelled=this.ledger.transaction(()=>{
+      const rows=this.ledger.kickQueued(target.name,{harness:target.harness,sessionId:target.sessionId});
+      if(proposal)this.ledger.putKickProposal({...proposal,status:'executed'});
+      if(superseded)this.ledger.putKickProposal({...superseded,status:'executed'});
+      return rows;
+    });
+    await this.participants(registry);
+    for(const delivery of cancelled)this.publish({type:'delivery.updated',delivery});
+    const voters=proposal?proposal.voters.filter(v=>v.votedAt!==null).map(v=>v.name).join(', '):'human';
+    const noticeId=this.postSystemNotice(`${target.name} was removed from the room by ${voters}. Reason: ${reason.replace(/\s+/g,' ').trim()}. Queued deliveries cancelled: ${cancelled.length}.`,registry);
+    this.scheduleKickExpiry();
+    return{status:'executed',proposal:proposal?{...proposal,status:'executed'}:null,removed:target,cancelled:cancelled.length,noticeId,vote:proposal?'recorded':'human'};
   }
   private inboxDisplay(scope:string) {
     const display=this.ledger.inboxDisplay(scope);if(!display)return null;
