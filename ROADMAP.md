@@ -96,7 +96,7 @@ Milestone 6+ only after the v0.1.0 tag.
   no secret in any log, error, or return value. A documented live smoke test against a real session
   passes.
 
-- [ ] **2.3 CLI** *(Astra)*
+- [x] **2.3 CLI** *(Astra)*
   - **Scope:**
     - `room send` (text from args, stdin, or a file), `read`, `who`, `join`, `doctor`, `pause`,
       `resume`, `shutdown`;
