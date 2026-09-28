@@ -31,7 +31,7 @@ const sectionLabel = (text: string): Segment => ({ text, dim: true, bold: true }
 
 // ---- AGENTS -------------------------------------------------------------------------------------------------
 
-function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; model: boolean; branch: boolean; numberWidth: number }): Line[] {
+function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; model: boolean; branch: boolean; numberWidth: number; inbox: boolean }): Line[] {
   const dot = opts.stale ? { glyph: '◌', color: 'gray' } : stateDot(p);
   const name: Line = [{ text: `${dot.glyph} `, color: dot.color }, { text: sanitize(p.name), color: opts.stale ? 'gray' : colorFor(p.name), bold: true }];
   const status = activityLabel(p);
@@ -40,7 +40,8 @@ function agentCells(p: ParticipantState, opts: { stale: boolean; bars: boolean; 
   const state: Line = opts.stale
     ? [{ text: `last known: ${status.text}`, dim: true }]
     : [{ text: status.text, color: status.color, bold: loud, dim: !loud && p.activity !== 'idle' }];
-  const cells: Line[] = [name, state, inboxCell(p, opts.stale), opts.stale ? [] : contextBar(p.usage, { stale: false, bar: opts.bars, numberWidth: opts.numberWidth })];
+  // M7 "N not covered" is its own column only while some shown agent has a count, so it costs no width otherwise.
+  const cells: Line[] = [name, state, ...(opts.inbox ? [inboxCell(p, opts.stale)] : []), opts.stale ? [] : contextBar(p.usage, { stale: false, bar: opts.bars, numberWidth: opts.numberWidth })];
   cells.push(opts.model && p.workspace?.model ? [{ text: sanitize(shortModel(p.workspace.model)), dim: true }] : []);
   const git = opts.branch ? gitLabel(p.workspace?.git ?? null) : null;
   cells.push(git ? [{ text: git, dim: true }] : []);
@@ -63,9 +64,10 @@ export function agentGrid(participants: readonly ParticipantState[], opts: { wid
   ];
   const cap = Math.max(1, opts.maxRows);
   const shown = participants.length > cap ? participants.slice(0, cap - 1) : participants;
+  const inbox = shown.some((p) => inboxCell(p, opts.stale).length > 0);
   for (const v of variants) {
     const width = numberWidth(shown.map((p) => (p.usage?.status !== 'unavailable' ? p.usage?.context?.percent : null)));
-    const rows = shown.map((p) => trim(agentCells(p, { stale: opts.stale, ...v, numberWidth: width })));
+    const rows = shown.map((p) => trim(agentCells(p, { stale: opts.stale, ...v, numberWidth: width, inbox })));
     const widths = colWidths(rows);
     const lines = rows.map((r): Line => [{ text: ' ' }, ...join(r, widths)]);
     if (lines.every((l) => lineCols(l) <= opts.width)) {
