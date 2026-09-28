@@ -193,9 +193,28 @@ test('integration: two Codex agents join and message each other through the real
   const B = '01a0e605-bbbb-7000-8000-000000000002';
   assert.match((await call('room_join', { name: 'alpha' }, { threadId: A })).text, /Joined as "alpha"/);
   assert.match((await call('room_join', { name: 'beta' }, { threadId: B })).text, /Joined as "beta"/);
+  // M7 guard, as a model meets it: tokens exist before anything crosses; a cold send is refused with a snapshot.
+  const next = (t: string) => {
+    const m = /snapshot=(\S+) revises_attempt_id=(\S+)\./.exec(t);
+    assert.ok(m, `a NOT SENT result names the retry:\n${t}`);
+    return { snapshot: m[1]!, revises_attempt_id: m[2]! };
+  };
+  const betaEarly = /snapshot: (\S+)/.exec((await call('room_inbox', {}, { threadId: B })).text)![1]!;
   const text = 'hello beta\n"quotes" `ticks` $HOME ✓';
-  const sent = await call('room_send', { to: 'beta', text }, { threadId: A });
+  const cold = await call('room_send', { to: 'beta', text }, { threadId: A });
+  assert.equal(cold.isError, true, 'no snapshot: not sent');
+  assert.match(cold.text, /^NOT SENT: no snapshot was given\. Nothing was queued\./);
+  const sent = await call('room_send', { to: 'beta', text, ...next(cold.text) }, { threadId: A });
   assert.equal(sent.isError, false, sent.text);
+  assert.match(sent.text, /Sent #1 /);
+  // Crossing: beta replies with a snapshot taken before alpha's message; it comes back with that message.
+  const crossed = await call('room_send', { to: 'alpha', text: 'my stale take', snapshot: betaEarly }, { threadId: B });
+  assert.equal(crossed.isError, true);
+  assert.match(crossed.text, /^NOT SENT: messages addressed to you arrived that your snapshot does not cover/);
+  assert.match(crossed.text, /#1 .*alpha → beta/);
+  const revised = await call('room_send', { reply_to: '#1', text: 'revised take', ...next(crossed.text) }, { threadId: B });
+  assert.equal(revised.isError, false, revised.text);
+  assert.match(revised.text, /Sent #2 /);
   const read = await call('room_read', { message_id: '#1' }, { threadId: B });
   assert.match(read.text, /alpha → beta/);
   assert.equal(read.text.split('\n').slice(2, 2 + text.split('\n').length).join('\n'), text, 'exact multiline/quote/Unicode body before delivery diagnostics');
