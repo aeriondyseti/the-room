@@ -29,3 +29,8 @@ test('observer transport refuses control endpoints before creating a subprocess'
   const result=await readCodexDaemon(options,{method:'turn/start'} as unknown as DaemonReadRequest,()=>{launched=true;throw Error('must not launch');});
   assert.equal(result.ok,false);assert.equal(launched,false);
 });
+
+test('oversized observer request fails before encoding or sending a long frame',async()=>{
+ const result=await readCodexDaemon(options,{method:'thread/read',threadId:'x'.repeat(65536)},()=>spawn(process.execPath,['--input-type=module','-e',script],{windowsHide:true,stdio:['pipe','pipe','pipe']}));
+ assert.equal(result.ok,false);if(!result.ok)assert.match(result.reason,/frame limit/);
+});

@@ -42,6 +42,8 @@ export function readCodexDaemon(options: DaemonReadOptions, request: DaemonReadR
     child.stderr.on('data', (data: Buffer) => { received += data.length; if (received > options.maxBytes) finish(); });
     const frame = (body: Buffer, opcode = 1) => {
       const mask = randomBytes(4), n = body.length;
+      // Observer requests are tiny. Reject instead of ever encoding a 64-bit outgoing frame.
+      if(n>65535){finish({ok:false,reason:'Codex observer request exceeds frame limit.'});return;}
       const header = Buffer.alloc(n < 126 ? 2 : 4);
       header[0] = 0x80 | opcode; header[1] = 0x80 | (n < 126 ? n : 126);
       if (n >= 126) header.writeUInt16BE(n, 2);
