@@ -161,3 +161,12 @@ test('dispatcher envelope snapshot covers its own body only, never all prior add
  assert.equal(room.inbox.uncovered('codex:'+a,token),1,'older body is not implicitly credited');
  assert.equal(room.inbox.uncovered('codex:'+b,token),null,'another native binding cannot use it');
 });
+
+test('dispatch observations preserve the binding inbox display snapshot',async t=>{
+ const {room}=await setup(t);
+ for(const participant of await room.participants())room.ledger.putParticipant(participant);
+ const page=await call(room,'inbox',{caller:{kind:'agent',native:{harness:'codex',sessionId:a,source:'codex-env'},declaredName:'astra'}});
+ await send(room,'new addressed content');await room.dispatcher.idle();
+ const state=room.ledger.participants().find(p=>p.name==='astra')!;
+ assert.equal(state.inbox?.snapshot,page.snapshot);assert.equal(state.inbox?.uncovered,1);
+});

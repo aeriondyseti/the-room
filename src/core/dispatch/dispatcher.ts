@@ -69,7 +69,7 @@ export class Dispatcher {
    const fresh=(await readRegistry(this.root))[name];
    if(!fresh||fresh.harness!==next.target.harness||fresh.session_id!==next.target.sessionId){this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;}
    const old=this.ledger.participants().find(p=>p.name===name&&p.sessionId===next.target.sessionId&&p.harness===next.target.harness);
-   const participant={name,...next.target,liveness:probe.liveness,livenessCheckedAt:new Date().toISOString(),activity:probe.activity,pending:this.ledger.queued(name).length,usage:old?.usage??null};
+   const participant={...old,name,...next.target,liveness:probe.liveness,livenessCheckedAt:new Date().toISOString(),activity:probe.activity,pending:this.ledger.queued(name).length,usage:old?.usage??null};
    this.ledger.putParticipant(participant);this.emit({type:'participant.updated',participant});
    // Pause may have happened while a probe was awaiting the native process query.
    const current=this.ledger.delivery(next.messageId,name);if(current.state!=='queued'||current.held)continue;

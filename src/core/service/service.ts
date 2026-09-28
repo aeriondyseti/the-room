@@ -63,7 +63,7 @@ export class RoomService {
         if(p.cursor!==undefined)options.cursor=text(p.cursor,'cursor');
         if(p.limit!==undefined)options.limit=integer(p.limit,'limit',20,1);
         if(p.baseline!==undefined)options.baseline={reason:text(record(p.baseline).reason,'baseline.reason')};
-        return this.inbox.review(caller.scope,options);
+        const page=this.inbox.review(caller.scope,options);this.refreshInboxDisplay();return page;
       }
       case 'guarded_send':
       case 'send': {
@@ -119,9 +119,10 @@ export class RoomService {
           }
           return{result,replyDelivery,rejected:null};
         });
-        if(saved.rejected)return saved.rejected;
+        if(saved.rejected){this.refreshInboxDisplay();return saved.rejected;}
         const {result,replyDelivery}=saved;
         if(!result.deduplicated){
+          this.refreshInboxDisplay();
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
@@ -196,11 +197,23 @@ export class RoomService {
       default:throw new RoomError('bad_request','This request is handled by the IPC connection.');
     }
   }
+  private inboxDisplay(scope:string) {
+    const display=this.ledger.inboxDisplay(scope);if(!display)return null;
+    const uncovered=this.inbox.uncovered(scope,display.snapshot);
+    return uncovered===null?null:{...display,uncovered};
+  }
+  private refreshInboxDisplay():void {
+    for(const participant of this.ledger.participants()){
+      const inbox=this.inboxDisplay(`${participant.harness}:${participant.sessionId}`);
+      if(JSON.stringify(participant.inbox??null)===JSON.stringify(inbox))continue;
+      const updated={...participant,inbox};this.ledger.putParticipant(updated);this.publish({type:'participant.updated',participant:updated});
+    }
+  }
   async participants():Promise<ParticipantState[]> {
     const registry=await readRegistry(this.root);const previous=this.ledger.participants();const queued=this.ledger.queued();
     return Object.entries(registry).map(([name,binding])=>{
       const saved=previous.find(p=>p.name===name&&p.harness===binding.harness&&p.sessionId===binding.session_id);
-      return {name,harness:binding.harness,sessionId:binding.session_id,liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,
+      return {name,harness:binding.harness,sessionId:binding.session_id,inbox:this.inboxDisplay(`${binding.harness}:${binding.session_id}`),liveness:saved?.liveness??'unknown',livenessCheckedAt:saved?.livenessCheckedAt??null,
         activity:saved?.activity??'unknown',pending:queued.filter(d=>d.recipient===name).length,usage:saved?.usage??null,...(this.workspaceEnabled?{workspace:saved?.workspace??null}:saved?.workspace!==undefined?{workspace:saved.workspace}:{})};
     });
   }

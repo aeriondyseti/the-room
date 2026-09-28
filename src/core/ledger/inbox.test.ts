@@ -44,3 +44,15 @@ test('oversized Unicode bodies need every part; continuation is snapshot-bound; 
   assert.equal(store.uncovered('codex:one',baseline.snapshot),0);
   assert.throws(()=>store.review('codex:one',{snapshot:baseline.snapshot,baseline:{reason:'x'}}),/cannot be combined/);
 });
+
+test('partial coverage keeps original chunk boundaries after restart/config changes',t=>{
+ const root=mkdtempSync(join(tmpdir(),'vp-inbox-'));let ledger=new Ledger(root);
+ t.after(()=>{ledger.close();rmSync(root,{recursive:true,force:true,maxRetries:10});});
+ const body='A'.repeat(512)+'B'.repeat(512)+'C'.repeat(8000);
+ ledger.enqueue({sender:{name:'human',kind:'human',identity:{mode:'human',source:'tui'}},senderScope:'human',body,requestedRecipients:['a'],recipients:[{name:'a',target:{harness:'codex',sessionId:'one'}}],addressing:'direct'});
+ let store=new InboxStore(ledger,8192,512);let page=store.review('codex:one',{limit:1});let text='';
+ for(const item of page.items)if(item.kind==='message_part')text+=item.text;
+ ledger.close();ledger=new Ledger(root);store=new InboxStore(ledger,8192,1024);
+ while(page.hasMore){page=store.review('codex:one',{snapshot:page.snapshot,cursor:page.nextCursor!,limit:1});for(const item of page.items)if(item.kind==='message_part')text+=item.text;}
+ assert.equal(text,body);assert.equal(store.uncovered('codex:one',page.snapshot),0);
+});
