@@ -12,7 +12,7 @@ import type { AccountUsage } from '../contracts/account.js';
 import { App } from './app.js';
 import { MONO_THEME } from './theme.js';
 import { demoSource } from './demo.js';
-import { lineCols } from './format.js';
+import { cols, lineCols } from './format.js';
 // 6.15: bar assertions use the monochrome rendering (track = "░"); colour frames are checked separately (layout.test).
 import { barText } from './test-utils.js';
 import { leftPanelFits, sidePanelLines } from './sidepanel.js';
@@ -39,33 +39,43 @@ const claude: AccountUsage = {
   ],
 };
 
-test('side panel: name + ctx, status, model · branch per agent; usage one window per row with its notes; exact height, never wider', () => {
+test('side panel (6.16): name + right-aligned state, then ctx and model · branch; BUDGETS rows; ONE label column so every bar, number and reset lines up; exact height, never wider', () => {
   const p = agent('claude', { harness: 'claude', activity: 'busy', pending: 1, workspace: { model: 'claude-opus-5-5', cwd: null, cwdSource: null, observedAt: null,
     git: { status: 'ok', root: 'X:/r', worktree: null, branch: 'sprint/6.8', detached: false, head: 'abc', dirty: 2, staged: 0, modified: 2, untracked: 0, ahead: null, behind: null, checkedAt: null } } });
   const lines = sidePanelLines([p, agent('astra')], [claude], { width: 32, height: 26, stale: false, mono: false, now: NOW, humanName: 'Kevin' });
   const text = lines.map(barText);
   assert.equal(lines.length, 26, 'padded to the panel height');
   assert.ok(lines.every((l) => lineCols(l) <= 32), 'no line exceeds the panel width');
-  assert.deepEqual(text.slice(1, 6), ['● claude', '  busy · 1 queued', '  ctx   42.0%░░░', '  opus-5-5 · sprint/6.8*2', '● astra']);
-  const u = text.indexOf('PLAN USAGE');
-  assert.deepEqual(text.slice(u + 1, u + 5), ['Claude', '  5h  ░░7.0%░░░', '  weekly   21.0%░░░', '  Fable weekly   22.0%░░░'], 'no \"login unverified\" note (hidden, 6.10)');
+  assert.match(text[1]!, /^● claude +busy · 1 queued$/);
+  assert.equal(cols(text[1]!), 32, 'the state is right-aligned');
+  assert.equal(text[2], '  ctx      42.0%░░░');
+  assert.equal(text[3], '  opus-5-5 · sprint/6.8*2');
+  assert.match(text[4]!, /^● astra +idle$/);
+  const u = text.indexOf('BUDGETS');
+  assert.ok(u > 0 && !text.includes('PLAN USAGE'), 'the section is named like the top bar');
+  assert.equal(text[u + 1], 'Claude');
+  const rows = text.slice(u + 2, u + 5);
+  assert.deepEqual(rows.map((r) => r.slice(0, 9)), ['  5h     ', '  weekly ', '  Fable  '], 'labels share one column; Fable (a weekly limit) is named by its model');
+  const pctCols = [text[2]!, ...rows].map((r) => r.indexOf('%'));
+  assert.equal(new Set(pctCols).size, 1, `every percentage (ctx and budgets) ends in the same column:\n${[text[2], ...rows].join('\n')}`);
   assert.ok(text.includes('you: Kevin'));
 });
 
-test('side panel: agents that do not fit become "+N more · /who"; plan usage stays whole; disconnected says last known', () => {
+test('side panel (6.16): agents come first — identities before budgets, attention before the rest; budgets never silently vanish; disconnected says last known', () => {
   const many = Array.from({ length: 8 }, (_, i) => agent(`agent${i}`));
-  const text = sidePanelLines(many, [claude], { width: 32, height: 18, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
-  const more = text.find((l) => /^\+\d+ more · \/who$/.test(l));
-  assert.ok(more, 'overflow is summarised, never silently dropped');
-  const shown = text.filter((l) => /^● agent/.test(l)).length;
-  assert.equal(Number(more!.match(/\d+/)![0]) + shown, 8);
-  assert.ok(text.includes('  Fable weekly   22.0%░░░'), 'usage is kept whole');
+  const roomy = sidePanelLines(many, [claude], { width: 32, height: 18, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
+  assert.equal(roomy.filter((l) => /^● agent/.test(l)).length, 8, 'every agent name is shown before any budget detail');
+  assert.ok(roomy.some((l) => l.startsWith('  Fable')), 'budgets fit too');
+  const tight = sidePanelLines([...many.slice(0, 7), agent('asks', { activity: 'waiting_permission' })], [claude], { width: 32, height: 10, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
+  const more = tight.find((l) => /^\+\d+ more · \/who$/.test(l));
+  assert.ok(more, 'agents that do not fit are summarised, never silently dropped');
+  assert.equal(Number(more!.match(/\d+/)![0]) + tight.filter((l) => /^● /.test(l)).length, 8);
+  assert.ok(tight.some((l) => /^● asks +needs approval$/.test(l)), 'an agent needing approval is never the one hidden');
+  assert.ok(tight.includes('+ more usage · /layout top'), 'budgets that do not fit are announced, not silently absent');
   const stale = sidePanelLines([agent('astra')], [], { width: 32, height: 8, stale: true, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.equal(stale[0], 'AGENTS · last known');
-  assert.equal(stale[1], '◌ astra', 'no live liveness or usage while disconnected');
-  assert.equal(stale[2], '  last known: idle');
+  assert.match(stale[1]!, /^◌ astra +last known: idle$/, 'no live liveness or usage while disconnected');
 });
-
 test('left panel yields when the conversation would get too narrow', () => {
   assert.equal(leftPanelFits(120, 32, 90), true);
   assert.equal(leftPanelFits(89, 32, 90), false, 'below the breakpoint');
@@ -104,19 +114,20 @@ test('app: /layout and Ctrl+B switch layouts and report the saved choice; too na
   const saved: string[] = [];
   const ui = render(<App source={demoSource()} humanName="Kevin" width={120} height={30} onLayoutChange={async (l) => { saved.push(l); return true; }} />);
   await tick();
-  assert.doesNotMatch(plain(ui.lastFrame()), /PLAN USAGE/, 'starts with the top bar');
+  assert.match(plain(ui.lastFrame()), /BUDGETS +5h/, 'starts with the top bar (its budget grid header)');
   ui.stdin.write('/layout');
   await tick();
   ui.stdin.write('\r');
   await tick();
   let frame = plain(ui.lastFrame());
   assert.match(frame, /AGENTS/);
-  assert.match(frame, /PLAN USAGE/);
+  assert.match(frame, /^BUDGETS +│/m, 'the left panel BUDGETS section');
+  assert.doesNotMatch(frame, /BUDGETS +5h/, 'no top-bar grid while the panel shows');
   assert.match(frame, /Layout: left panel \(remembered\)/);
   ui.stdin.write('\u0002'); // Ctrl+B
   await tick();
   frame = plain(ui.lastFrame());
-  assert.doesNotMatch(frame, /PLAN USAGE/);
+  assert.match(frame, /BUDGETS +5h/, 'back to the top bar');
   assert.match(frame, /Layout: top bar/);
   assert.deepEqual(saved, ['left', 'top']);
   ui.stdin.write('/layout sideways');
@@ -129,7 +140,7 @@ test('app: /layout and Ctrl+B switch layouts and report the saved choice; too na
   const narrow = render(<App source={demoSource()} humanName="Kevin" width={80} height={30} layout="left" />);
   await tick();
   frame = plain(narrow.lastFrame());
-  assert.doesNotMatch(frame, /PLAN USAGE/, 'the conversation keeps a readable width');
+  assert.match(frame, /BUDGETS +5h/, 'the conversation keeps a readable width (top bar, no panel)');
   assert.match(frame, /Left panel needs a terminal 90\+ columns wide; showing the top bar until then\./);
 });
 
@@ -171,22 +182,21 @@ test('both layouts show the same values; several agents on one subscription stil
   const left = sidePanelLines(two, [claude], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.deepEqual(pct(left), pct(top), 'same percentages in both layouts');
   assert.equal(top.filter((l) => l.startsWith('Claude')).length, 1);
-  assert.equal(left.filter((l) => l === 'Claude').length, 1);
+  assert.equal(left.filter((l) => /^Claude\b/.test(l)).length, 1);
 });
 test('review fixes: a short panel degrades usage (no bars/reset rows) then says "more usage", never silently; qualifiers stay on the account row', () => {
   const stale = (harness: 'claude' | 'codex'): AccountUsage => ({ ...claude, status: 'stale', source: 's', account: { ...claude.account, harness, sourceKey: harness },
     buckets: [{ id: harness, windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 38, resetsAt: '2026-09-28T18:00:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 71, resetsAt: '2026-10-02T09:00:00Z' }] }] });
   const tall = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 30, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
-  assert.ok(tall.includes('Claude (stale)') && tall.includes('Codex (stale)'), 'the staleness qualifier rides on the account heading');
+  assert.ok(tall.some((l) => /^Claude +stale$/.test(l)) && tall.some((l) => /^Codex +stale$/.test(l)), 'the staleness qualifier rides on the account heading (right-aligned)');
   assert.ok(tall.some((l) => l.includes('░')), 'room to spare: bars');
-  // 6.14: bars carry their number inside, so the full form is shorter; 11 rows is where this panel must degrade.
+  // 6.16: resets never wrap, so there is nothing to compact row-wise: a short panel ends with the marker.
   const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 11, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.equal(short.length, 11);
-  assert.ok(short.every((l) => !l.includes('░')), 'short: numbers only');
-  assert.ok(short.includes('Codex (stale)'), 'compact form keeps both accounts whole here');
+  assert.ok(short.includes('+ more usage · /layout top'), 'short: the cut is announced');
   const tiny = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 8, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.ok(tiny.includes('+ more usage · /layout top'), 'anything cut is announced');
-  for (const [i, l] of tiny.entries()) if (/^\s+(5h|weekly)/.test(l)) assert.ok(tiny.slice(0, i).some((h) => /\(stale\)$/.test(h)), 'every shown value has its qualifier above it');
+  for (const [i, l] of tiny.entries()) if (/^\s+(5h|weekly)/.test(l)) assert.ok(tiny.slice(0, i).some((h) => /stale$/.test(h)), 'every shown value has its qualifier above it');
   const token = { source: 'claude-transcript' as const, status: 'stale' as const, observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } };
   assert.equal(barText(contextBar(token, { stale: false })), 'ctx 12k?', 'a stale token-only reading keeps its "?"');
 });

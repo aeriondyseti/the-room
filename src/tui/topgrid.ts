@@ -101,7 +101,7 @@ interface ModelColumn {
 }
 
 /** "5h" / "weekly" for the pinned windows, else the duration in hours or days (nothing when unknown). */
-function durationLabel(minutes: number | null): string {
+export function durationLabel(minutes: number | null): string {
   if (minutes === null) return '';
   if (minutes === 300) return '5h';
   if (minutes === 10_080) return 'weekly';
