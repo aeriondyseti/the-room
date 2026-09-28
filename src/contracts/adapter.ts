@@ -1,6 +1,7 @@
 // Adapter contract: the only way the dispatcher touches a harness (invariants 1, 2, 8).
 import type {
   Activity,
+  RuntimeContext,
   ErrorInfo,
   Harness,
   Liveness,
@@ -41,6 +42,8 @@ export interface LivenessProbe {
 
 export interface DeliveryAdapter {
   readonly harness: Harness;
+  /** Stable native configuration copied into SQLite before attempting submission. */
+  readonly runtimeContext?: RuntimeContext;
   /** Maximum envelope length (characters) this transport accepts; the core uses the reference fallback above it. */
   readonly maxEnvelopeChars: number;
   submit(request: SubmitRequest): Promise<SubmitResult>;

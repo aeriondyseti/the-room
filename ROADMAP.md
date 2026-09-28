@@ -76,7 +76,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 2 — Adapters and agent access
 
-- [ ] **2.1 Codex adapter** *(Astra)* — `codex queue --thread <id> --message <envelope>` via an argv
+- [x] **2.1 Codex adapter** *(Astra)* — `codex queue --thread <id> --message <envelope>` via an argv
   array; executable from PATH or a room override; the shared envelope builder; a 24K budget with the
   oversize reference fallback; the queue id recorded as evidence.
   **Done-when:** tests against a fake `codex` executable cover argv safety for quotes, newlines and
