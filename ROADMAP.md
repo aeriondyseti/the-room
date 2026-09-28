@@ -305,8 +305,9 @@ online agents; renames relabel in-flight deliveries. Ownership per the spec §6 
   restart, inbox and withdraw regressions pass.
 - [ ] **8.2 Rename without restart** *(Astra core; fable surfaces)*
   **Done-when:** `room_rename` / `room rename` (self only, binding-resolved) and the human's `room rename OLD NEW` /
-  `/rename`; registry moved atomically under the lock; the ledger row and every non-terminal delivery to the old name
-  relabelled in one transaction with targets unchanged; tokens unaffected; a system message announces the new name
+  `/rename`; registry moved atomically under the lock; the ledger row and every QUEUED delivery (held, waiting and burst members
+  included; never submitted, uncertain or in-flight attempts) to the old name relabelled in one transaction with
+  targets unchanged; tokens unaffected; a system message announces the new name
   to every agent; the old name is refused with a "renamed to" hint.
 - [ ] **8.3 Kick by unanimous consent** *(Astra core; fable surfaces)*
   **Done-when:** `room_kick { name, reason }` is one verb meaning "I vote to remove": the first call opens a persisted

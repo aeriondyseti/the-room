@@ -122,9 +122,9 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 8.1 | Ghost cleanup | fable | 🟡 | was 7.8; sprint/7.8 code written, 482/483 before the last flag fix; held for milestone alignment |
+| 8.1 | Ghost cleanup | fable | 🟡 | was 7.8; sprint/8.1 bad3404 core done (483/483); startup reconcile, gate and record pending |
 | 8.2 | Rename without restart | Astra (core) + fable (surfaces) | ⬜ | relabel in-flight (Kevin) |
-| 8.3 | Kick by unanimous consent | Astra (core) + fable (surfaces) | ⬜ | voters = other registered agents online at open (Kevin); draft 2 proposals P1-P5 (one verb, immediate execution, no veto) pending Astra |
+| 8.3 | Kick by unanimous consent | Astra (core) + fable (surfaces) | ⬜ | voters = other registered agents online at open (Kevin); agreed with Astra (spec §8): one verb, immediate execution, no veto; voters from fresh liveness |
 | 8.4 | TUI | fable | ⬜ | |
 
-> Ownership proposed at the M7→M8 boundary; Astra to amend. Milestone 7 follow-up 7.7 (baseline text) stays on hold for Astra's delivery-token frontier.
+> Ownership agreed with Astra at the M7→M8 boundary (spec §6): Astra core + contracts; fable 8.1, surfaces, spec, docs. Milestone 7 follow-up 7.7 (baseline text) stays on hold for Astra's delivery-token frontier.

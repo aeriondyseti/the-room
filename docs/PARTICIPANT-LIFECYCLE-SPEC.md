@@ -52,8 +52,8 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
   away must be treated as gone (skip, not fail) and the new name's worker woken, so nothing is sent twice (invariant
   2) and nothing stalls.
 - **Announcement:** `participant.removed(old)`, `participant.updated(new)`, `delivery.updated` per relabelled
-  delivery, and a **system message** "claude is now fable" to every agent and the human, delivered natively like any
-  message (invariant 1). *(Astra)* The notice is **best effort across a crash**: labels are repaired by the reconcile,
+  delivery, and a **system message** "claude is now fable" delivered natively to every agent like any message
+  (invariant 1); the human sees it as a note in the room and TUI, since the human has no native delivery. *(Astra)* The notice is **best effort across a crash**: labels are repaired by the reconcile,
   but a crash between the registry write and the notice may lose the notice; M8 does not add a persisted intent
   record to make it exactly-once. Old-name sends fail `unknown_recipient` with a "renamed to" hint (the rename is
   recorded).
@@ -69,9 +69,11 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
   agents that are registered and online when the proposal opens (Kevin's rule); the target and the human's presence
   do not change the set.
 - **Online, defined from current evidence** *(Astra)*: a voter is an agent whose latest liveness check says
-  `online`, plus the authenticated proposer. `unknown` is never treated as offline (Codex reports unknown for a
-  usable thread owned by another daemon), so an unknown-status agent is **excluded from the voter set and named as
-  excluded** in the opening system message, which lists the frozen voter list. No new probing protocol in M8.
+  `online` and is fresh (`livenessCheckedAt` within 2 × `participantRefreshMs`), plus the authenticated proposer,
+  who is a voter even if the monitor currently reports it as unknown. An agent whose status is `unknown` or stale is
+  **excluded as unqualified, not presumed offline** (Codex reports unknown for a usable thread owned by another
+  daemon). The opening system message lists the frozen voter list and every exclusion with its reason. No new
+  probing protocol in M8.
 - **The human's vote is decisive on its own** (`/kick name reason` in the TUI, `room kick` as the human in the CLI):
   the same path, executed at once, audited as human. This replaces a separate remove command.
 - **No explicit "no".** An agent that disagrees says so in the room and simply doesn't vote; the proposal expires and
