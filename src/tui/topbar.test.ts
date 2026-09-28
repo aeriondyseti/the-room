@@ -36,7 +36,7 @@ test('participant chips wrap within the width, at most maxLines, with an honest 
 test('accounts show pinned 5h + weekly, other buckets as their own weekly, n/a never 0, and reset hints', () => {
   const a = acct({ buckets: [...acct().buckets, { id: 'claude-fable', label: 'Fable', windows: [{ kind: 'seven_day_fable', durationMinutes: 10_080, usedPercent: 22, resetsAt: null }] }] });
   const text = lineText(accountSegments(a, { mono: false, now: NOW }));
-  assert.match(text, /^Claude {2}5h ▓▓▓▓░{6} 38\.0% ↻2h12m {2}weekly ▓{9}░ 90\.0%! ↻\w{3} \d\d:\d\d {2}Fable weekly ▓▓░{8} 22\.0%$/);
+  assert.match(text, /^Claude {2}5h ▓▓▓▓░{6} 38\.0% ↻ 2h12m {2}weekly ▓{9}░ 90\.0%! ↻ \w{3} \d\d:\d\d {2}Fable weekly ▓▓░{8} 22\.0%$/);
   const noShort = lineText(accountSegments(acct({ buckets: [{ id: 'codex', windows: [{ kind: 'primary', durationMinutes: 10_080, usedPercent: 16, resetsAt: null }] }], account: { harness: 'codex', scope: 'account', key: 'c', sourceKey: 'c' } }), { mono: false, now: NOW }));
   assert.match(noShort, /Codex {2}5h — {2}weekly ▓▓░{8} 16\.0%/, 'a missing pinned window is — with no bar, never an empty 0% bar');
   const nullPct = lineText(accountSegments(acct({ buckets: [{ id: 'claude', windows: [{ kind: 'five_hour', durationMinutes: 300, usedPercent: null, resetsAt: null }] }] }), { mono: false, now: NOW }));

@@ -132,7 +132,7 @@ function Room({
   const window = useWindowSize();
   const colsTotal = Math.max(20, width ?? window.columns);
   const rows = Math.max(12, height ?? window.rows);
-  // A slow clock so reset countdowns ("↻2h12m") stay current between events.
+  // A slow clock so reset countdowns ("↻ 2h12m") stay current between events.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), TOP_BAR_CLOCK_MS);

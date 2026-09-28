@@ -72,7 +72,7 @@ test('BUDGETS: 5h / weekly named once; one row per limit; "—" where there is n
   const rows = budgetGrid([claude, codex], { width: 120, now: NOW })!;
   const text = rows.map(lineText);
   assert.match(text[0]!, /^BUDGETS +5h +weekly$/);
-  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻1h53m +▓▓░{8} 24\.0%$/);
+  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻ 1h53m +▓▓░{8} 24\.0%$/);
   assert.match(text[2]!, /^ Fable +— +▓▓▓░{7} 27\.0%$/);
   assert.match(text[3]!, /^ Codex +— +▓▓░{8} 18\.0% +stale$/);
   assert.equal(colOf(text[0]!, '5h'), colOf(text[1]!, '▓'), '5h header over its column');
@@ -162,4 +162,9 @@ test('review fix: a limit that was hit (100.0%) still lines up its decimal with 
   const dot = (l: string) => l.indexOf('.', l.indexOf('▓') >= 0 ? l.indexOf('▓') : l.indexOf('░'));
   assert.equal(dot(text[1]!), dot(text[2]!), text.join('\n'));
   assert.match(text[1]!, /░ {3}7\.0%$/, 'padded to the column\'s widest number');
+});
+test('6.11: the reset arrow is followed by a space (it renders wider than one cell in some terminals)', () => {
+  const text = budgetGrid([claude], { width: 120, now: NOW })!.map(lineText).join('\n');
+  assert.ok(text.includes('↻ 1h53m'));
+  assert.doesNotMatch(text, /↻\S/, 'never glued to the time');
 });

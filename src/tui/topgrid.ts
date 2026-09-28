@@ -7,7 +7,7 @@
 import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import { colorFor, cols, fitLine, lineCols, sanitize, type Line, type Segment } from './format.js';
-import { contextBar, numberWidth, usageBar } from './bars.js';
+import { contextBar, numberWidth, RESET_MARK, usageBar } from './bars.js';
 import { accountNotes, activityLabel, gitLabel, harnessLabel, resetHint, shortModel, stateDot } from './topbar.js';
 
 const GAP = '  ';
@@ -113,7 +113,7 @@ function valueCell(w: UsageWindow | null, opts: { stale: boolean; bars: boolean;
 /** A window's reset cell (quiet), in its own column so reset times line up; empty when unknown. */
 function resetCell(w: UsageWindow | null, now: number): Line {
   const reset = w && w.usedPercent !== null ? resetHint(w.resetsAt, now) : null;
-  return reset ? [{ text: `↻${reset}`, dim: true }] : [];
+  return reset ? [{ text: `${RESET_MARK}${reset}`, dim: true }] : [];
 }
 
 /**

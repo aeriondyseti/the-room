@@ -4,7 +4,7 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import type { GitInfo, WorkspaceInfo } from '../contracts/workspace.js';
 import { colorFor, cols, fitLine, lineCols, relativeTime, sanitize, type Line, type Segment } from './format.js';
-import { contextBar, STATE_COLOR, usageBar } from './bars.js';
+import { contextBar, RESET_MARK, STATE_COLOR, usageBar } from './bars.js';
 
 export function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
   switch (l) {
@@ -187,7 +187,7 @@ export function harnessLabel(harness: string): string {
   return HARNESS_LABEL[harness] ?? harness;
 }
 
-/** One quota window: the metric (`5h ▓░░░░░░░░░ 7.0%`) and its reset hint (`↻2h10m`, magenta), kept apart so the left
+/** One quota window: the metric (`5h ▓░░░░░░░░░ 7.0%`) and its reset hint (`↻ 2h10m`, quiet), kept apart so the left
  * panel can move the reset to a continuation line. */
 export interface WindowMetric {
   metric: Line;
@@ -204,7 +204,7 @@ export function accountWindows(a: AccountUsage, opts: { now?: number; disconnect
   const one = (label: string, w: UsageWindow | undefined): WindowMetric => {
     const pct = w ? w.usedPercent : null;
     const reset = pct === null ? null : resetHint(w?.resetsAt ?? null, now);
-    return { metric: usageBar(label, pct, { stale, bar: opts.bars }), reset: reset ? { text: `↻${reset}`, dim: true } : null };
+    return { metric: usageBar(label, pct, { stale, bar: opts.bars }), reset: reset ? { text: `${RESET_MARK}${reset}`, dim: true } : null };
   };
   // The main (5h + weekly) bucket is the harness's own bucket (or one carrying a 5h window), never just the first.
   const main = a.buckets.find((b) => b.id === a.account.harness) ?? a.buckets.find((b) => b.windows.some((w) => w.durationMinutes === 300)) ?? a.buckets[0];
