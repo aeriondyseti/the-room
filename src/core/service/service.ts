@@ -85,7 +85,7 @@ export class RoomService {
         const guarded=request.method==='guarded_send';
         if(!guarded&&caller.sender.kind==='agent')throw new RoomError('bad_request','Agent sends require guarded_send with an inbox snapshot.');
         const urgent=p.urgent===undefined?null:{reason:text(record(p.urgent).reason,'urgent.reason')};
-        if(urgent&&urgent.reason.length>1000)throw new RoomError('bad_request','Urgency reason exceeds 1000 characters.');
+        if(urgent&&urgent.reason.length>loadConfig().urgentReasonMaxChars)throw new RoomError('bad_request',`Urgency reason exceeds ${loadConfig().urgentReasonMaxChars} characters.`);
         const snapshot=optionalText(p.snapshot,'snapshot')??undefined;
         const revisesAttemptId=optionalText(p.revisesAttemptId,'revisesAttemptId');
         if(revisesAttemptId&&!this.ledger.crossing(revisesAttemptId,caller.scope,'blocked_send'))throw new RoomError('bad_request','Revised attempt does not belong to this sender.');

@@ -59,3 +59,10 @@ test('withdrawn pending content cannot arrive by inbox pull or block a previousl
  const sent=await call(room,'guarded_send',{caller:agent(a),to:['human'],body:'still current',snapshot:page.snapshot});assert.equal(sent.status,'sent');
  const history=room.ledger.read(pending.message.id);assert.equal(history.deliveries[0]?.state,'withdrawn');assert.equal(history.message.body,'cancel this before delivery');
 });
+
+test('service rejects over-budget urgent reasons before recording any message',async t=>{
+ const room=await fixture(t);
+ const {loadConfig}=await import('../config.js');
+ await assert.rejects(call(room,'guarded_send',{caller:agent(a),to:['b'],body:'urgent',urgent:{reason:'x'.repeat(loadConfig().urgentReasonMaxChars+1)}}),{code:'bad_request'});
+ assert.equal(room.ledger.list(0,10).items.length,0);
+});
