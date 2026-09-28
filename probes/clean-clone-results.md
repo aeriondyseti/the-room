@@ -20,3 +20,16 @@ This checks install/build, empty-room service setup and automated TUI startup/re
 Cleanup: the service was stopped, but automatic approval review rejected recursive deletion of the explicitly owned clone as "blocked by policy". The directory remains at the fixture path above; no alternative deletion route was attempted.
 
 After integrating v0.0.18 TUI polish into sprint/5.3: build passed and `node scripts/preview-tui.mjs 80x24 --mono --empty` rendered the full first-run instructions, composer and keyboard hints. This was an Ink preview, not a physical-terminal visual check.
+
+
+## Refreshed release preparation (2026-09-28)
+
+A new independent clone of sprint/5.3 at 55d01e1 (main v0.0.22 integrated) was created at
+`C:\Users\Kevin\AppData\Local\Temp\vpfix-release-a40228af30` with `git clone --no-local`.
+`npm ci` installed 140 packages (audit reported zero vulnerabilities), `npm test` passed 208/208
+without environment overrides, and `node dist/cli/main.js --help` printed the expected command list.
+This clone did not enroll agents or start a room service. The directory is retained as test evidence;
+no deletion was attempted. The earlier cleanup rejection remains recorded above.
+
+Kevin also confirmed through the live TUI that Astra now shows busy after his service restart,
+qualifying the Codex activity display end-to-end (room message m-mulass60-2c192198-359a-446f-a980-e5577f9a6bfd).
