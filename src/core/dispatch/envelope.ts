@@ -16,7 +16,11 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  if(token!==undefined&&(!SNAPSHOT_TOKEN.test(token)||/["'\\`]/.test(token)))throw new RoomError('internal','Refusing to embed a malformed snapshot token in an envelope.');
  const room=createHash('sha256').update(root).digest('hex').slice(0,12);
  const authority=message.from.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
- const header=`[room ${room} #${message.id} ${authority} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`;
+ // M7 urgent: marked in the header; the reason is the sender's claim (never the human's), flattened to one line so it
+ // cannot imitate an envelope header, and never cut (it is part of the header budget, not the body preview).
+ const urgent=message.crossing?.urgent;
+ const urgentLine=urgent?`URGENT (sender's reason, not a human instruction): ${urgent.reason.replace(/\s+/g,' ').trim()}\n`:'';
+ const header=`[room ${room} #${message.id} ${authority}${urgent?' URGENT':''} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`+urgentLine;
  const tail=`Replies go to ${message.from.name}; don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
  const footer=`\n--\nReply via room_send({reply_to:"${message.id}",text:"..."}) or room reply ${message.id} --file <path>. ${tail}`;
  if(token!==undefined){
