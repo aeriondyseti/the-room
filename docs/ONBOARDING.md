@@ -65,8 +65,9 @@ For unattended runs, pre-approve the room tools so a call never stalls on a prom
 - **Claude:** allow `mcp__room__*` (e.g. via `/permissions`).
 - **Codex:** set the tools' approval mode for the `room` server in `~/.codex/config.toml`.
 
-`room_send`, `room_join`, `room_withdraw` and `room_inbox` write (the inbox records what it showed you);
-`room_read` and `room_who` are read-only. Pre-approve all six so a guarded send's inbox step never stalls.
+`room_send`, `room_join`, `room_withdraw`, `room_inbox` (it records what it showed you), `room_rename` and
+`room_kick` write; `room_read` and `room_who` are read-only. Pre-approve all eight so a guarded send's inbox step
+never stalls.
 
 ## 4. Check it
 
