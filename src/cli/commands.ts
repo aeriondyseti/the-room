@@ -9,7 +9,7 @@ import { resolveCodexExecutable } from '../adapters/codex/adapter.js';
 import { windowsProcessInfo } from '../mcp/identity.js';
 import { cliCaller } from './identity.js';
 import { RoomError, toErrorInfo } from '../contracts/errors.js';
-import type { Caller, Method, Params, Result } from '../contracts/ipc.js';
+import { MAX_FRAME_BYTES, type Caller } from '../contracts/ipc.js';
 import { sanitize } from '../tui/format.js';
 
 export const COMMANDS = ['send','read','who','join','doctor','pause','resume','retry','shutdown','migrate'];
@@ -76,7 +76,8 @@ async function ref(link: Link, value: string): Promise<string> {
 }
 async function readStdin(): Promise<string> {
   if(process.stdin.isTTY)throw new RoomError('bad_request','Pipe text into --stdin or pass --file.');
-  let value=''; for await(const chunk of process.stdin){value+=chunk.toString();if(Buffer.byteLength(value)>2*1024*1024)throw new RoomError('message_too_large','Input exceeds 2 MiB.');} return value;
+  process.stdin.setEncoding('utf8');
+  let value=''; for await(const chunk of process.stdin){value+=chunk.toString();if(Buffer.byteLength(value)>MAX_FRAME_BYTES/2)throw new RoomError('message_too_large','Input exceeds the room message budget.');} return value;
 }
 
 export async function runCommand(command: string, argv: string[], deps: CommandDeps = {}): Promise<number> {
@@ -92,7 +93,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
     const identify=deps.identify??(name=>cliCaller(name,{
       env:deps.env??process.env,ownParentPid:process.ppid,processInfo:windowsProcessInfo(config.claudeProcStartTimeoutMs),
       claudeRegistry:defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir,deps.env??process.env),config.claudeProcStartTimeoutMs),
-    }));
+    },message=>err(sanitize(message))));
     const connect=deps.connect??((root,autoStart)=>RoomClient.connect(root,{client:'cli',autoStart}));
     const print=(value:unknown)=>out(json?JSON.stringify(value):sanitize(JSON.stringify(value,null,2)));
     if(command==='migrate') {

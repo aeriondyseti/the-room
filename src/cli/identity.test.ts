@@ -13,3 +13,13 @@ test('CLI native environment is cross-checked; missing identity cannot act as hu
  await assert.rejects(cliCaller(null,{...deps,processInfo:async()=>({ppid:1,name:'codex.exe'})}),/Agent context/);
  await assert.rejects(cliCaller(null,{...deps,processInfo:async()=>{throw Error('process lookup failed');}}),/process lookup failed/);
 });
+
+
+test('CLI walks Claude ancestors, checks process identity and flags environment drift',async t=>{
+ const root=await mkdtemp(path.join(tmpdir(),'room-cli-claude-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ await writeFile(path.join(root,'20.json'),JSON.stringify({pid:20,sessionId:id,messagingSocketPath:'\\\\.\\pipe\\LOCAL\\cc-msg-cli-test',procStart:'123',pidDomain:'test'}));
+ const deps:IdentityDeps={env:{CLAUDE_CODE_SESSION_ID:'old'},ownParentPid:10,processInfo:async pid=>({ppid:pid===10?20:null,name:pid===10?'pwsh.exe':'claude.exe'}),claudeRegistry:{sessionsDir:root,isPidAlive:()=>true,processStartTime:async()=> '123',pidDomain:'test'}};
+ const notes:string[]=[];const caller=await cliCaller('claude',deps,n=>notes.push(n));
+ assert.equal(caller.kind==='agent'&&caller.native?.source,'claude-ancestry');assert.match(notes[0]!,/differs/);
+ await assert.rejects(cliCaller(null,{...deps,claudeRegistry:{...deps.claudeRegistry,processStartTime:async()=> 'other'}}),/different process/);
+});
