@@ -309,11 +309,12 @@ online agents; renames relabel in-flight deliveries. Ownership per the spec §6 
   relabelled in one transaction with targets unchanged; tokens unaffected; a system message announces the new name
   to every agent; the old name is refused with a "renamed to" hint.
 - [ ] **8.3 Kick by unanimous consent** *(Astra core; fable surfaces)*
-  **Done-when:** `room_kick` opens a persisted proposal whose voters are all other registered agents online at open;
-  `room_consent` votes once per binding; `no` or expiry rejects; the human can veto or approve; execution removes the
-  registration, cancels queued deliveries with `kicked` tombstones (never redirects), emits `participant.removed`
-  and a system message; `room remove` (human-only) uses the same path; decision C recorded.
+  **Done-when:** `room_kick { name, reason }` is one verb meaning "I vote to remove": the first call opens a persisted
+  proposal (TTL, default 10 min) announced as a system message; votes count once per binding from the agents
+  registered and online at open, excluding the target; unanimity executes immediately (product call); the human's
+  own kick executes alone; expiry closes it with a message. Execution removes the registration, cancels queued
+  deliveries with `kicked` tombstones (never redirects), emits `participant.removed` and a system message; the
+  session is untouched and may rejoin.
 - [ ] **8.4 TUI** *(fable)*
-  **Done-when:** `/rename`, `/remove`, `/kick`, `/consent`, `/veto`, `/approve`; open proposals shown with votes and a
-  countdown; "offline · N queued" and "rebind needed · N queued" flagged on chips and the side panel; renamed and
-  removed notes shown.
+  **Done-when:** `/rename old new` and `/kick name reason`; "offline · N queued" and "rebind needed · N queued" flagged
+  on chips and the side panel; system messages for renames, proposals, expiries and removals render as notes.
