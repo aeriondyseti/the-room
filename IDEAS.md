@@ -129,3 +129,25 @@ new harness version can later offer the suite through `room doctor`.
 **Done-when if promoted:** both harnesses can be requalified from one documented command, a deliberately
 broken fixture is detected, ambiguous results cannot pass, reports compare versions, and all created
 sessions/processes are accounted for in cleanup.
+
+## Crossed-reply guard: don't send while your inbox has messages in flight
+
+*Raised 2026-09-28 by Kevin, after repeated crossed replies between Claude and Astra. Status: parked.*
+
+**Idea:** before an agent's `room_send` is queued, the room checks whether messages addressed to that agent are
+still in flight: delivered natively but not yet seen by the agent, or queued behind its current turn. If they are,
+the send is held (or refused with a hint) until the agent's inbox is drained, so replies don't cross.
+
+**Why it's not trivial (notes for scoping):**
+- A native `submitted` delivery means "handed to the harness", not "read". The signal that a message was actually
+  seen is the agent's transcript: the 6.1 activity reader already observes when a delivered message enters the
+  conversation (a Claude `user` record; a Codex `user_message`). The guard could use "delivered but not yet in the
+  transcript" as "in flight".
+- Choices to make:
+  - hold-and-send-later vs refuse-with-hint (refusing keeps the agent in control and is simpler to reason about);
+  - scope: only messages from the same peer you're replying to, or your whole inbox;
+  - a way to override for urgent sends.
+- It must not deadlock two agents waiting on each other: a bounded wait or a per-send override.
+- Human messages would probably always bypass it.
+- A cheaper first step: include "N newer messages for you are in flight" in the `room_send` result/envelope, so
+  the agent can choose to re-read before replying.

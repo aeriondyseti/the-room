@@ -4,11 +4,14 @@
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
 import type { Harness, ParticipantState, UsageSnapshot } from '../../contracts/domain.js';
 import type { UsageCursor as ObserverCursor } from '../../observer/observer.js';
+import type { WorkspaceProvider } from '../../contracts/workspace.js';
 
 export interface MonitorDeps {
   /** Current participant states (as the service computes them). */
   participants(): Promise<ParticipantState[]>;
   adapters: readonly DeliveryAdapter[];
+  /** Model / session cwd / git (6.7); optional, read-only, presentation only. */
+  workspace?: WorkspaceProvider;
   observer: {
     snapshot(target: { harness: Harness; sessionId: string }): Promise<UsageSnapshot>;
     exportCursors(): ObserverCursor[];
@@ -112,6 +115,7 @@ export class ParticipantMonitor {
         activity: observed.activity,
         usage: observed.usage,
         livenessCheckedAt: observed.livenessCheckedAt,
+        ...(this.deps.workspace ? { workspace: observed.workspace ?? null } : {}),
       };
       // Persist every check (so `who` shows a fresh livenessCheckedAt); publish only meaningful changes.
       const isNews = changed(current, next);
@@ -132,6 +136,11 @@ export class ParticipantMonitor {
 
   private async observe(p: ParticipantState): Promise<ParticipantState> {
     const target = { harness: p.harness, sessionId: p.sessionId };
+    // Workspace sampling (bounded by its own timeout) runs alongside the liveness probe and usage read, never after
+    // them, so a slow git/share can't push back liveness updates.
+    const workspaceSeen = this.deps.workspace
+      ? this.deps.workspace.observe({ participant: p.name, harness: p.harness, sessionId: p.sessionId }).catch(() => null)
+      : null;
     const adapter = this.deps.adapters.find((a) => a.harness === p.harness);
     let liveness = p.liveness;
     let activity = p.activity;
@@ -158,12 +167,27 @@ export class ParticipantMonitor {
         reason: `usage reader failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
-    return { ...p, liveness, activity, usage, livenessCheckedAt: adapter ? this.now().toISOString() : p.livenessCheckedAt };
+    let workspace = p.workspace ?? null;
+    const seen = workspaceSeen ? await workspaceSeen : null;
+    // A result with no observation time (provider timeout / nothing found) — or a thrown provider — is "no news":
+    // keep the last known workspace rather than blanking a branch or model that was already observed.
+    if (seen && (seen.observedAt !== null || workspace === null)) {
+      const prevGit = workspace?.git ?? null;
+      // A git sample that failed for the SAME cwd keeps the last good git data (its checkedAt shows its age).
+      const keepGit = seen.git?.status === 'unavailable' && prevGit?.status === 'ok' && workspace?.cwd === seen.cwd;
+      workspace = keepGit ? { ...seen, git: prevGit } : seen;
+    }
+    return { ...p, liveness, activity, usage, workspace, livenessCheckedAt: adapter ? this.now().toISOString() : p.livenessCheckedAt };
   }
 }
 
 /** Only publish meaningful changes (not every re-check timestamp). */
 function changed(a: ParticipantState, b: ParticipantState): boolean {
-  const strip = (s: ParticipantState) => ({ ...s, livenessCheckedAt: null });
+  // Re-check timestamps (liveness, workspace snapshot, git sample) are not news on their own.
+  const strip = (s: ParticipantState) => ({
+    ...s,
+    livenessCheckedAt: null,
+    ...(s.workspace ? { workspace: { ...s.workspace, observedAt: null, git: s.workspace.git ? { ...s.workspace.git, checkedAt: null } : null } } : {}),
+  });
   return JSON.stringify(strip(a)) !== JSON.stringify(strip(b));
 }

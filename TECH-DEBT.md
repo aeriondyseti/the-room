@@ -36,6 +36,9 @@ keep a sprint focused, and "good enough for now" decisions worth revisiting.
 | TD-0021 | 2026-09-28 | 5.1 | review (lean) | Code-fence handling is CommonMark-style but minimal: no indented code blocks, no inline `code` styling, and an unclosed fence runs to the end of the message | 30/low | Covers the fenced blocks agents actually send; nothing is ever dropped | Extend bodyLines if agents use other markdown forms | 🔵 Open |
 | TD-0022 | 2026-09-28 | 4.1 | review (lean) | Acceptance harness: a wake trial still counts OK if the fixture never became idle first (it is logged in results.errors, but the trial row isn't flagged) | 40/low | Every recorded run shows idle fixtures (errors: none), so no trial was affected | Mark such rows `not_idle` and exclude them from idle-wake stats | 🔵 Open |
 
+| TD-0023 | 2026-09-28 | 6.7 | development (flaky test) | Service shutdown awaits in-flight monitor/account observations (probes, bounded git sampling, Codex daemon read), so `room shutdown` can take seconds; `server.test` "shutdown cleans ownership" (3s window) intermittently fails under suite load | 60/medium | Each observation is bounded by its own timeout; a re-run passes; no data risk | Make ParticipantMonitor/AccountMonitor stop() abort or abandon in-flight observations (skip save/publish once stopped) instead of awaiting them | 🔵 Open |
+| TD-0024 | 2026-09-28 | 6.7 | review (lean) | The participant chip shows the last-known model/branch with no staleness marker; only `/who` states the observation age | 30/low | Workspace changes slowly; `/who` gives the age | Dim or mark (`?`) the chip's workspace part once observedAt is older than a ROOM_* threshold | 🔵 Open |
+
 ---
 
 ### Notes

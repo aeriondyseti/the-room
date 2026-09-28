@@ -1,6 +1,11 @@
 // Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
 
 export interface RoomConfig {
+  workspaceReadBytes: number;
+  workspaceScanEntries: number;
+  workspaceTimeoutMs: number;
+  workspaceGitMaxBytes: number;
+  workspaceGitCacheMs: number;
   /** Conservative CreateProcess budget including executable, quoting and NUL. */
   codexStatusTimeoutMs: number;
   codexStatusMaxBytes: number;
@@ -95,6 +100,11 @@ export interface RoomConfig {
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
+  workspaceReadBytes: 2 * 1024 * 1024,
+  workspaceScanEntries: 10000,
+  workspaceTimeoutMs: 3000,
+  workspaceGitMaxBytes: 2 * 1024 * 1024,
+  workspaceGitCacheMs: 15000,
   codexStatusTimeoutMs: 3000,
   codexStatusMaxBytes: 4 * 1024 * 1024,
   codexCommandLineBudget: 30000,
@@ -141,6 +151,11 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
+  workspaceReadBytes: 'ROOM_WORKSPACE_READ_BYTES',
+  workspaceScanEntries: 'ROOM_WORKSPACE_SCAN_ENTRIES',
+  workspaceTimeoutMs: 'ROOM_WORKSPACE_TIMEOUT_MS',
+  workspaceGitMaxBytes: 'ROOM_WORKSPACE_GIT_MAX_BYTES',
+  workspaceGitCacheMs: 'ROOM_WORKSPACE_GIT_CACHE_MS',
   codexStatusTimeoutMs: 'ROOM_CODEX_STATUS_TIMEOUT_MS',
   codexStatusMaxBytes: 'ROOM_CODEX_STATUS_MAX_BYTES',
   codexCommandLineBudget: 'ROOM_CODEX_COMMAND_LINE_BUDGET',

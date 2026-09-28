@@ -1,3 +1,4 @@
+import type { WorkspaceInfo } from './workspace.js';
 // Domain contract: the shapes every module (core, adapters, IPC, CLI, MCP, TUI) agrees on.
 // Changes here are coordinated between agents (CLAUDE.md "Contracts are shared").
 
@@ -171,6 +172,8 @@ export interface ParticipantState extends ParticipantRegistration {
   /** Deliveries to this participant not yet settled (queued, including held/waiting). */
   pending: number;
   usage: UsageSnapshot | null;
+  /** Model, session cwd and git state (6.7); absent from older services, null when not observed. */
+  workspace?: WorkspaceInfo | null;
 }
 
 export interface RoomState {

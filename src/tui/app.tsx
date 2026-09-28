@@ -35,7 +35,7 @@ import {
 import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
-import { accountLines, activityLabel, livenessDot, participantLines } from './topbar.js';
+import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
 import { DEFAULT_CONFIG } from '../core/config.js';
@@ -889,13 +889,22 @@ function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
             ? `usage n/a${p.usage?.reason ? ` (${p.usage.reason})` : ''}`
             : `${label.text.replace(/\?$/, '')} · ${p.usage?.status === 'stale' ? 'stale, ' : ''}updated ${relativeTime(p.usage?.observedAt ?? null)}`;
         return (
-          <Text key={p.name} wrap="truncate">
-            <Text color={t.color(dot.color)}>{dot.glyph} </Text>
-            <Text color={t.color(colorFor(p.name))} bold>{sanitize(p.name).padEnd(18)}</Text>
-            <Text dimColor>{p.harness.padEnd(8)}</Text>
-            <Text color={t.color(status.color)} dimColor={status.color === undefined}>{status.text.padEnd(26)}</Text>
-            <Text dimColor>{usage}</Text>
-          </Text>
+          <Box key={p.name} flexDirection="column" flexShrink={0}>
+            <Text wrap="truncate">
+              <Text color={t.color(dot.color)}>{dot.glyph} </Text>
+              <Text color={t.color(colorFor(p.name))} bold>{sanitize(p.name).padEnd(18)}</Text>
+              <Text dimColor>{p.harness.padEnd(8)}</Text>
+              <Text color={t.color(status.color)} dimColor={status.color === undefined}>{status.text.padEnd(26)}</Text>
+              <Text dimColor>{usage}</Text>
+            </Text>
+            {p.workspace !== undefined && (
+              <Text dimColor wrap="truncate">
+                {'    '}
+                {p.workspace?.model ? `${sanitize(p.workspace.model)} · ` : ''}
+                {workspaceDetail(p.workspace)}
+              </Text>
+            )}
+          </Box>
         );
       })}
       <Text> </Text>
