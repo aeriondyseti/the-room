@@ -7,6 +7,11 @@ import type { MessageWithDeliveries, ParticipantState } from '../contracts/domai
 import { toErrorInfo } from '../contracts/errors.js';
 import type { RoomEvent } from '../contracts/ipc.js';
 import {
+  COMMANDS,
+  COMMAND_CATALOGUE,
+  commandSuggestions,
+  completeCommand,
+  type CommandInfo,
   EMPTY_DRAFT,
   EMPTY_HISTORY,
   addressee,
@@ -53,6 +58,8 @@ export interface AppProps {
 }
 
 const MAX_DRAFT_ROWS = 5;
+/** Command suggestions shown at once (more are summarised as "+N more"). */
+const MAX_SUGGESTIONS = 6;
 /** Layout guard (not a preference): below this the conversation column is unreadable, so the panel yields. */
 const MIN_CONVERSATION_WIDTH = 30;
 
@@ -110,7 +117,12 @@ function Room({
   const names = useMemo(() => view.participants.map((p) => p.name), [view.participants]);
 
   const draftRows = Math.min(MAX_DRAFT_ROWS, draft.text.split('\n').length);
-  const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0);
+  // Command discovery: typing "/" (plus a partial name) lists matching commands above the composer.
+  const suggestions = useMemo(() => (overlay ? [] : commandSuggestions(draft.text)), [draft.text, overlay]);
+  const [suggestIdx, setSuggestIdx] = useState(0);
+  useEffect(() => setSuggestIdx(0), [draft.text]);
+  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
+  const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0) + suggestionRows;
   const viewportHeight = Math.max(3, rows - 1 /* header */ - (banner ? 1 : 0) - composerHeight - 1 /* status */);
 
   const seqById = useMemo(() => new Map(view.items.map((i) => [i.message.id, i.message.seq] as const)), [view.items]);
@@ -161,15 +173,15 @@ function Room({
     }
   };
 
-  const submit = () => {
-    const parsed = parseComposer(draft.text, names);
+  const submit = (input: string = draft.text) => {
+    const parsed = parseComposer(input, names);
     if (parsed.kind === 'empty') return;
     if (parsed.kind === 'error') {
       setFeedback({ tone: 'error', text: parsed.message });
       return;
     }
     if (parsed.kind === 'message') {
-      const text = draft.text;
+      const text = input;
       if (!clientId.current || clientId.current.text !== text) clientId.current = { text, id: randomUUID() };
       const id = clientId.current.id;
       void (async () => {
@@ -198,7 +210,7 @@ function Room({
       return;
     }
     const { command, args } = parsed;
-    const submitted = draft.text;
+    const submitted = input;
     const finish = (fb: Feedback) => {
       setHistory((h) => historyPush(h, submitted));
       setDraft((d) => (d.text === submitted ? EMPTY_DRAFT : d)); // keep text typed while the command ran
@@ -343,7 +355,30 @@ function Room({
       if (draft.text.slice(0, draft.cursor).endsWith('\\') && draft.cursor === draft.text.length) {
         return edit({ text: draft.text.slice(0, -1) + '\n', cursor: draft.text.length });
       }
+      // A partial command name + Enter picks the highlighted suggestion (running it at once if it takes no
+      // arguments) instead of failing with "unknown command". An exact name runs as typed.
+      const typed = draft.text.slice(1).toLowerCase();
+      if (suggestions.length > 0 && !(COMMANDS as readonly string[]).includes(typed)) {
+        const picked = suggestions[suggestIdx] ?? suggestions[0]!;
+        const text = completeCommand(picked);
+        if (picked.args) return edit({ text, cursor: text.length });
+        // Show the full command in the draft (so it clears after running), keeping any pending confirmation.
+        setDraft({ text, cursor: text.length });
+        setTabCycle(null);
+        return submit(text);
+      }
       return submit();
+    }
+    if (suggestions.length > 0 && (key.tab || key.upArrow || key.downArrow)) {
+      if (key.tab) {
+        const picked = suggestions[suggestIdx] ?? suggestions[0]!;
+        const text = completeCommand(picked);
+        edit({ text, cursor: text.length });
+      } else {
+        const n = suggestions.length;
+        setSuggestIdx((i) => (key.upArrow ? (i - 1 + n) % n : (i + 1) % n));
+      }
+      return;
     }
     if (key.tab) {
       const base = tabCycle?.base ?? draft;
@@ -435,6 +470,8 @@ function Room({
         busy={busy}
         feedback={feedback}
         connected={view.connection.state === 'connected'}
+        suggestions={suggestions}
+        suggestIdx={suggestIdx}
       />
       <StatusBar offset={scroll.offset} unseen={scroll.unseen} width={colsTotal} />
     </Box>
@@ -766,15 +803,33 @@ function Composer(props: {
   busy: boolean;
   feedback: Feedback;
   connected: boolean;
+  suggestions: readonly CommandInfo[];
+  suggestIdx: number;
 }) {
   const { draft, to } = props;
   const t = useTheme();
   const accent = !props.connected ? 'gray' : props.paused ? 'yellow' : 'cyan';
   const toText = to.label === 'command' ? 'command' : `To: ${to.label}`;
   const lines = draftLines(draft, props.rows);
-  const hints = 'Enter send · Alt+Enter newline · Tab @name · ? help';
+  const hints = props.suggestions.length > 0 ? 'Tab complete · ↑/↓ choose · Enter run · Esc clear' : 'Enter send · Alt+Enter newline · Tab @name · ? help';
+  // Keep the highlighted suggestion inside the visible window.
+  const n = props.suggestions.length;
+  const first = n <= MAX_SUGGESTIONS ? 0 : Math.min(Math.max(0, props.suggestIdx - MAX_SUGGESTIONS + 1), n - MAX_SUGGESTIONS);
+  const shownSuggestions = props.suggestions.slice(first, first + MAX_SUGGESTIONS);
+  const nameCol = Math.max(0, ...props.suggestions.map((c) => c.name.length + (c.args ? c.args.length + 1 : 0))) + 3;
   return (
     <Box flexDirection="column" width={props.width}>
+      {shownSuggestions.map((c, i) => {
+        const selected = first + i === props.suggestIdx;
+        const label = `/${c.name}${c.args ? ` ${c.args}` : ''}`;
+        return (
+          <Text key={c.name} wrap="truncate">
+            <Text color={t.color('cyan')} bold={selected} inverse={selected}>{selected ? '▸ ' : '  '}{label.padEnd(nameCol - 2)}</Text>
+            <Text dimColor> {c.description}</Text>
+          </Text>
+        );
+      })}
+      {n > MAX_SUGGESTIONS && <Text dimColor wrap="truncate">  +{n - MAX_SUGGESTIONS} more · ↑/↓ to see them</Text>}
       <Text color={t.color(accent)}>{'─'.repeat(props.width)}</Text>
       <Box justifyContent="space-between" width={props.width}>
         <Text wrap="truncate">
@@ -836,14 +891,8 @@ function HelpOverlay() {
     ['Ctrl+C', 'quit'],
   ];
   const commands: Array<[string, string]> = [
-    ['/pause [message]', 'hold new deliveries and ask every agent to stop'],
-    ['/resume', 'release held deliveries in order'],
-    ['/retry #N [@agent]', 're-send a failed or uncertain delivery'],
-    ['/detail [#N]', 'delivery detail: attempts, evidence, errors'],
-    ['/who', 'participants and their status'],
-    ['/activity @name', "an agent's tool calls, results and messages (read-only)"],
-    ['/restart', 'restart the room service (e.g. after an upgrade); keeps queued messages'],
-    ['/help or ?', 'this help'],
+    ...COMMAND_CATALOGUE.map((c): [string, string] => [`/${c.name}${c.args ? ` ${c.args}` : ''}`, c.description]),
+    ['?', 'this help (with an empty draft); type / to list commands'],
   ];
   return (
     <Box flexDirection="column" flexShrink={0}>

@@ -153,6 +153,56 @@ test('? opens help; Esc closes it', async () => {
   assert.doesNotMatch(t.frame(), /Commands/);
 });
 
+test('typing / lists commands (from the shared catalogue), filters as you type, and hides once arguments start', async () => {
+  const t = await setup();
+  await t.type('/');
+  const all = await waitFor(t.frame, /\/activity @name/);
+  assert.match(all, /\/detail \[#N\]/);
+  assert.match(all, /Tab complete · ↑\/↓ choose · Enter run/);
+  await t.type('re');
+  const re = await waitFor(t.frame, /\/retry #N \[@agent\]/);
+  assert.match(re, /\/restart/);
+  assert.match(re, /\/resume/);
+  assert.doesNotMatch(re, /\/activity @name/, 'filtered by prefix');
+  await t.type('try ');
+  assert.doesNotMatch(t.frame(), /\/restart/, 'no suggestions once arguments start');
+});
+
+test('Tab completes the highlighted command; ↑/↓ move the highlight; history and @name Tab still work outside suggestions', async () => {
+  const t = await setup();
+  await t.type('/ac');
+  await t.type(K.tab);
+  await waitFor(t.frame, /› \/activity\s/); // completed (with a trailing space: it takes arguments)
+  await t.type(K.esc);
+  await waitFor(t.frame, /Message everyone/);
+  await t.type('/re');
+  await waitFor(t.frame, /\/retry #N/);
+  await t.type('\u001B[B'); // down → /resume (catalogue order: restart, resume, retry)
+  await t.type(K.tab);
+  await waitFor(t.frame, /› \/resume/);
+  await t.type(K.esc);
+  await waitFor(t.frame, /Message everyone/);
+  await t.type('@as');
+  await t.type(K.tab);
+  await waitFor(t.frame, /@astra/); // @name completion unchanged
+});
+
+test('a partial name + Enter runs the highlighted no-argument command; /restart still needs its confirmation', async () => {
+  const t = await setup();
+  await t.type('/wh');
+  await t.type(K.enter);
+  await waitFor(t.frame, /Participants \(2\)/);
+  await t.type(K.esc);
+  await waitFor(t.frame, /Message everyone/);
+  await t.type('/rest');
+  await t.type(K.enter);
+  await waitFor(t.frame, /Restart the room service\?/); // confirmation first
+  assert.equal(t.src.requests.filter((r) => r.method === 'shutdown').length, 0);
+  await t.type(K.enter);
+  await waitFor(t.frame, /Room service stopped; reconnecting/);
+  assert.equal(t.src.requests.filter((r) => r.method === 'shutdown').length, 1);
+});
+
 test('/restart asks for confirmation, then gracefully shuts the service down as the human (reconnect starts the new one)', async () => {
   const t = await setup();
   const shutdowns = () => t.src.requests.filter((r) => r.method === 'shutdown');
