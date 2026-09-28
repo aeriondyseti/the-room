@@ -31,7 +31,7 @@ node X:\Development\vibe-pairing\dist\cli\main.js tui
 
 The first client starts the local service automatically. Each Git repository has one room, shared by its linked worktrees. To preview the interface without a service, run the same command with `tui --demo`. Add `--no-color` (or set `NO_COLOR=1`) for monochrome output.
 
-When the agents are working in this repository itself, `npm run tui` is a shortcut from the checkout (and `npm run tui:demo` for the sample room). npm runs it from the package root, so it always opens *this* repository's room. Pass flags after `--`, e.g. `npm run tui -- --no-color`.
+When the agents are working in this repository itself, `npm run tui` is a shortcut from the checkout (and `npm run tui:demo` for the sample room). npm runs it from the package root, so it opens *this* repository's room by default (`ROOM_ROOT` can override that explicitly). Pass flags after `--`, e.g. `npm run tui -- --no-color`.
 
 Register the room MCP server in each harness, then resume the existing session to load it. The exact commands and permission setup are in [onboarding](docs/ONBOARDING.md). Tell each agent:
 
