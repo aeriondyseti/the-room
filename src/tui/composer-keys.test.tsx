@@ -231,3 +231,45 @@ test('TD-0034: at every height and in both layouts the frame holds — header, t
     }
   }
 });
+test('TD-0034 review: the worst case still fits — banner + error line + "/" + a multi-line top bar at 12 rows; the highlighted command is always on screen', async () => {
+  const many = Array.from({ length: 10 }, (_, i) => agent(`agent_${i}`));
+  const account = { account: { harness: 'claude' as const, scope: 'profile' as const, key: 'k', sourceKey: 'k' }, status: 'ok' as const, source: 's', checkedAt: null, observedAt: null,
+    buckets: [{ id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: null }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: null }] }] };
+  for (const [layout, width] of [['top', 100], ['left', 60], ['left', 120]] as const) {
+    for (const height of [12, 13, 14]) {
+      const src = new FakeRoomSource({ participants: many });
+      src.setAccounts([account]);
+      const ui = render(<App source={src} humanName="Kevin" width={width} height={height} layout={layout} windowsTerminal={true} />);
+      await tick();
+      src.setStatus({ state: 'reconnecting', attempt: 2 } as never); // a connection banner
+      await tick();
+      for (const ch of '/xyz\r') { ui.stdin.write(ch); await tick(5); } // an error feedback line that stays while typing
+      for (let i = 0; i < 3; i++) { ui.stdin.write('\x7f'); await tick(5); } // back to "/": suggestions open, feedback kept
+      await tick();
+      let rows = plain(ui.lastFrame()).split('\n');
+      const where = () => `${layout} w=${width} h=${height}:\n${rows.join('\n')}`;
+      assert.equal(rows.length, height, `frame height — ${where()}`);
+      assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where()}`);
+      assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where()}`);
+      assert.ok(rows.some((r) => /^▸ \//.test(r)), `the highlighted command is visible — ${where()}`);
+      ui.stdin.write('\u001B[B'); await tick(5); ui.stdin.write('\u001B[B'); await tick(); // ↓↓
+      rows = plain(ui.lastFrame()).split('\n');
+      assert.ok(rows.some((r) => /^▸ \//.test(r)), `still visible after ↓↓ — ${where()}`);
+      assert.equal(rows.length, height, `frame height after ↓↓ — ${where()}`);
+      cleanup();
+    }
+  }
+});
+
+test('TD-0034 review: tall terminals behave exactly as before — 6 suggestions + "+N more"; a long draft grows to the configured max; the conversation keeps 3 rows', async () => {
+  const t = await setup(30);
+  await t.type('/');
+  let rows = t.frame().split('\n');
+  assert.equal(rows.filter((r) => /^[▸ ] \/\w/.test(r)).length, 6, rows.join('\n'));
+  assert.ok(rows.some((r) => /^ {2}\+\d+ more · ↑\/↓ to see them\s*$/.test(r)));
+  await t.type('\u001B'); // Esc clears the draft
+  for (let i = 1; i <= 16; i++) { await t.type(`line ${i}`); if (i < 16) await t.type('\n'); }
+  rows = t.frame().split('\n');
+  const draftRows = rows.filter((r) => /^(›|↑|↓| ) ?line \d+\s*$|^ {2}line \d+\s*$/.test(r)).length;
+  assert.equal(draftRows, 12, `the draft grows to composerMaxRows (12):\n${rows.join('\n')}`);
+});

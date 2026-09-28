@@ -236,18 +236,33 @@ function Room({
   // below a readable conversation; beyond that it scrolls inside itself to follow the cursor. Nothing is ever drawn over
   // the bottom bar.
   // One budget that always fits the frame (TD-0034: at 12 rows the "/" list plus a fixed 3-row conversation overflowed,
-  // clipping the header and the To: row). After the fixed rows: one draft row, then suggestions capped so the
-  // conversation keeps its minimum (the rest summarised by "+N more"), then the draft's growth, then the conversation.
-  const fixedRows = 1 /* header */ + (banner ? 1 : 0) + (topLines.length + 1) /* top bar + rule */ + 2 /* composer rule + To: */ + (feedback ? 1 : 0) + 1 /* status */;
-  const space = Math.max(1, rows - fixedRows);
-  const suggestionBudget = suggestions.length === 0 ? 0 : Math.max(1, Math.min(suggestionRowsWanted, space - 1 - MIN_VIEWPORT_ROWS));
-  const suggestionLimit = suggestions.length === 0 ? 0 : suggestionBudget >= suggestionRowsWanted ? Math.min(MAX_SUGGESTIONS, suggestions.length) : Math.max(0, suggestionBudget - 1);
-  const suggestionRows = suggestions.length === 0 ? 0 : suggestionLimit + (suggestions.length > suggestionLimit ? 1 : 0);
-  const draftRows = Math.max(1, Math.min(draftWanted, space - suggestionRows - MIN_VIEWPORT_ROWS));
+  // clipping the header and the To: row). Rows are handed out in priority order against what is actually left — never
+  // independent floors that could add up to more than the terminal:
+  //   essential chrome (header, banner, rules, To:, feedback, status) → one draft row → one conversation row → the
+  //   suggestion list (at least its highlighted row) → the conversation's minimum → the draft's growth → the rest.
+  // If even that doesn't fit, the top bar gives up rows from its end and says so ("top bar trimmed"), never silently.
+  const essentialRows = 1 /* header */ + (banner ? 1 : 0) + 1 /* rule under the top bar */ + 2 /* composer rule + To: */ + (feedback ? 1 : 0) + 1 /* status */;
+  const needRows = 1 /* draft */ + 1 /* conversation */ + (suggestions.length ? 1 : 0);
+  const topRoom = Math.max(0, rows - essentialRows - needRows);
+  const topShown: Line[] =
+    topLines.length <= topRoom
+      ? topLines
+      : topRoom === 0
+        ? []
+        : [...topLines.slice(0, topRoom - 1), fitLine([{ text: 'top bar trimmed — the terminal is too short · /who', dim: true, italic: true }], colsTotal)];
+  let spare = Math.max(needRows, rows - essentialRows - topShown.length);
+  spare -= 2; // one draft row and one conversation row, always
+  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(suggestionRowsWanted, Math.max(1, spare - (MIN_VIEWPORT_ROWS - 1)));
+  spare -= suggestionRows;
+  // With a single row the list shows the highlighted command itself (with the "+N more" count folded in), so the
+  // command Enter/Tab would run is always on screen.
+  const suggestionLimit = suggestions.length === 0 ? 0 : suggestionRows >= suggestionRowsWanted ? Math.min(MAX_SUGGESTIONS, suggestions.length) : Math.max(1, suggestionRows - 1);
+  const conversationExtra = Math.min(MIN_VIEWPORT_ROWS - 1, Math.max(0, spare));
+  spare -= conversationExtra;
+  const draftRows = 1 + Math.min(Math.max(0, draftWanted - 1), Math.max(0, spare));
+  spare -= draftRows - 1;
   const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0) + suggestionRows;
-  // Whatever is left; below MIN_VIEWPORT_ROWS only on a terminal too short for everything, never overflowing the frame.
-  const viewportHeight = Math.max(1, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) /* top bar + rule */ - composerHeight - 1 /* status */);
-
+  const viewportHeight = 1 + conversationExtra + Math.max(0, spare);
   const seqById = useMemo(() => new Map(view.items.map((i) => [i.message.id, i.message.seq] as const)), [view.items]);
   const lines = useMemo(
     // -1: the conversation box has one column of left padding.
@@ -593,7 +608,7 @@ function Room({
     <Box flexDirection="column" width={colsTotal} height={rows} overflow="hidden" flexShrink={0}>
       <Header view={view} width={colsTotal} />
       {banner && <Banner view={view} width={colsTotal} />}
-      {topLines.map((line, i) => (
+      {topShown.map((line, i) => (
         <LineView key={`top-${i}`} line={line} />
       ))}
       <Text dimColor>{'─'.repeat(colsTotal)}</Text>
@@ -652,6 +667,7 @@ function Room({
         suggestions={suggestions}
         suggestIdx={suggestIdx}
         suggestionLimit={suggestionLimit}
+        suggestionFolded={suggestionRows === 1 && suggestions.length > 1}
       />
       <StatusBar offset={scroll.offset} unseen={scroll.unseen} width={colsTotal} />
     </Box>
@@ -948,6 +964,8 @@ function Composer(props: {
   suggestIdx: number;
   /** How many suggestions fit (the rest are summarised as "+N more"). */
   suggestionLimit: number;
+  /** Only one row for the list: the highlighted command shows with the "+N more" count folded into it. */
+  suggestionFolded: boolean;
 }) {
   const { draft, to } = props;
   const t = useTheme();
@@ -973,11 +991,11 @@ function Composer(props: {
         return (
           <Text key={c.name} wrap="truncate">
             <Text color={t.color('cyan')} bold={selected} inverse={selected}>{selected ? '▸ ' : '  '}{label.padEnd(nameCol - 2)}</Text>
-            <Text dimColor> {c.description}</Text>
+            <Text dimColor> {props.suggestionFolded ? `(+${n - limit} more · ↑/↓) ` : ''}{c.description}</Text>
           </Text>
         );
       })}
-      {n > limit && <Text dimColor wrap="truncate">  +{n - limit} more · ↑/↓ to see them</Text>}
+      {n > limit && !props.suggestionFolded && <Text dimColor wrap="truncate">  +{n - limit} more · ↑/↓ to see them</Text>}
       <Text color={t.color(accent)}>{'─'.repeat(props.width)}</Text>
       <Box justifyContent="space-between" width={props.width}>
         <Text wrap="truncate">
