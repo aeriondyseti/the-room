@@ -47,7 +47,8 @@ export class Dispatcher {
    }
   }finally{this.scheduling=false;}
  }
- async idle():Promise<void>{await this.kick();await Promise.allSettled(this.workers.values());}
+ /** Wait for current work, then perform a fresh scheduler pass (including changed reachability). */
+ async idle():Promise<void>{await Promise.allSettled(this.workers.values());await this.kick();await Promise.allSettled(this.workers.values());}
  private change(delivery:Delivery,update:(d:Delivery)=>void):Delivery{
   const changed=this.ledger.updateDelivery(delivery.messageId,delivery.recipient,update);this.emit({type:'delivery.updated',delivery:changed});
   const previous=this.ledger.participants().find(p=>p.name===delivery.recipient&&p.harness===delivery.target.harness&&p.sessionId===delivery.target.sessionId);

@@ -15,6 +15,8 @@ import { waitFor } from './test-utils.js';
 const plain = (s: string | undefined) => (s ?? '').replace(/\u001B\[[0-9;]*m/g, '');
 const root = mkdtempSync(join(tmpdir(), 'vp-tui-real-'));
 execFileSync('git', ['init', '-q', root]);
+// This UI/IPC fixture must never reach a real harness transport.
+process.env['ROOM_CODEX_EXECUTABLE'] = join(root, 'fixture-codex-not-installed.exe');
 const source = new ClientRoomSource({ roomRoot: root });
 
 after(async () => {

@@ -30,7 +30,7 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 2.1 | Codex adapter | Astra | ⬜ | |
+| 2.1 | Codex adapter | Astra | 🟡 | Native argv transport, qualified Windows budget and receipt evidence. |
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ⬜ | |
 | 2.4 | MCP front end | Claude | ⬜ | |

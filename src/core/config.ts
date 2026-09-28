@@ -1,6 +1,10 @@
 // Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
 
 export interface RoomConfig {
+  /** Conservative CreateProcess budget including executable, quoting and NUL. */
+  codexCommandLineBudget: number;
+  /** Queue CLI output limit; exceeding it makes acceptance uncertain. */
+  codexMaxOutputBytes: number;
   /** Retry reachability checks for queued recipients without model polling. */
   dispatchPollMs: number;
   /** Poll interval for detached service readiness. */
@@ -53,6 +57,8 @@ export interface RoomConfig {
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
+  codexCommandLineBudget: 30000,
+  codexMaxOutputBytes: 65536,
   dispatchPollMs: 1000,
   servicePollMs: 50,
   sqliteBusyTimeoutMs: 5000,
@@ -75,10 +81,14 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
   contextLimits: Object.freeze({
+  codexCommandLineBudget: 30000,
+  codexMaxOutputBytes: 65536,
   dispatchPollMs: 1000, 'claude-opus-5-5': 1_000_000 }),
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
+  codexCommandLineBudget: 'ROOM_CODEX_COMMAND_LINE_BUDGET',
+  codexMaxOutputBytes: 'ROOM_CODEX_MAX_OUTPUT_BYTES',
   dispatchPollMs: 'ROOM_DISPATCH_POLL_MS',
   servicePollMs: 'ROOM_SERVICE_POLL_MS',
   sqliteBusyTimeoutMs: 'ROOM_SQLITE_BUSY_TIMEOUT_MS',
