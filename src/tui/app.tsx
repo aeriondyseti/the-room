@@ -235,11 +235,12 @@ function Room({
   // One budget that always fits the frame (TD-0034: at 12 rows the "/" list plus a fixed 3-row conversation overflowed,
   // clipping the header and the To: row). Rows are handed out in priority order against what is actually left — never
   // independent floors that could add up to more than the terminal:
-  //   essential chrome (header, banner, rules, To:, feedback, status) → one draft row → one conversation row → the
+  //   essential chrome (header, banner, rules, To:, feedback, status) → one draft row → two conversation rows → the
   //   suggestion list (at least its highlighted row) → the conversation's minimum → the draft's growth → the rest.
   // If even that doesn't fit, the top bar gives up rows from its end and says so ("top bar trimmed"), never silently.
   const essentialRows = 1 /* header */ + (banner ? 1 : 0) + 1 /* rule under the top bar */ + 2 /* composer rule + To: */ + (feedback ? 1 : 0) + 1 /* status */;
-  const needRows = 1 /* draft */ + 1 /* conversation */ + (suggestions.length ? 1 : 0);
+  // The conversation always keeps 2 rows (a pager's content line plus its "↓ N more" marker; the side panel's summary).
+  const needRows = 1 /* draft */ + 2 /* conversation */ + (suggestions.length ? 1 : 0);
   const topRoom = Math.max(0, rows - essentialRows - needRows);
   const topShown: Line[] =
     topLines.length <= topRoom
@@ -248,18 +249,18 @@ function Room({
         ? []
         : [...topLines.slice(0, topRoom - 1), fitLine([{ text: 'top bar trimmed — the terminal is too short · /who', dim: true, italic: true }], colsTotal)];
   let spare = Math.max(needRows, rows - essentialRows - topShown.length);
-  spare -= 2; // one draft row and one conversation row, always
-  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(suggestionRowsWanted, Math.max(1, spare - (MIN_VIEWPORT_ROWS - 1)));
+  spare -= 3; // one draft row and two conversation rows, always
+  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(suggestionRowsWanted, Math.max(1, spare - (MIN_VIEWPORT_ROWS - 2)));
   spare -= suggestionRows;
   // With a single row the list shows the highlighted command itself (with the "+N more" count folded in), so the
   // command Enter/Tab would run is always on screen.
   const suggestionLimit = suggestions.length === 0 ? 0 : suggestionRows >= suggestionRowsWanted ? Math.min(MAX_SUGGESTIONS, suggestions.length) : Math.max(1, suggestionRows - 1);
-  const conversationExtra = Math.min(MIN_VIEWPORT_ROWS - 1, Math.max(0, spare));
+  const conversationExtra = Math.min(MIN_VIEWPORT_ROWS - 2, Math.max(0, spare));
   spare -= conversationExtra;
   const draftRows = 1 + Math.min(Math.max(0, draftWanted - 1), Math.max(0, spare));
   spare -= draftRows - 1;
   const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0) + suggestionRows;
-  const viewportHeight = 1 + conversationExtra + Math.max(0, spare);
+  const viewportHeight = 2 + conversationExtra + Math.max(0, spare);
   const seqById = useMemo(() => new Map(view.items.map((i) => [i.message.id, i.message.seq] as const)), [view.items]);
   const lines = useMemo(
     // -1: the conversation box has one column of left padding.
@@ -846,10 +847,14 @@ function Header({ view, width }: { view: RoomView; width: number }) {
   const summary = view.connection.state === 'connected' ? participantsSummary(view.participants) : participantsSummary(view.participants).slice(0, 1);
   return (
     <Box width={width} justifyContent="space-between">
-      <Text>
+      {/* The room label never shrinks or wraps (at narrow widths it did, making the header two rows and pushing every
+          budgeted row down — 6.18 review); only the summary on the right truncates. */}
+      <Box flexShrink={0}>
+      <Text wrap="truncate">
         <Text inverse bold> vibe-pairing </Text>
         {view.room.paused && <Text color={t.color('yellow')} inverse bold> ⏸ PAUSED </Text>}
       </Text>
+      </Box>
       <Text wrap="truncate">
         {summary.map((part, i) => (
           <Text key={i} color={t.color(part.color)} dimColor={part.color === undefined}>
@@ -978,14 +983,17 @@ function Composer(props: {
       {shownSuggestions.map((c, i) => {
         const selected = first + i === props.suggestIdx;
         const label = `/${c.name}${c.args ? ` ${c.args}` : ''}`;
-        return (
-          <Text key={c.name} wrap="truncate">
-            <Text color={t.color('cyan')} bold={selected} inverse={selected}>{selected ? '▸ ' : '  '}{label.padEnd(nameCol - 2)}</Text>
-            <Text dimColor> {props.suggestionFolded ? `(+${n - limit} more · ↑/↓) ` : ''}{c.description}</Text>
-          </Text>
-        );
+        // Each row is fitted to the width by us (like every other line), not by Ink's nested-text truncation, which
+        // mis-measures over-wide rows on narrow terminals (6.18 review: the highlighted row vanished at 30 columns).
+        const row: Line = [
+          // Folded (one row): the count comes first so a narrow terminal can never truncate it away.
+          ...(props.suggestionFolded ? [{ text: `+${n - limit} ↑/↓ `, dim: true }] : []),
+          { text: `${selected ? '▸ ' : '  '}${props.suggestionFolded ? label : label.padEnd(nameCol - 2)}`, color: 'cyan', bold: selected, inverse: selected },
+          { text: ` ${c.description}`, dim: true },
+        ];
+        return <LineView key={c.name} line={fitLine(row, props.width)} />;
       })}
-      {n > limit && !props.suggestionFolded && <Text dimColor wrap="truncate">  +{n - limit} more · ↑/↓ to see them</Text>}
+      {n > limit && !props.suggestionFolded && <LineView line={fitLine([{ text: `  +${n - limit} more · ↑/↓ to see them`, dim: true }], props.width)} />}
       <Text color={t.color(accent)}>{'─'.repeat(props.width)}</Text>
       <Box justifyContent="space-between" width={props.width}>
         <Text wrap="truncate">

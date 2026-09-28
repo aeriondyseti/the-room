@@ -205,6 +205,12 @@ export function sidePanelLines(
 ): Line[] {
   const now = opts.now ?? Date.now();
   const height = Math.max(0, opts.height);
+  // Too short for sections: explicit summary lines, never a silently cropped title (6.18 review).
+  if (height <= 2) {
+    const tiny: Line[] = [fitLine([{ text: `AGENTS${opts.stale ? ' · last known' : ''} · ${participants.length} · /who`, dim: true, bold: true }], opts.width)];
+    if (accounts.length) tiny.push(fitLine([{ text: '+ budgets · /layout top', dim: true }], opts.width));
+    return tiny.slice(0, height);
+  }
   const g = panelGeometry(participants, accounts, { width: opts.width, stale: opts.stale, now });
   const title: Line = [{ text: `AGENTS${opts.stale ? ' · last known' : ''}`, dim: true, bold: true }];
   const footer: Line[] = [[{ text: ' ' }], fitLine([{ text: `you: ${sanitize(opts.humanName)}`, dim: true }], opts.width)];
