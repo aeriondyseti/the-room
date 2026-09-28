@@ -69,7 +69,9 @@ const OTHER_HARNESS = /^(codex|agy|gemini)(\.exe)?$/i;
 async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
   const envId = deps.env['CLAUDE_CODE_SESSION_ID'];
   let pid: number | null = deps.ownParentPid;
-  const limit = deps.maxAncestors ?? 4;
+  // Shells and launchers stack up between a harness and its tools (live: node → node → bash → bash → cmd →
+  // claude.exe). Walking deeper is safe: ancestors must pass the start-time check and other harnesses stop it.
+  const limit = deps.maxAncestors ?? 8;
   for (let depth = 0; pid !== null && pid > 0 && depth <= limit; depth++) {
     const found = await lookupByPid(pid, deps.claudeRegistry);
     if (found.status === 'live') {
@@ -101,6 +103,16 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
       };
     }
     pid = info?.ppid ?? null;
+  }
+  // Fallback when the process chain is broken (e.g. Git Bash/MSYS fork emulation leaves parent pids pointing at
+  // exited processes): Claude exports CLAUDE_PID and CLAUDE_CODE_SESSION_ID to its tools. Accept only when the
+  // live, start-time-verified registry record at CLAUDE_PID has exactly that session id — two signals agree.
+  const envPid = Number(deps.env['CLAUDE_PID']);
+  if (envId && Number.isInteger(envPid) && envPid > 0) {
+    const found = await lookupByPid(envPid, deps.claudeRegistry);
+    if (found.status === 'live' && found.verified && found.record.sessionId === envId) {
+      return { ok: true, native: { harness: 'claude', sessionId: envId, source: 'claude-mcp-registry' } };
+    }
   }
   return {
     ok: false,

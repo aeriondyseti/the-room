@@ -66,6 +66,16 @@ test('an unreadable process table is reported as such (retryable), not as "no se
   assert.match(!r.ok ? r.message : '', /Couldn't read the process table/);
 });
 
+test('broken process chain (Git Bash): CLAUDE_PID + CLAUDE_CODE_SESSION_ID accepted only when the live record agrees', async () => {
+  const records = [{ pid: 777, sessionId: CLAUDE }];
+  const ok = await resolveCaller({}, deps(records, { ownParentPid: 5, env: { CLAUDE_PID: '777', CLAUDE_CODE_SESSION_ID: CLAUDE } }));
+  assert.equal(ok.ok && ok.native.sessionId, CLAUDE);
+  const mismatch = await resolveCaller({}, deps(records, { ownParentPid: 5, env: { CLAUDE_PID: '777', CLAUDE_CODE_SESSION_ID: 'someone-else-1234' } }));
+  assert.equal(mismatch.ok, false, 'env pid and env session must agree with the registry');
+  const unverified = await resolveCaller({}, deps(records, { ownParentPid: 5, env: { CLAUDE_PID: '777', CLAUDE_CODE_SESSION_ID: CLAUDE }, claudeRegistry: { ...deps(records).claudeRegistry, processStartTime: async () => null } }));
+  assert.equal(unverified.ok, false, 'the env fallback requires a verified start time');
+});
+
 test('no evidence → unresolved with the CLI fallback; env alone is not enough', async () => {
   const r = await resolveCaller({}, deps([], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE } }));
   assert.equal(r.ok, false);
