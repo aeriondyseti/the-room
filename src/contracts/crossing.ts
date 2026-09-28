@@ -53,6 +53,7 @@ export type WithdrawDisposition =
   | 'withdrawn'
   | 'already_withdrawn'
   | 'already_submitting'
+  | 'already_visible'
   | 'submitted'
   | 'uncertain'
   | 'replied';
@@ -62,7 +63,9 @@ export interface WithdrawOutcome {
   recipients: Array<{
     recipient: string;
     disposition: WithdrawDisposition;
-    /** Native recall remains capability-gated until fixture qualification. */
-    mechanism?: 'broker' | 'native_recall';
+    /** Cancellation is broker-only. Native acceptance is the explicit cutoff;
+     * submitting/uncertain results never claim successful cancellation.
+     */
+    mechanism?: 'broker';
   }>;
 }
