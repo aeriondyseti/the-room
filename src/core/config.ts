@@ -25,6 +25,12 @@ export interface RoomConfig {
   registryLockTimeoutMs: number;
   /** Poll interval while waiting for the registry lock. */
   registryLockPollMs: number;
+  /** Claude config dir holding `projects/` transcripts (else CLAUDE_CONFIG_DIR, else ~/.claude). */
+  claudeConfigDir: string | null;
+  /** Codex home holding `sessions/` rollouts (else CODEX_HOME, else ~/.codex). */
+  codexHome: string | null;
+  /** A usage reading older than this is labelled `stale` (values still shown). */
+  usageStaleMs: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
@@ -40,6 +46,9 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   codexExecutable: null,
   registryLockTimeoutMs: 5_000,
   registryLockPollMs: 50,
+  claudeConfigDir: null,
+  codexHome: null,
+  usageStaleMs: 15 * 60_000,
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
@@ -55,6 +64,9 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   codexExecutable: 'ROOM_CODEX_EXECUTABLE',
   registryLockTimeoutMs: 'ROOM_REGISTRY_LOCK_TIMEOUT_MS',
   registryLockPollMs: 'ROOM_REGISTRY_LOCK_POLL_MS',
+  claudeConfigDir: 'ROOM_CLAUDE_CONFIG_DIR',
+  codexHome: 'ROOM_CODEX_HOME',
+  usageStaleMs: 'ROOM_USAGE_STALE_MS',
 };
 
 /** Build the effective config from defaults + environment. Invalid numeric overrides throw (never silently ignored). */
