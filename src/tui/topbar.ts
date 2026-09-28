@@ -4,7 +4,7 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage, UsageBucket, UsageWindow } from '../contracts/account.js';
 import type { GitInfo, WorkspaceInfo } from '../contracts/workspace.js';
 import { colorFor, cols, fitLine, lineCols, relativeTime, sanitize, type Line, type Segment } from './format.js';
-import { contextBar, PALETTE, usageBar } from './bars.js';
+import { contextBar, STATE_COLOR, usageBar } from './bars.js';
 
 export function livenessDot(l: ParticipantState['liveness']): { glyph: string; color: string } {
   switch (l) {
@@ -17,6 +17,19 @@ export function livenessDot(l: ParticipantState['liveness']): { glyph: string; c
     case 'unknown':
       return { glyph: '◌', color: 'gray' };
   }
+}
+
+/**
+ * The dot a participant shows (6.10 mockup): colour follows ACTIVITY for an online agent — green idle, amber busy or
+ * waiting for approval — and liveness otherwise (offline/unknown grey, rebind needed amber). The glyph stays the
+ * liveness glyph, so monochrome still tells online from offline.
+ */
+export function stateDot(p: ParticipantState): { glyph: string; color: string } {
+  const live = livenessDot(p.liveness);
+  if (p.liveness !== 'online') return live;
+  if (p.activity === 'busy' || p.activity === 'waiting_permission') return { glyph: live.glyph, color: STATE_COLOR.warn };
+  if (p.activity === 'idle') return { glyph: live.glyph, color: STATE_COLOR.ok };
+  return { glyph: live.glyph, color: 'gray' };
 }
 
 /** Short status for a participant. Attention states get a color; the rest stay dim. */
@@ -35,7 +48,7 @@ export function activityLabel(p: ParticipantState): { text: string; color?: stri
  * everything is greyed "last known" (invariant 3). `bars: false` shows the context as a number only (tight widths).
  */
 export function participantChip(p: ParticipantState, opts: { stale: boolean; mono: boolean; bars?: boolean }): Line {
-  const live = opts.stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
+  const live = opts.stale ? { glyph: '◌', color: 'gray' } : stateDot(p);
   const status = activityLabel(p);
   const chip: Line = [
     { text: `${live.glyph} `, color: live.color },
@@ -52,7 +65,7 @@ export function participantChip(p: ParticipantState, opts: { stale: boolean; mon
 export function workspaceSegments(p: ParticipantState, stale: boolean): Line {
   const out: Line = [];
   const ws = p.workspace;
-  if (ws?.model) out.push({ text: ' · ', dim: true }, { text: sanitize(shortModel(ws.model)), color: stale ? undefined : PALETTE.model, dim: stale });
+  if (ws?.model) out.push({ text: ' · ', dim: true }, { text: sanitize(shortModel(ws.model)), dim: true });
   const git = gitSegments(ws?.git ?? null, stale);
   if (git.length) out.push({ text: ' · ', dim: true }, ...git);
   return out;
@@ -65,7 +78,7 @@ export function gitSegments(git: GitInfo | null, stale = false): Line {
   if (git.status !== 'ok') return [{ text: label, dim: true }];
   const star = git.dirty ? label.lastIndexOf(`*${git.dirty}`) : -1;
   const where = star >= 0 ? label.slice(0, star) : label;
-  return [{ text: where, color: stale ? undefined : PALETTE.branch, dim: stale }, ...(star >= 0 ? [{ text: label.slice(star), color: stale ? undefined : PALETTE.changes, dim: stale }] : [])];
+  return [{ text: where, dim: true }, ...(star >= 0 ? [{ text: label.slice(star), dim: true }] : [])];
 }
 /** "claude-opus-5-5" → "opus-5-5"; other ids unchanged (bounded). */
 export function shortModel(model: string): string {
@@ -188,20 +201,20 @@ export interface WindowMetric {
 export function accountWindows(a: AccountUsage, opts: { now?: number; disconnected?: boolean; bars?: boolean }): WindowMetric[] {
   const now = opts.now ?? Date.now();
   const stale = a.status === 'stale' || !!opts.disconnected;
-  const one = (label: string, w: UsageWindow | undefined, color: string): WindowMetric => {
+  const one = (label: string, w: UsageWindow | undefined): WindowMetric => {
     const pct = w ? w.usedPercent : null;
     const reset = pct === null ? null : resetHint(w?.resetsAt ?? null, now);
-    return { metric: usageBar(label, pct, color, { stale, bar: opts.bars }), reset: reset ? { text: `↻${reset}`, color: stale ? undefined : PALETTE.reset, dim: stale } : null };
+    return { metric: usageBar(label, pct, { stale, bar: opts.bars }), reset: reset ? { text: `↻${reset}`, dim: true } : null };
   };
   // The main (5h + weekly) bucket is the harness's own bucket (or one carrying a 5h window), never just the first.
   const main = a.buckets.find((b) => b.id === a.account.harness) ?? a.buckets.find((b) => b.windows.some((w) => w.durationMinutes === 300)) ?? a.buckets[0];
   const others = a.buckets.filter((b) => b !== main);
   const byMinutes = (b: UsageBucket | undefined, m: number) => b?.windows.find((w) => w.durationMinutes === m);
-  const out: WindowMetric[] = PINNED.map((p) => one(p.label, byMinutes(main, p.minutes), p.minutes === 300 ? PALETTE.fiveHour : PALETTE.weekly));
+  const out: WindowMetric[] = PINNED.map((p) => one(p.label, byMinutes(main, p.minutes)));
   for (const b of others) {
     const weekly = byMinutes(b, 10_080) ?? b.windows[0];
     if (!weekly) continue;
-    out.push(one(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly, PALETTE.weekly));
+    out.push(one(`${sanitize(b.label ?? b.id)} ${weekly.durationMinutes === 10_080 ? 'weekly' : ''}`.trim(), weekly));
   }
   return out;
 }

@@ -5,7 +5,7 @@ import type { ParticipantState } from '../contracts/domain.js';
 import type { AccountUsage } from '../contracts/account.js';
 import { colorFor, fitLine, lineCols, sanitize, type Line } from './format.js';
 import { contextBar } from './bars.js';
-import { accountWindows, accountNotes, activityLabel, harnessLabel, livenessDot, workspaceSegments } from './topbar.js';
+import { accountWindows, accountNotes, activityLabel, harnessLabel, stateDot, workspaceSegments } from './topbar.js';
 
 export type TuiLayout = 'top' | 'left';
 export const TUI_LAYOUTS: readonly TuiLayout[] = ['top', 'left'];
@@ -46,7 +46,7 @@ function indented(withBar: Line, numeric: Line, width: number): Line {
 }
 
 function participantBlock(p: ParticipantState, opts: { width: number; stale: boolean; mono: boolean }): Line[] {
-  const live = opts.stale ? { glyph: '◌', color: 'gray' } : livenessDot(p.liveness);
+  const live = opts.stale ? { glyph: '◌', color: 'gray' } : stateDot(p);
   const lines: Line[] = [fitLine([{ text: `${live.glyph} `, color: live.color }, { text: sanitize(p.name), color: opts.stale ? 'gray' : colorFor(p.name), bold: true }], opts.width)];
   const status = activityLabel(p);
   lines.push(fitLine([{ text: `  ${opts.stale ? `last known: ${status.text}` : status.text}`, color: opts.stale ? undefined : status.color, dim: opts.stale || status.color === undefined }], opts.width));

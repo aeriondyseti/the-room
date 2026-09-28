@@ -11,7 +11,7 @@ import { waitFor } from './test-utils.js';
 
 afterEach(() => cleanup());
 
-const K = { enter: '\r', esc: '\u001B', tab: '\t', up: '\u001B[A', altEnter: '\u001B\r' };
+const K = { enter: '\r', esc: '\u001B', tab: '\t', up: '\u001B[A', altEnter: '\u001B\r', pageDown: '\u001B[6~' };
 const tick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 const plain = (s: string | undefined) => (s ?? '').replace(/\u001B\[[0-9;]*m/g, '');
 
@@ -147,7 +147,10 @@ test('? opens help; Esc closes it', async () => {
   await t.type('?');
   const help = await waitFor(t.frame, /Commands/);
   assert.match(help, /Keys/, 'the top of the help is visible');
-  assert.match(help, /\/pause \[message\]/);
+  // 6.10: the help pages like /detail, so a longer command list never falls off a short terminal.
+  assert.match(help, /↓ \d+ more lines? · PgDn/);
+  await t.type(K.pageDown);
+  assert.match(await waitFor(t.frame, /\/pause \[message\]/), /\/pause \[message\]/);
   await t.type(K.esc);
   await waitFor(t.frame, /Message everyone/);
   assert.doesNotMatch(t.frame(), /Commands/);

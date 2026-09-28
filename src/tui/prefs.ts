@@ -24,19 +24,37 @@ export async function readSavedLayout(path: string): Promise<TuiLayout | null> {
   return isTuiLayout(layout) ? layout : null;
 }
 
+/** Top bar density (6.10): the full organised grid, or one compact line per section. */
+export type TopBarMode = 'full' | 'compact';
+export const isTopBarMode = (v: unknown): v is TopBarMode => v === 'full' || v === 'compact';
+
+export async function readSavedTopBar(path: string): Promise<TopBarMode | null> {
+  const mode = (await readRaw(path)).topBar;
+  return isTopBarMode(mode) ? mode : null;
+}
+
 // Saves run one at a time, in request order, so a quick toggle can never persist an older choice over a newer one.
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Save the layout (atomic replace, other keys kept). Resolves false when it couldn't be saved. */
 export function saveLayout(path: string, layout: TuiLayout): Promise<boolean> {
-  const run = queue.then(() => writeLayout(path, layout));
+  return savePrefs(path, { layout });
+}
+
+/** Save the top bar density (same file, same guarantees). */
+export function saveTopBar(path: string, topBar: TopBarMode): Promise<boolean> {
+  return savePrefs(path, { topBar });
+}
+
+function savePrefs(path: string, patch: Record<string, unknown>): Promise<boolean> {
+  const run = queue.then(() => writePrefs(path, patch));
   queue = run;
   return run;
 }
 
-async function writeLayout(path: string, layout: TuiLayout): Promise<boolean> {
+async function writePrefs(path: string, patch: Record<string, unknown>): Promise<boolean> {
   try {
-    const next = { ...(await readRaw(path)), layout };
+    const next = { ...(await readRaw(path)), ...patch };
     await mkdir(join(path, '..'), { recursive: true });
     const tmp = `${path}.${randomUUID()}.tmp`;
     await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);

@@ -14,7 +14,7 @@ import { demoSource } from './demo.js';
 import { lineCols, lineText } from './format.js';
 import { leftPanelFits, sidePanelLines } from './sidepanel.js';
 import { accountLines, participantLines } from './topbar.js';
-import { PALETTE, contextBar, sliderBar, usageBar } from './bars.js';
+import { STATE_COLOR, contextBar, sliderBar, usageBar } from './bars.js';
 import { readSavedLayout, saveLayout, startingLayout, tuiPrefsPath } from './prefs.js';
 import { layoutFlag } from '../cli/tui-command.js';
 
@@ -142,17 +142,21 @@ test('bars: ccstatusline slider (10 cells, round(clamp)) with one-decimal percen
   assert.deepEqual([0, 4, 5, 43, 95, 100, 130, -5].map((p) => sliderBar(p)), [
     '░░░░░░░░░░', '░░░░░░░░░░', '▓░░░░░░░░░', '▓▓▓▓░░░░░░', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '▓▓▓▓▓▓▓▓▓▓', '░░░░░░░░░░',
   ]);
-  assert.equal(lineText(usageBar('weekly', 43, PALETTE.weekly, { stale: false })), 'weekly ▓▓▓▓░░░░░░ 43.0%');
-  assert.equal(lineText(usageBar('weekly', 4, PALETTE.weekly, { stale: false })), 'weekly ░░░░░░░░░░ 4.0%', 'a low non-zero reading keeps its number');
-  assert.equal(lineText(usageBar('5h', null, PALETTE.fiveHour, { stale: false })), '5h n/a', 'unknown: no bar, never an empty 0% bar');
-  const high = usageBar('5h', 95, PALETTE.fiveHour, { stale: false });
+  assert.equal(lineText(usageBar('weekly', 43, { stale: false })), 'weekly ▓▓▓▓░░░░░░ 43.0%');
+  assert.equal(lineText(usageBar('weekly', 4, { stale: false })), 'weekly ░░░░░░░░░░ 4.0%', 'a low non-zero reading keeps its number');
+  assert.equal(lineText(usageBar('5h', null, { stale: false })), '5h —', 'unknown: no bar, never an empty 0% bar');
+  const high = usageBar('5h', 95, { stale: false });
   assert.equal(lineText(high), '5h ▓▓▓▓▓▓▓▓▓▓ 95.0%!');
-  assert.ok(high.every((s) => s.color === PALETTE.fiveHour), 'label, bar and number share the group colour');
-  const stale = usageBar('5h', 95, PALETTE.fiveHour, { stale: true });
+  assert.deepEqual(high.map((s) => s.color), [undefined, STATE_COLOR.critical, STATE_COLOR.critical], 'quiet label; bar and number in the state colour (red > 90%)');
+  assert.equal(usageBar('5h', 43, { stale: false })[1]?.color, STATE_COLOR.ok, 'green under 70%');
+  assert.equal(usageBar('5h', 70, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber from 70%');
+  assert.equal(usageBar('5h', 90, { stale: false })[1]?.color, STATE_COLOR.warn, 'amber up to 90%');
+  assert.equal(lineText(usageBar('', null, { stale: false })), '—', 'a bare grid cell with no reading is a dash, never 0');
+  const stale = usageBar('5h', 95, { stale: true });
   assert.equal(lineText(stale), '5h ▓▓▓▓▓▓▓▓▓▓ 95.0%', 'stale: no warning emphasis');
   assert.ok(stale.every((s) => s.color === undefined && s.dim));
-  assert.equal(lineText(usageBar('5h', 43, PALETTE.fiveHour, { stale: false, bar: false })), '5h 43.0%');
-  assert.equal(lineText(contextBar(null, { stale: false })), 'ctx n/a');
+  assert.equal(lineText(usageBar('5h', 43, { stale: false, bar: false })), '5h 43.0%');
+  assert.equal(lineText(contextBar(null, { stale: false })), 'ctx —');
   assert.equal(lineText(contextBar({ source: 'codex-token-count', status: 'ok', observedAt: null, cumulative: null, context: { usedTokens: 12_000, limitTokens: null, percent: null } }, { stale: false })), 'ctx 12k', 'tokens without a limit: no bar');
 });
 

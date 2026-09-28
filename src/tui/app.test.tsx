@@ -30,8 +30,8 @@ test('renders the conversation, participants and connection from the room snapsh
   const frame = plain(ui.lastFrame());
   assert.match(frame, /vibe-pairing/);
   assert.match(frame, /● connected/);
-  assert.match(frame, /● astra idle/, 'participants as chips in the top bar');
-  assert.match(frame, /● claude busy/);
+  assert.match(frame, /● astra +idle/, 'participants in the top bar (6.10: aligned AGENTS rows)');
+  assert.match(frame, /● claude +busy/);
   assert.match(frame, /Kevin → everyone/);
   assert.match(frame, /message number 3/);
   assert.deepEqual(src.requests.map((r) => r.method).slice(0, 3), ['subscribe', 'who', 'read']);

@@ -31,7 +31,7 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
   const { runTui } = await import('../tui/run.js');
   const { themeFrom } = await import('../tui/theme.js');
   const { isTuiLayout } = await import('../tui/sidepanel.js');
-  const { readSavedLayout, saveLayout, startingLayout, tuiPrefsPath } = await import('../tui/prefs.js');
+  const { readSavedLayout, readSavedTopBar, saveLayout, saveTopBar, startingLayout, tuiPrefsPath } = await import('../tui/prefs.js');
   // Invalid layout settings fail loudly (never silently ignored).
   const flag = layoutFlag(argv);
   if (flag !== undefined && !isTuiLayout(flag)) {
@@ -73,7 +73,8 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
   const prefs = tuiPrefsPath(root);
   const layout = startingLayout(flag ?? null, await readSavedLayout(prefs), config.tuiLayout);
   try {
-    await runTui(source, config.humanDisplayName, { ...display, layout, onLayoutChange: (next) => saveLayout(prefs, next) });
+    const topBar = (await readSavedTopBar(prefs)) ?? 'full';
+    await runTui(source, config.humanDisplayName, { ...display, layout, onLayoutChange: (next) => saveLayout(prefs, next), topBar, onTopBarChange: (next) => saveTopBar(prefs, next) });
   } finally {
     source.close();
   }
