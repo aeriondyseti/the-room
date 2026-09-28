@@ -74,3 +74,7 @@ their own rows**.
 ---
 
 **Summary:** 19 / 22 features complete (MVP + polish; Milestone 6 is post-release) (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.1.0** · last tag: v0.1.0
+
+### Post-release patch 6.3a (Astra)
+✅ v0.1.1: Git discovery and fixture environments isolated; TD-0005/TD-0010 disposition recorded;
+210 tests pass normally and with hostile Git environment. Review: reviews/6.3a.md.

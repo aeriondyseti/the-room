@@ -1,3 +1,4 @@
+import { roomGitEnvironment } from '../core/registry/root.js';
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -160,7 +161,7 @@ test('parseRecipients: all wins, @ and case are normalized, empty is an error', 
 // ---- integration with the real room service ------------------------------------------------------------------
 
 const repo = mkdtempSync(join(tmpdir(), 'vp-mcp-real-'));
-execFileSync('git', ['init', '-q', repo]);
+execFileSync('git', ['init', '-q', repo], { env: roomGitEnvironment(process.env), windowsHide: true });
 // Isolation: the auto-started service inherits this env, so production adapter wiring can never reach a real
 // Codex install from tests (the fake thread ids below must not be queued anywhere real).
 process.env['ROOM_CODEX_EXECUTABLE'] = join(repo, 'no-such-codex.exe');

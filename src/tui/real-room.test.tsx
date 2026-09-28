@@ -1,3 +1,4 @@
+import { roomGitEnvironment } from '../core/registry/root.js';
 // Integration: the TUI against the real room service (1.2) — auto-start, send from the composer, see it arrive.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +15,7 @@ import { waitFor } from './test-utils.js';
 
 const plain = (s: string | undefined) => (s ?? '').replace(/\u001B\[[0-9;]*m/g, '');
 const root = mkdtempSync(join(tmpdir(), 'vp-tui-real-'));
-execFileSync('git', ['init', '-q', root]);
+execFileSync('git', ['init', '-q', root], { env: roomGitEnvironment(process.env), windowsHide: true });
 // This UI/IPC fixture must never reach a real harness transport.
 process.env['ROOM_CODEX_EXECUTABLE'] = join(root, 'fixture-codex-not-installed.exe');
 const source = new ClientRoomSource({ roomRoot: root });
