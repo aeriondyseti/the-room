@@ -177,7 +177,27 @@ try {
     if (codexes.length > 1) await relay('same-harness reply (codex→codex)', codexes[0], codexes[1]);
     if (codexes.length) { await relay('cross-harness reply (claude→codex)', claudes[0], codexes[0]); await relay('cross-harness reply (codex→claude)', codexes[0], claudes[0]); }
 
-    // 5. An offline instance never blocks the others (last: it consumes a fixture).
+    // 5. Busy instance, per harness: a second message sent while the first turn is running is delivered after it
+    //    (native queue-after-current-turn), both are answered, and per-recipient order holds (invariant 4).
+    for (const harness of ['claude', 'codex']) {
+      const fx = fixtures.find((f) => f.harness === harness);
+      if (!fx) continue;
+      await waitIdle(fx);
+      const m1 = await send('scenario busy 1: reply ack', [fx.name]);
+      const m2 = await send('scenario busy 2: reply ack', [fx.name]);
+      const r1 = await awaitReplies(m1, [fx.name]);
+      const r2 = await awaitReplies(m2, [fx.name]);
+      const sub = (d) => d?.attempts?.find((a) => a.outcome === 'submitted')?.finishedAt ?? null;
+      const s1 = sub(r1.deliveries[0]); const s2 = sub(r2.deliveries[0]);
+      const a1 = r1.replies[fx.name]?.createdAt ?? null; const a2 = r2.replies[fx.name]?.createdAt ?? null;
+      const ordered = !!(s1 && s2 && Date.parse(s1) <= Date.parse(s2));
+      record(`busy ${harness} instance: back-to-back messages both answered, in order`, !!(a1 && a2 && ordered), {
+        first: m1.id, second: m2.id, submitted: [s1, s2], replied: [a1, a2],
+        states: [r1.deliveries[0]?.state ?? null, r2.deliveries[0]?.state ?? null], coverage: `${harness} fixture only`,
+      });
+    }
+
+    // 6. An offline instance never blocks the others (last: it consumes a fixture).
     { const victim = claudes.at(-1); await victim.stop(); await sleep(3000);
       const others = names.filter((n) => n !== victim.name);
       const m = await send('scenario offline: reply ack'); const { replies, deliveries } = await awaitReplies(m, others);
