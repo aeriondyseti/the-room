@@ -177,7 +177,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
     Release is never marked complete without these.
 
-- [ ] **4.2 Failure and recovery qualification** *(Astra)*
+- [x] **4.2 Failure and recovery qualification** *(Astra)*
   - **Scope:**
     - service restart with pending work;
     - concurrent startup;
