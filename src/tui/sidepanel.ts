@@ -58,6 +58,13 @@ function participantBlock(p: ParticipantState, opts: { width: number; stale: boo
   return lines;
 }
 
+/** Short forms of the account qualifiers for a cramped panel (same meaning, fewer rows). */
+function shortNote(note: string): string {
+  if (note.includes('login unverified')) return '(login unverified)';
+  if (note.includes('via statusline')) return '(statusline: no model limits)';
+  return note;
+}
+
 /**
  * One account. `compact` (for short panels): numbers without bars, reset hints only when they fit on the metric's row.
  * The staleness qualifier rides on the account's own heading row, so a shown value is never separated from it.
@@ -68,7 +75,9 @@ function accountBlock(a: AccountUsage, opts: { width: number; now: number; disco
   const state = notes.filter(isState);
   const head: Line = [{ text: harnessLabel(a.account.harness), bold: true }, ...state.map((n): Line[number] => ({ text: ` ${n}`, dim: true, italic: true }))];
   if (a.status === 'unavailable') return [fitLine(head, opts.width), ...wrapNote(`unavailable — ${sanitize(a.reason ?? 'no reading yet')}`, opts.width)];
-  const lines: Line[] = [fitLine(head, opts.width)];
+  // Every other qualifier (unverified login, reduced source) also comes BEFORE the values (Astra's cross-review): if a
+  // short panel cuts the block from the bottom, no shown value is ever left without its qualifiers.
+  const lines: Line[] = [fitLine(head, opts.width), ...notes.filter((n) => !isState(n)).flatMap((n) => wrapNote(opts.compact ? shortNote(n) : n, opts.width))];
   const barred = accountWindows(a, { now: opts.now, disconnected: opts.disconnected, bars: !opts.compact });
   const plain = accountWindows(a, { now: opts.now, disconnected: opts.disconnected, bars: false });
   barred.forEach((w, i) => {
@@ -80,7 +89,6 @@ function accountBlock(a: AccountUsage, opts: { width: number; now: number; disco
       if (w.reset && !opts.compact) lines.push(fitLine([{ text: '    ' }, w.reset], opts.width));
     }
   });
-  for (const note of notes.filter((n) => !isState(n))) lines.push(...wrapNote(note, opts.width));
   return lines;
 }
 
