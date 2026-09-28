@@ -59,6 +59,8 @@ export function deliveryMark(d: Pick<Delivery, 'state' | 'held' | 'waiting'>): D
   if (d.state === 'queued' && d.waiting === 'offline') return { glyph: '⋯', color: 'yellow', label: 'offline' };
   if (d.state === 'queued' && d.waiting === 'rebind_needed') return { glyph: '⚠', color: 'yellow', label: 'rebind needed' };
   switch (d.state) {
+    case 'withdrawn':
+      return { glyph: '⊘', color: 'gray', label: 'withdrawn' };
     case 'queued':
       return { glyph: '◌', color: 'gray', label: 'queued' };
     case 'submitted':
