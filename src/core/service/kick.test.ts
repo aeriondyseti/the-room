@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Caller, Method, Params, RequestFrame, Result, RoomEvent } from '../../contracts/ipc.js';
 import { RoomService } from './service.js';
 import { openKickProposal } from './kick-vote.js';
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
-import { readRegistry, removeRegistryParticipant } from '../registry/registry.js';
+import { joinParticipant, readRegistry, removeRegistryParticipant, renameParticipant } from '../registry/registry.js';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const a='00000000-0000-4000-8000-00000000000a',b='00000000-0000-4000-8000-00000000000b',c='00000000-0000-4000-8000-00000000000c';
@@ -71,6 +71,22 @@ test('an unknown other agent is disclosed but does not block the authenticated p
   if(done.status==='executed')assert.deepEqual(done.proposal?.excluded,[{name:'fable',reason:'unknown'}]);
 });
 
+test('a unanimous proposal follows the target binding through a rename',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-target-rename-'));const room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'still addressed to the same binding'});
+  const opened=await call(room,'kick',{caller:agent(a),name:'target',reason:'approved removal'});
+  assert.equal(opened.status,'open');
+  await call(room,'rename',{caller:agent(c),newName:'newtarget'});
+  const done=await call(room,'kick',{caller:agent(b),name:'newtarget'});
+  assert.equal(done.status,'executed');
+  assert.equal(room.ledger.delivery(pending.message.id,'newtarget').withdrawalCause,'kick');
+  const registry=await readRegistry(root);
+  assert.equal(registry.target,undefined);
+  assert.equal(registry.newtarget,undefined);
+});
+
 test('startup finishes a unanimous proposal interrupted before registry removal',async t=>{
   const root=await mkdtemp(join(tmpdir(),'vp-kick-recover-'));let room=new RoomService(root);
   t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
@@ -101,6 +117,20 @@ test('an expired proposal closes on restart without removing its target',async t
   assert.ok(room.ledger.list(null,10).items.some(item=>item.message.kind==='system'&&item.message.body.includes('expired')));
 });
 
+test('an unreadable registry cannot make expired-proposal recovery abort startup',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-expire-unreadable-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const now=new Date();
+  const proposal=openKickProposal({astra:{harness:'codex',session_id:a},fable:{harness:'codex',session_id:b},target:{harness:'codex',session_id:c}},room.ledger.participants(),
+    'target',{harness:'codex',sessionId:a},'will retry expiry',now,5000,600_000);
+  room.ledger.putKickProposal({...proposal,expiresAt:new Date(now.getTime()-1).toISOString()});
+  await room.close();await writeFile(join(root,'session.toml'),'[participants\n','utf8');
+  room=new RoomService(root);
+  await room.start();
+  assert.ok(room.ledger.openKickProposal({harness:'codex',sessionId:c}));
+});
+
 test('a human kick interrupted after registry removal completes its queued tombstones on restart',async t=>{
   const root=await mkdtemp(join(tmpdir(),'vp-kick-human-recover-'));let room=new RoomService(root);
   t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
@@ -112,6 +142,49 @@ test('a human kick interrupted after registry removal completes its queued tombs
   assert.equal(room.ledger.delivery(pending.message.id,'target').withdrawalCause,'kick');
   assert.deepEqual(room.ledger.humanKickIntents(),[]);
   assert.deepEqual((await call(room,'who',{})).participants.map(p=>p.name).sort(),['astra','fable']);
+});
+
+test('a pending human kick follows its binding if the name changes during downtime',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-human-rename-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'cancel for binding'});
+  room.ledger.putHumanKickIntent({id:'interrupted-before-rename',target:{name:'target',harness:'codex',sessionId:c},reason:'human requested removal',createdAt:new Date().toISOString()});
+  await renameParticipant(root,'target','newtarget',{harness:'codex',session_id:c});
+  await room.close();room=new RoomService(root);await room.start();
+  assert.equal(room.ledger.delivery(pending.message.id,'newtarget').withdrawalCause,'kick');
+  assert.deepEqual(room.ledger.humanKickIntents(),[]);
+  assert.deepEqual((await call(room,'who',{})).participants.map(p=>p.name).sort(),['astra','fable']);
+});
+
+test('recovering a human kick never removes a replacement binding at the old name',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-human-rebind-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'old binding only'});
+  room.ledger.putHumanKickIntent({id:'interrupted-before-rebind',target:{name:'target',harness:'codex',sessionId:c},reason:'remove the old binding',createdAt:new Date().toISOString()});
+  await removeRegistryParticipant(root,'target',{harness:'codex',session_id:c});
+  await joinParticipant(root,'target',{harness:'codex',session_id:'00000000-0000-4000-8000-00000000000d'});
+  await room.close();room=new RoomService(root);await room.start();
+  assert.equal(room.ledger.delivery(pending.message.id,'target').withdrawalCause,'kick');
+  assert.deepEqual(room.ledger.humanKickIntents(),[]);
+  assert.equal((await readRegistry(root)).target?.session_id,'00000000-0000-4000-8000-00000000000d');
+});
+
+test('a recovered kick cancels old-label deliveries when the target renamed and its name was reused',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'vp-kick-rename-reuse-'));let room=new RoomService(root);
+  t.after(async()=>{await room.close();await rm(root,{recursive:true,force:true,maxRetries:10});});
+  await joinThree(room);
+  const pending=await call(room,'send',{caller:{kind:'human'},to:['target'],body:'old label, old binding'});
+  room.ledger.putHumanKickIntent({id:'rename-and-reuse',target:{name:'target',harness:'codex',sessionId:c},reason:'remove original binding',createdAt:new Date().toISOString()});
+  await renameParticipant(root,'target','newtarget',{harness:'codex',session_id:c});
+  await joinParticipant(root,'target',{harness:'codex',session_id:'00000000-0000-4000-8000-00000000000d'});
+  await room.close();room=new RoomService(root);await room.start();
+  assert.equal(room.ledger.delivery(pending.message.id,'target').withdrawalCause,'kick');
+  assert.deepEqual(room.ledger.humanKickIntents(),[]);
+  const registry=await readRegistry(root);
+  assert.equal(registry.target?.session_id,'00000000-0000-4000-8000-00000000000d');
+  assert.equal(registry.newtarget,undefined);
 });
 
 test('kick waits for an accepted native handoff and cancels only the still-queued delivery',async t=>{
