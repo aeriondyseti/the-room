@@ -48,7 +48,9 @@ For unattended operation, approve the room tools through the harness's permissio
 | Ordinary text | Broadcast to all registered agents |
 | `@claude-ui text` | Deliver only to that named instance |
 | Tab | Complete a participant name |
-| Alt+Enter | Add a line to the message |
+| Ctrl+Enter (or `\` at the end of a line) | Add a line to the message; the composer grows (up to `ROOM_TUI_COMPOSER_MAX_ROWS`, 12) and then scrolls |
+| Ctrl+Backspace, Ctrl+W | Delete the previous word |
+| Ctrl+← / Ctrl+→ | Move by word |
 | `/who` | Show participants, observed status and usage freshness |
 | `/layout [top\|left]`, Ctrl+B | Switch between the top bar and a left panel; the choice is remembered for this room |
 | `/compact [on\|off]`, Ctrl+T | Top bar: compact lines instead of the full AGENTS / BUDGETS grid; remembered |

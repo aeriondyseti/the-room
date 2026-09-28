@@ -43,6 +43,7 @@ import { ActivityPane } from './activity.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
 import { leftPanelFits, leftPanelMinCols, sidePanelLines, type TuiLayout } from './sidepanel.js';
 import { agentGrid, budgetGrid } from './topgrid.js';
+import { bsIsCtrlBackspaceIn, classifyRawKey, useRawKey } from './raw-keys.js';
 import type { TopBarMode } from './prefs.js';
 import type { RoomSource } from './source.js';
 import { COLOR_THEME, ThemeContext, useTheme, type Theme } from './theme.js';
@@ -73,6 +74,8 @@ export interface AppProps {
   onTopBarChange?: (mode: TopBarMode) => Promise<boolean>;
   /** The most rows the composer grows to before it scrolls (config: tuiComposerMaxRows). */
   composerMaxRows?: number;
+  /** Whether a raw BS (0x08) is Ctrl+Backspace here (default: in Windows Terminal, per Kevin's key probe). */
+  bsIsCtrlBackspace?: boolean;
 }
 
 /** The conversation keeps at least this many rows however much the draft grows. */
@@ -116,9 +119,12 @@ function Room({
   topBar: initialTopBar = 'full',
   onTopBarChange,
   composerMaxRows = DEFAULT_CONFIG.tuiComposerMaxRows,
+  bsIsCtrlBackspace = bsIsCtrlBackspaceIn(),
 }: Omit<AppProps, 'theme'>) {
   const t = useTheme();
   const { exit } = useApp();
+  // Before useInput (registration order): the raw bytes of the key being handled (see raw-keys.ts).
+  const rawKey = useRawKey();
   const [view, dispatch] = useReducer(reduceView, INITIAL_VIEW, (v): RoomView => ({ ...v, connection: source.status() }));
   const lastSeqRef = useRef(0);
   lastSeqRef.current = view.lastSeq;
@@ -469,6 +475,11 @@ function Room({
     if (key.ctrl && key.home) return scroll.toTop();
     if (key.ctrl && key.end) return scroll.toLive();
     if (key.end && draft.text === '') return scroll.toLive();
+
+    // Keys Ink can't tell apart by itself (Kevin's Windows Terminal: Ctrl+Enter = LF, Ctrl+Backspace = BS).
+    const raw = classifyRawKey(rawKey.current, { bsIsCtrlBackspace });
+    if (raw === 'ctrl-enter') return edit(insert(draft, '\n'));
+    if (raw === 'ctrl-backspace') return edit(deleteWordBackward(draft));
 
     if (key.escape) {
       if (draft.text !== '') edit(EMPTY_DRAFT);
