@@ -36,8 +36,12 @@ export interface ClaudeUsageRecord {
  */
 export function parseClaudeRecord(value: unknown): ClaudeUsageRecord | null {
   if (!isRecord(value) || value['type'] !== 'assistant') return null;
+  // Subagent (sidechain) turns and API-error records aren't this session's context.
+  if (value['isSidechain'] === true || value['isApiErrorMessage'] === true) return null;
   const message = value['message'];
   if (!isRecord(message) || typeof message['id'] !== 'string') return null;
+  // Claude writes synthetic assistant lines (e.g. interrupted turns, "Login expired") with all-zero usage.
+  if (message['model'] === '<synthetic>') return null;
   const usage = message['usage'];
   if (!isRecord(usage)) return null;
   const input = num(usage['input_tokens']);
@@ -45,6 +49,8 @@ export function parseClaudeRecord(value: unknown): ClaudeUsageRecord | null {
   const cacheWrite = num(usage['cache_creation_input_tokens']) ?? 0;
   const cacheRead = num(usage['cache_read_input_tokens']) ?? 0;
   if (input === null || output === null) return null;
+  // A response that read nothing is not a real context reading (never report an observed-looking zero).
+  if (input + cacheWrite + cacheRead === 0) return null;
   return {
     messageId: message['id'],
     model: typeof message['model'] === 'string' ? message['model'] : null,

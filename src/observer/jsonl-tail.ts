@@ -37,12 +37,17 @@ export async function readNew(cursor: TailCursor, maxBytes: number = MAX_READ_BY
 
   const length = Math.min(size - cursor.offset, maxBytes);
   const buffer = Buffer.alloc(length);
-  const handle = await open(cursor.path, 'r');
   let bytesRead: number;
   try {
-    ({ bytesRead } = await handle.read(buffer, 0, length, cursor.offset));
-  } finally {
-    await handle.close();
+    const handle = await open(cursor.path, 'r');
+    try {
+      ({ bytesRead } = await handle.read(buffer, 0, length, cursor.offset));
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // Deleted/rotated between stat and open, or transiently locked: report as not readable now (cursor untouched).
+    return { records: [], restarted, skippedLines: 0, exists: false };
   }
   // Only consume through the last complete line; a partial trailing line is re-read next time.
   const lastNewline = buffer.lastIndexOf(0x0a, bytesRead - 1);

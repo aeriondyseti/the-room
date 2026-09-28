@@ -154,6 +154,19 @@ test('cursors export and restore: a new observer continues without double counti
   assert.equal(snap.cumulative?.output, 15);
 });
 
+test('synthetic, sidechain, API-error and zero-read records never overwrite the context reading', async () => {
+  const d = dirs();
+  const p = join(d.claudeProjectsDir, 'X--repo');
+  mkdirSync(p);
+  const synthetic = JSON.stringify({ type: 'assistant', timestamp: T(0), message: { id: 's1', model: '<synthetic>', usage: { input_tokens: 0, output_tokens: 0 } } }) + '\n';
+  const sidechain = JSON.stringify({ type: 'assistant', isSidechain: true, timestamp: T(0), message: { id: 'sc', model: 'm', usage: { input_tokens: 5, output_tokens: 1, cache_read_input_tokens: 10 } } }) + '\n';
+  const apiErr = JSON.stringify({ type: 'assistant', isApiErrorMessage: true, timestamp: T(0), message: { id: 'e1', model: 'm', usage: { input_tokens: 9, output_tokens: 0 } } }) + '\n';
+  writeFileSync(join(p, 'syn.jsonl'), claudeLine('m1', T(2), { in: 1, out: 5, cw: 0, cr: 40_000 }) + synthetic + sidechain + apiErr);
+  const snap = await d.observer.snapshot({ harness: 'claude', sessionId: 'syn' });
+  assert.equal(snap.context?.usedTokens, 40_001, 'the real reading survives');
+  assert.equal(snap.cumulative?.output, 5, 'non-session records are not counted');
+});
+
 test('parsers reject unknown shapes with null (never zero)', () => {
   assert.equal(parseClaudeRecord({ type: 'assistant', message: { id: 'x' } }), null);
   assert.equal(parseClaudeRecord({ type: 'assistant', message: { id: 'x', usage: { input_tokens: -1, output_tokens: 1 } } }), null);

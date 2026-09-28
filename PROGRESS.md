@@ -34,7 +34,7 @@ their own rows**.
 | 2.2 | Claude adapter | Claude | ✅ | v0.0.4 · review: reviews/2.2.md · live smoke: probes/claude-adapter-smoke.md |
 | 2.3 | CLI | Astra | ⬜ | |
 | 2.4 | MCP front end | Claude | ⬜ | |
-| 2.5 | Usage observer | Claude | ⬜ | |
+| 2.5 | Usage observer | Claude | ✅ | v0.0.5 · review: reviews/2.5.md |
 | 2.6 | Onboarding | Claude | ⬜ | |
 
 ## Milestone 3 — TUI
@@ -70,4 +70,4 @@ their own rows**.
 
 ---
 
-**Summary:** 4 / 20 features complete · **current version: v0.0.4** · last tag: v0.0.4
+**Summary:** 5 / 20 features complete · **current version: v0.0.5** · last tag: v0.0.5
