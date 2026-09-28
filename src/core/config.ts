@@ -65,6 +65,12 @@ export interface RoomConfig {
    * listed keeps `limitTokens: null` (no percentage). Override with ROOM_CONTEXT_LIMITS="model=tokens,model=tokens".
    */
   contextLimits: Readonly<Record<string, number>>;
+  /** TUI: default layout, 'top' (top bar) or 'left' (side panel); a choice saved with /layout wins over it. */
+  tuiLayout: string;
+  /** TUI: left panel width in columns. */
+  tuiPanelWidth: number;
+  /** TUI: the left panel shows only when the terminal is at least this wide (else the top bar, with a notice). */
+  tuiPanelBreakpoint: number;
   /** TUI: messages loaded on first connect. */
   tuiHistoryLimit: number;
   /** TUI: max pages read when catching up after a reconnect (beyond it, a notice says history may be missing). */
@@ -135,6 +141,9 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
   contextLimits: Object.freeze({ 'claude-opus-5-5': 1_000_000 }),
+  tuiLayout: 'top',
+  tuiPanelWidth: 34,
+  tuiPanelBreakpoint: 90,
   tuiHistoryLimit: 500,
   tuiCatchUpMaxPages: 50,
   tuiReconnectMinMs: 250,
@@ -186,6 +195,9 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   codexHome: 'ROOM_CODEX_HOME',
   usageStaleMs: 'ROOM_USAGE_STALE_MS',
   contextLimits: 'ROOM_CONTEXT_LIMITS',
+  tuiLayout: 'ROOM_TUI_LAYOUT',
+  tuiPanelWidth: 'ROOM_TUI_PANEL_WIDTH',
+  tuiPanelBreakpoint: 'ROOM_TUI_PANEL_BREAKPOINT',
   tuiHistoryLimit: 'ROOM_TUI_HISTORY_LIMIT',
   tuiCatchUpMaxPages: 'ROOM_TUI_CATCH_UP_MAX_PAGES',
   tuiReconnectMinMs: 'ROOM_TUI_RECONNECT_MIN_MS',

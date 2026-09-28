@@ -50,6 +50,7 @@ For unattended operation, approve the room tools through the harness's permissio
 | Tab | Complete a participant name |
 | Alt+Enter | Add a line to the message |
 | `/who` | Show participants, observed status and usage freshness |
+| `/layout [top\|left]`, Ctrl+B | Switch between the top bar and a left panel; the choice is remembered for this room |
 | `/detail #12` | Inspect delivery attempts and errors |
 | `/pause` | Hold future deliveries and send a stop request |
 | `/resume` | Release held deliveries in order |
@@ -64,7 +65,9 @@ Pause is **a delivery hold plus a stop request**, not a forced interrupt. A busy
 
 ## Plan usage
 
-The top bar shows each agent as a chip (status and context usage), and below that the subscription usage for each account, shown once per account and never summed across agents: the **5h** and **weekly** windows with reset times, plus any model-specific weekly limit Claude reports (e.g. **Fable weekly**). A value the provider doesn't report shows as `n/a`, never `0`; an old or failed reading is marked `(stale)`; a missing source says why.
+The top bar (or the left panel: `/layout`) shows each agent as a chip (status, context usage, model and branch), and below that the subscription usage for each account, shown once per account and never summed across agents: the **5h** and **weekly** windows with reset times, plus any model-specific weekly limit Claude reports (e.g. **Fable weekly**). A value the provider doesn't report shows as `n/a`, never `0`; an old or failed reading is marked `(stale)`; a missing source says why.
+
+Readings use the same 10-cell bars and colours as a ccstatusline `slider` (e.g. `5h ▓▓▓▓░░░░░░ 38.0%`): 5h magenta, weekly and model limits blue, context yellow, model and branch cyan. A reading at 65% or more is marked with a bold `!`, so nothing depends on colour alone (`--no-color` / `NO_COLOR` keep the bars, numbers and markers). When the terminal is too narrow for a whole bar, the plain percentage is shown instead.
 
 - **Codex:** read-only from the running Codex daemon (`account/rateLimits/read`). No credentials or auth files are read. Codex currently reports only a weekly window, so its 5h shows `n/a`.
 - **Claude:** sources are tried cheapest first, and the first with a reading wins.
@@ -124,6 +127,7 @@ The CLI derives process, pipe and executable details. `.room/` holds the SQLite 
 | `ROOM_CODEX_EXECUTABLE` | Native Codex executable when PATH lookup is unsuitable; no shell wrapper |
 | `ROOM_CODEX_HOME` | Non-default Codex home used by the service |
 | `ROOM_CLAUDE_CONFIG_DIR` | Non-default Claude configuration directory |
+| `ROOM_TUI_LAYOUT` | Starting layout, `top` (default) or `left`; a choice made with `/layout` (saved in `.room/tui.json`) or `room tui --layout` wins |
 
 Human-only controls are a **trusted-local workflow guardrail**, not authentication against hostile
 processes running as your OS user. The CLI detects agent session environment/ancestry, MCP clients
