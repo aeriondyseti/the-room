@@ -245,3 +245,34 @@ Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint bef
   proves invalid requests never dispatch.
 
 - [x] **6.17 Outer pane separator** *(Astra)* — one full-cell cyan bottom row in sidebar mode or right column in top mode; effective narrow fallback follows top mode; no extra terminal row/column, overlays retain the edge, monochrome remains visible.
+
+## Milestone 7 — Crossing guard, withdraw and urgent sends
+
+Spec: [docs/CROSSING-GUARD-SPEC.md](docs/CROSSING-GUARD-SPEC.md) (Claude owns; Astra cross-reviews). Kevin's
+requirements: withdraw a message that hasn't been received yet; send urgently without waiting. The rest is agent
+ergonomics first. Ownership agreed at the milestone boundary.
+
+- [ ] **7.1 Inbox snapshots and guarded send (core)** *(Astra)*
+  **Done-when:** per-binding inbox revisions and opaque snapshot tokens bound to the content they cover. `room_send`
+  commits only when every message addressed to the sender is covered by its snapshot (atomically with persist-before-ack). A missing or stale token
+  is "not sent", with the delta, a fresh token and an attempt id. Blocked attempts are audited, not sent. Human
+  messages count as new; human sends bypass the guard.
+- [ ] **7.2 Withdraw and urgent (core)** *(Astra)*
+  **Done-when:**
+  - withdraw is a per-recipient CAS against the dispatcher claim, returning withdrawn / already_submitting /
+    submitted / uncertain / already_visible (human) / replied / already_withdrawn, with tombstones kept;
+  - native acceptance is the cutoff (Kevin: accepted = too late to recall), so there is no native recall;
+  - urgent takes a room-side priority lane (FIFO within lanes, never preempting in-flight or accepted deliveries, held
+    under /pause), with a reason required and audited;
+  - the ADR for the lane's exception to per-recipient order is logged.
+- [ ] **7.3 Tools and CLI** *(Claude)*
+  **Done-when:** `room_inbox`; `snapshot`, `urgent` + `reason` and `revisesAttemptId` on `room_send`; `room_withdraw`; CLI
+  equivalents; envelopes carry a token covering their own content. Tool descriptions teach models to revise on
+  "not sent" and to use the envelope token. Built against 7.1/7.2 contracts, with fakes first.
+- [ ] **7.4 TUI** *(Claude)*
+  **Done-when:**
+  - ⤫ on stale-snapshot sends;
+  - withdrawn deliveries shown struck and labelled per recipient;
+  - URGENT and its reason shown;
+  - "N new since snapshot" on agent chips;
+  - blocked-then-revised attempts shown as one line.
