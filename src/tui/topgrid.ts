@@ -82,32 +82,35 @@ interface BudgetRow {
   label: string;
   fiveHour: UsageWindow | null;
   weekly: UsageWindow | null;
-  /** The account's qualifiers (on its first row only, so they sit with the values they qualify). */
+  /** Model-specific weekly limits (e.g. Fable) by label: extra columns on the account's own row (Kevin, 6.12). */
+  models: Map<string, UsageWindow>;
+  /** The account's qualifiers, quiet at the end of its row. */
   notes: string[];
   /** For an unavailable account: the reason, shown instead of cells. */
   unavailable?: string;
   stale: boolean;
 }
 
-function budgetRows(a: AccountUsage, disconnected: boolean): BudgetRow[] {
-  // Quiet caveats at the line end, without parentheses (mockup): "login unverified", "stale", "last known".
-  const notes = accountNotes(a, disconnected).map((n) => n.replace(/^\((.*)\)$/, '$1').replace(/^ccstatusline, /, ''));
+function budgetRow(a: AccountUsage, disconnected: boolean): BudgetRow {
+  // Quiet caveats at the line end, without parentheses (mockup): "stale", "last known", "via statusline, …".
+  const notes = accountNotes(a, disconnected).map((n) => n.replace(/^\((.*)\)$/, '$1'));
   const stale = a.status === 'stale' || disconnected;
-  if (a.status === 'unavailable') return [{ label: harnessLabel(a.account.harness), fiveHour: null, weekly: null, notes: [], unavailable: a.reason ?? 'no reading yet', stale }];
+  const label = harnessLabel(a.account.harness);
+  if (a.status === 'unavailable') return { label, fiveHour: null, weekly: null, models: new Map(), notes: [], unavailable: a.reason ?? 'no reading yet', stale };
   const byMinutes = (b: UsageBucket | undefined, m: number) => b?.windows.find((w) => w.durationMinutes === m) ?? null;
   const main = a.buckets.find((b) => b.id === a.account.harness) ?? a.buckets.find((b) => b.windows.some((w) => w.durationMinutes === 300)) ?? a.buckets[0];
-  const rows: BudgetRow[] = [{ label: harnessLabel(a.account.harness), fiveHour: byMinutes(main, 300), weekly: byMinutes(main, 10_080), notes, stale }];
+  const models = new Map<string, UsageWindow>();
   for (const b of a.buckets.filter((x) => x !== main)) {
     const weekly = byMinutes(b, 10_080) ?? b.windows[0] ?? null;
-    if (weekly) rows.push({ label: sanitize(b.label ?? b.id), fiveHour: byMinutes(b, 300), weekly, notes: [], stale });
+    if (weekly) models.set(sanitize(b.label ?? b.id), weekly);
   }
-  return rows;
+  return { label, fiveHour: byMinutes(main, 300), weekly: byMinutes(main, 10_080), models, notes, stale };
 }
 
 /** A window's value cell: bar + right-aligned percentage, or "—" when there is no reading (never 0). */
-function valueCell(w: UsageWindow | null, opts: { stale: boolean; bars: boolean; numberWidth: number }): Line {
+function valueCell(w: UsageWindow | null, opts: { stale: boolean; bars: boolean; cells: number; numberWidth: number }): Line {
   if (!w) return [{ text: '—', dim: true }];
-  return usageBar('', w.usedPercent, { stale: opts.stale, bar: opts.bars, numberWidth: opts.numberWidth });
+  return usageBar('', w.usedPercent, { stale: opts.stale, bar: opts.bars, cells: opts.cells, numberWidth: opts.numberWidth });
 }
 
 /** A window's reset cell (quiet), in its own column so reset times line up; empty when unknown. */
@@ -116,32 +119,50 @@ function resetCell(w: UsageWindow | null, now: number): Line {
   return reset ? [{ text: `${RESET_MARK}${reset}`, dim: true }] : [];
 }
 
+/** How the grid shrinks to fit (Kevin, 6.12): 10-cell bars, then 8-cell bars, then plain numbers. */
+const BAR_STEPS = [{ bars: true, cells: 10 }, { bars: true, cells: 8 }, { bars: false, cells: 0 }] as const;
+
 /**
- * BUDGETS: a header row naming the columns once ("BUDGETS  5h  weekly"), then one row per limit (the account, then
- * each model-specific limit such as Fable). Like pieces line up (Kevin): values, reset times and caveats each have their
- * own measured column. "—" where there is no reading. Caveats sit on the account's first row, or wrap onto a
- * continuation row when that row would be too wide; bars become numbers before that. Null if the grid can't fit even
- * then (the caller falls back to wrapped metric lines).
+ * BUDGETS: one row per account. Columns are named once in a header: 5h, weekly, then one column pair per
+ * model-specific weekly limit (e.g. "Fable weekly") on the account's own row (Kevin, 6.12). Like pieces line up
+ * (Kevin): values, reset times and caveats each have their own measured column, percentages right-aligned. "—" where a
+ * limit has no reading; blank where an account has no such limit at all (Codex has no Fable limit). Caveats go at the
+ * end of the row, or wrap onto a continuation row; never cut. Bars shrink from 10 to 8 cells, then become numbers, to
+ * fit. Null if even that doesn't fit (the caller falls back to wrapped metric lines).
  */
 export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: number; now?: number; disconnected?: boolean }): Line[] | null {
   if (accounts.length === 0) return [];
   const now = opts.now ?? Date.now();
-  const rows = accounts.flatMap((a) => budgetRows(a, !!opts.disconnected));
+  const rows = accounts.map((a) => budgetRow(a, !!opts.disconnected));
+  const models = [...new Set(rows.flatMap((r) => [...r.models.keys()]))];
   const labelCell = (r: BudgetRow): Line => [{ text: ' ' }, { text: r.label, bold: true }];
   const noteCell = (r: BudgetRow): Line => (r.notes.length ? [{ text: r.notes.join(' · '), dim: true, italic: true }] : []);
   // Each value column right-aligns its percentages to its own widest number.
   const w5 = numberWidth(rows.map((r) => r.fiveHour?.usedPercent));
   const wW = numberWidth(rows.map((r) => r.weekly?.usedPercent));
-  for (const bars of [true, false]) {
-    const values = (r: BudgetRow): Line[] => [labelCell(r), valueCell(r.fiveHour, { stale: r.stale, bars, numberWidth: w5 }), resetCell(r.fiveHour, now), valueCell(r.weekly, { stale: r.stale, bars, numberWidth: wW }), resetCell(r.weekly, now)];
+  const wM = models.map((m) => numberWidth(rows.map((r) => r.models.get(m)?.usedPercent)));
+  const valueCols = 5 + models.length * 2;
+  // Prefer the largest bars at which every caveat also fits on its row; else the largest at which the values fit (the
+  // caveats then wrap onto continuation rows).
+  let valuesOnly: Line[] | null = null;
+  for (const step of BAR_STEPS) {
+    const v = (w: UsageWindow | null, r: BudgetRow, width: number) => valueCell(w, { stale: r.stale, bars: step.bars, cells: step.cells, numberWidth: width });
+    const values = (r: BudgetRow): Line[] => [
+      labelCell(r), v(r.fiveHour, r, w5), resetCell(r.fiveHour, now), v(r.weekly, r, wW), resetCell(r.weekly, now),
+      ...models.flatMap((m, i): Line[] => {
+        const w = r.models.get(m);
+        return w ? [v(w, r, wM[i]!), resetCell(w, now)] : [[], []]; // no such limit on this account: blank, not "—"
+      }),
+    ];
     const available = rows.filter((r) => !r.unavailable);
-    const header: Line[] = [[sectionLabel('BUDGETS')], [{ text: '5h', dim: true }], [], [{ text: 'weekly', dim: true }], []];
+    const header: Line[] = [[sectionLabel('BUDGETS')], [{ text: '5h', dim: true }], [], [{ text: 'weekly', dim: true }], [], ...models.flatMap((m): Line[] => [[{ text: `${m} weekly`, dim: true }], []])];
     const widths = colWidths([header, ...available.map(values), ...rows.map((r) => [labelCell(r)])]);
-    // Where the caveat column starts: after the five padded value columns (the same widths the cells are padded to).
-    const noteCol = [0, 1, 2, 3, 4].reduce((sum, i) => sum + (widths[i] ?? 0) + GAP.length, 0);
+    // Where the caveat column starts: after the padded value columns (the same widths the cells are padded to).
+    const noteCol = Array.from({ length: valueCols }, (_, i) => (widths[i] ?? 0) + GAP.length).reduce((a, b) => a + b, 0);
     const indent = widths[0]! + GAP.length;
     const out: Line[] = [join(trim(header), widths)];
     let fits = lineCols(out[0]!) <= opts.width;
+    let notesInline = true;
     for (const r of rows) {
       if (r.unavailable) {
         const line: Line = [...pad(labelCell(r), widths[0]!), { text: GAP }, { text: `usage unavailable — ${sanitize(r.unavailable)}`, dim: true }];
@@ -155,11 +176,15 @@ export function budgetGrid(accounts: readonly AccountUsage[], opts: { width: num
       if (!note.length) out.push(bare);
       // The caveat goes in its own column (aligned across rows) when it fits; else on a continuation row, never cut.
       else if (noteCol + lineCols(note) <= opts.width) out.push(join([...cells, note], widths));
-      else out.push(bare, ...wrapQuiet([{ text: ' '.repeat(indent) }, ...note], opts.width, indent));
+      else {
+        notesInline = false;
+        out.push(bare, ...wrapQuiet([{ text: ' '.repeat(indent) }, ...note], opts.width, indent));
+      }
     }
-    if (fits) return out;
+    if (fits && notesInline) return out;
+    if (fits) valuesOnly ??= out;
   }
-  return null;
+  return valuesOnly;
 }
 /** Word-wrap a (dim) line onto continuation rows indented by `indent`; never drops words. */
 function wrapQuiet(line: Line, width: number, indent: number): Line[] {
