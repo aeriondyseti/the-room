@@ -105,3 +105,15 @@ their own rows**.
 Kevin's visual testing reversed the outer divider request. Both colored edges and their reserved cell
 are removed; existing internal rules remain. Restored full content dimensions. 340/340 tests pass.
 Claude independently approved aebf47f; composer6.18 follows this release and adjusts its status-row test.
+
+### Milestone 7 — Crossing guard, withdraw and urgent sends (spec: docs/CROSSING-GUARD-SPEC.md)
+
+| ID | Feature | Owner | Status | Notes |
+|---|---|---|---|---|
+| 7.1 | Inbox snapshots + guarded send (core) | Astra | ⬜ | contracts first |
+| 7.2 | Withdraw + urgent (core) + Codex recall probe | Astra | ⬜ | thread/queue/delete candidate |
+| 7.3 | Tools and CLI | Claude | ⬜ | against 7.1/7.2 contracts |
+| 7.4 | TUI | Claude | ⬜ | |
+| 7.5 | Claude recall probe | Claude | ⬜ | no known mechanism; throwaway fixture only |
+
+> Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core + Codex, Claude surfaces + Claude probe + spec.
