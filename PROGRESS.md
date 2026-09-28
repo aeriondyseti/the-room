@@ -73,6 +73,7 @@ their own rows**.
 | 6.8 | Layout toggle (top ⇄ left) + usage bars and group colours | Claude (+ Astra: ccstatusline research/spec) | ✅ | **v0.5.0** · review: reviews/6.8.md · ADR-0009 · /layout, Ctrl+B, remembered in .room/tui.json; ccstatusline 10-cell slider bars; fixed group colours; honest n/a/stale/! in both layouts |
 | 6.9 | Bounded shutdown (TD-0023) | Claude | ✅ | **v0.5.1** · review: reviews/6.9.md · observers get a short grace (ROOM_MONITOR_STOP_GRACE_MS), abandoned passes never write, detached service exits once closed; fixes the recurring shutdown test flake |
 | 6.10 | Organised top bar (Kevin's mockup, top bar only) | Claude | ✅ | **v0.6.0** · review: reviews/6.10.md · ADR-0010 · AGENTS rows + BUDGETS grid with aligned values/resets/caveats, state-coloured bars, activity dot, — for missing, /compact + Ctrl+T, width/height/overlay fallbacks, paging help |
+| 6.11 | Space after the reset arrow | Claude | ✅ | **v0.6.1** · review: reviews/6.11.md · `↻ 1h53m` (the arrow renders ~1.5 cells wide in some terminals) |
 | 6.2 | Background agents (IDEAS.md) | Astra + Claude | ⬜ | |
 | 6.3 | Tech-debt triage | both | ⬜ | |
 

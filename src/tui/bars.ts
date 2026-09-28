@@ -75,3 +75,8 @@ function compact(n: number): string {
 export function numberWidth(percents: readonly (number | null | undefined)[]): number {
   return Math.max(0, ...percents.map((p) => (typeof p === 'number' ? p.toFixed(1).length : 0)));
 }
+/**
+ * The reset marker, with a trailing space (Kevin, 6.11): "↻" renders about a cell and a half wide in some terminals and
+ * bled into the time after it.
+ */
+export const RESET_MARK = '↻ ';
