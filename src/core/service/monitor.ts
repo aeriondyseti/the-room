@@ -26,6 +26,9 @@ export interface MonitorDeps {
 export class ParticipantMonitor {
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
+  /** Work requested while a refresh is in flight: 'all', or specific names (e.g. a participant that just joined). */
+  private queued: Set<string> | 'all' | null = null;
+  private lastCursors: string | null = null;
   private stopped = false;
   private readonly now: () => Date;
 
@@ -56,22 +59,39 @@ export class ParticipantMonitor {
   lastError: Error | null = null;
 
   /**
-   * Refresh everyone (or one participant). Overlapping calls share the in-flight refresh. Never rejects: it runs from
-   * timers and fire-and-forget calls, so a transient DB/registry error must not become an unhandled rejection.
+   * Refresh everyone (or one participant). A request arriving while a refresh is in flight is queued and runs right
+   * after it (never swallowed: a participant that joins mid-run is still observed immediately). The returned promise
+   * settles once all queued work is done. Never rejects: it runs from timers and fire-and-forget calls, so a
+   * transient DB/registry error must not become an unhandled rejection.
    */
   refresh(only?: string): Promise<void> {
-    if (this.running) return this.running;
-    this.running = this.run(only)
-      .catch((err: unknown) => {
-        this.lastError = err instanceof Error ? err : new Error(String(err));
-      })
-      .finally(() => {
-        this.running = null;
-      });
+    if (!only) this.queued = 'all';
+    else if (this.queued !== 'all') {
+      const names = this.queued ?? new Set<string>();
+      names.add(only);
+      this.queued = names;
+    }
+    this.running ??= this.drain();
     return this.running;
   }
 
-  private async run(only?: string): Promise<void> {
+  private async drain(): Promise<void> {
+    try {
+      while (this.queued && !this.stopped) {
+        const batch = this.queued;
+        this.queued = null;
+        try {
+          await this.run(batch === 'all' ? null : batch);
+        } catch (err) {
+          this.lastError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+    } finally {
+      this.running = null; // synchronous with the last queue check, so no request can slip between them
+    }
+  }
+
+  private async run(only: ReadonlySet<string> | null): Promise<void> {
     let participants: ParticipantState[];
     try {
       participants = await this.deps.participants();
@@ -80,7 +100,7 @@ export class ParticipantMonitor {
     }
     for (const p of participants) {
       if (this.stopped) return;
-      if (only && p.name !== only) continue;
+      if (only && !only.has(p.name)) continue;
       const observed = await this.observe(p);
       // Probes and transcript reads are slow: re-read the participant and apply only the observed fields to its
       // CURRENT state, and skip it if it was removed or rebound meanwhile (never overwrite a newer binding/pending).
@@ -93,15 +113,20 @@ export class ParticipantMonitor {
         usage: observed.usage,
         livenessCheckedAt: observed.livenessCheckedAt,
       };
-      if (changed(current, next)) {
-        this.deps.save(next);
-        this.deps.publish(next);
-      }
+      // Persist every check (so `who` shows a fresh livenessCheckedAt); publish only meaningful changes.
+      const isNews = changed(current, next);
+      if (isNews || next.livenessCheckedAt !== current.livenessCheckedAt) this.deps.save(next);
+      if (isNews) this.deps.publish(next);
     }
     try {
-      this.deps.saveCursors(this.deps.observer.exportCursors());
+      const cursors = this.deps.observer.exportCursors();
+      const serialized = JSON.stringify(cursors);
+      if (serialized !== this.lastCursors) {
+        this.deps.saveCursors(cursors);
+        this.lastCursors = serialized;
+      }
     } catch {
-      // best effort
+      // best effort; retried next tick
     }
   }
 

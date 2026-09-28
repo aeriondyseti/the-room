@@ -107,6 +107,36 @@ test('background errors are contained (refresh never rejects)', async () => {
   assert.match(m.lastError?.message ?? '', /database is locked/);
 });
 
+test('a join during an in-flight refresh is queued, not swallowed; checks persist without publishing', async () => {
+  let list = [base()];
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const probed: string[] = [];
+  const saved: ParticipantState[] = [];
+  const published: ParticipantState[] = [];
+  let t = 0;
+  const m = new ParticipantMonitor({
+    ...harness().deps,
+    participants: async () => list,
+    adapters: [adapter(async (target) => { probed.push(target.sessionId); if (probed.length === 1) await gate; return { liveness: 'online', activity: 'idle' }; })],
+    save: (s) => { saved.push(s); list = list.map((p) => (p.name === s.name ? s : p)); },
+    publish: (s) => published.push(s),
+    now: () => new Date(Date.UTC(2026, 8, 28, 10, 0, t++)),
+  });
+  const first = m.refresh();
+  list = [...list, base({ name: 'claude', harness: 'codex', sessionId: 't2' })]; // joined after the run read the list
+  const joined = m.refresh('claude');
+  assert.equal(joined, first, 'callers share one drain promise');
+  release();
+  await joined;
+  assert.deepEqual(probed, ['t1', 't2'], 'the newcomer is probed right after the in-flight run');
+
+  const before = { saved: saved.length, published: published.length };
+  await m.refresh();
+  assert.equal(published.length, before.published, 'unchanged state is not news');
+  assert.equal(saved.length, before.saved + 2, 'but every check is persisted (fresh livenessCheckedAt in who)');
+});
+
 test('cursors are restored on construction; corrupt cursors never block', () => {
   let restored: unknown = null;
   const h = harness({ loadCursors: () => [{ x: 1 }] as never, observer: { snapshot: async () => usageOk, exportCursors: () => [], restoreCursors: (c) => { restored = c; } } });
@@ -161,5 +191,21 @@ test('integration: after join, who and live events carry observed liveness, acti
   } finally {
     client.close();
     await running.close();
+  }
+});
+
+test('integration: observer cursors survive a service restart', { timeout: 20_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'vp-monitor-cursors-'));
+  execFileSync('git', ['init', '-q', root]);
+  try {
+    const exported = [{ harness: 'codex' as const, sessionId: 't1', path: 'rollout.jsonl', offset: 42, counters: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 }, context: null, lastAt: null, lastMessageId: null }];
+    const first = await startServer(root, { adapters: [], monitor: { observer: { snapshot: async () => usageOk, exportCursors: () => exported, restoreCursors: () => {} }, intervalMs: 60_000 } });
+    await first.close(); // close awaits the startup refresh, which saves the cursors
+    let restored: unknown = null;
+    const second = await startServer(root, { adapters: [], monitor: { observer: { snapshot: async () => usageOk, exportCursors: () => [], restoreCursors: (c) => { restored = c; } }, intervalMs: 60_000 } });
+    await second.close();
+    assert.deepEqual(restored, exported);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
