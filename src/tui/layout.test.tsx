@@ -260,3 +260,15 @@ test('6.15: the rendered monochrome frame — reverse-video fill, no background 
   const zero = usageBar('', 0, { stale: false });
   assert.ok(zero.some((s) => s.surface?.kind === 'track') && surfaceStyle(zero.at(-1)!, true).blank === '░', 'a 0% bar is all track: visible as ░ in monochrome');
 });
+test('side panel (6.16): every window of every model bucket is shown (a Spark 5h too); same-label buckets stay distinct', () => {
+  const codex: AccountUsage = { account: { harness: 'codex', scope: 'account', key: 'c', sourceKey: 'c' }, status: 'ok', source: 'd', checkedAt: null, observedAt: null, buckets: [
+    { id: 'codex', windows: [{ kind: 's', durationMinutes: 10_080, usedPercent: 18, resetsAt: null }] },
+    { id: 'model-a', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 61, resetsAt: null }, { kind: 's', durationMinutes: 10_080, usedPercent: 12, resetsAt: null }] },
+    { id: 'model-b', label: 'Spark', windows: [{ kind: 'p', durationMinutes: 300, usedPercent: 80, resetsAt: null }] },
+  ] };
+  const text = sidePanelLines([], [codex], { width: 40, height: 20, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText).join('\n');
+  for (const v of ['61.0%', '12.0%', '80.0%', '18.0%']) assert.ok(text.includes(v), `${v} shown:\n${text}`);
+  assert.match(text, /Spark 5h \[model-a\]/);
+  assert.match(text, /Spark 5h \[model-b\]/);
+  assert.match(text, /^ {2}Spark \[model-a\]|^ {2}Spark +/m, 'the weekly Spark limit is named by its model');
+});
