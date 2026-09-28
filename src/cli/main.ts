@@ -49,7 +49,10 @@ function canonical(path: string): string {
 
 if (isEntryPoint(process.argv[1], import.meta.url)) {
   const argv = process.argv.slice(2);
-  if (argv[0] === 'tui') {
+  if (argv[0] === 'mcp') {
+    const { runMcpServer } = await import('../mcp/main.js');
+    await runMcpServer(); // runs until stdin closes
+  } else if (argv[0] === 'tui') {
     const { runTuiCommand } = await import('./tui-command.js');
     process.exitCode = await runTuiCommand(argv.slice(1));
   } else {
