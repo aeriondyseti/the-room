@@ -10,6 +10,7 @@ import {buildEnvelope} from './envelope.js';
 const a='00000000-0000-4000-8000-000000000001',b='00000000-0000-4000-8000-000000000002';
 const human={kind:'human' as const};
 class FakeAdapter implements DeliveryAdapter {
+ runtimeContext={harness:'codex' as const,executable:'fixture.exe',home:'fixture-home'};
  readonly harness='codex' as const;maxEnvelopeChars=24000;sent:SubmitRequest[]=[];offline=new Set<string>();
  action:(request:SubmitRequest)=>Promise<SubmitResult>=async()=>({status:'submitted',evidence:{kind:'codex-queue',nativeId:'native'}});
  async probe(target:{sessionId:string}):Promise<LivenessProbe>{return{liveness:this.offline.has(target.sessionId)?'offline':'online',activity:'unknown'};}
@@ -135,4 +136,16 @@ test('a probe failure after pause never marks the exempt stop request failed',as
 test('each native envelope lists the whole broadcast recipient snapshot',async t=>{
  const {room,adapter}=await setup(t);await send(room,'coordinate',['all']);await room.dispatcher.idle();
  assert.equal(adapter.sent.length,2);for(const sent of adapter.sent)assert.match(sent.envelope,/to=astra,other delivery_to=/);
+});
+
+
+test('native context is persisted before submission and survives uncertain outcomes',async t=>{
+ const {room,adapter}=await setup(t);const original={...adapter.runtimeContext};
+ adapter.action=async request=>{
+  assert.deepEqual(room.ledger.delivery(request.messageId,request.recipient).attempts.at(-1)!.runtimeContext,original);
+  adapter.runtimeContext.home='changed-after-submission';
+  return {status:'uncertain',error:{code:'internal',message:'simulated lost receipt'}};
+ };
+ const first=await send(room);await room.dispatcher.idle();
+ assert.deepEqual(room.ledger.delivery(first.message.id,'astra').attempts[0]!.runtimeContext,original);
 });

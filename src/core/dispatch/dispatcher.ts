@@ -47,7 +47,8 @@ export class Dispatcher {
    }
   }finally{this.scheduling=false;}
  }
- async idle():Promise<void>{await this.kick();await Promise.allSettled(this.workers.values());}
+ /** Wait for current work, then perform a fresh scheduler pass (including changed reachability). */
+ async idle():Promise<void>{await Promise.allSettled(this.workers.values());await this.kick();await Promise.allSettled(this.workers.values());}
  private change(delivery:Delivery,update:(d:Delivery)=>void):Delivery{
   const changed=this.ledger.updateDelivery(delivery.messageId,delivery.recipient,update);this.emit({type:'delivery.updated',delivery:changed});
   const previous=this.ledger.participants().find(p=>p.name===delivery.recipient&&p.harness===delivery.target.harness&&p.sessionId===delivery.target.sessionId);
@@ -80,7 +81,7 @@ export class Dispatcher {
    try{envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);}catch(error){
     this.change(current,d=>{d.state='failed';d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error:{code:'message_too_large',message:(error as Error).message}});});continue;
    }
-   const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null});});
+   const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null,...(adapter.runtimeContext?{runtimeContext:{...adapter.runtimeContext}}:{})});});
    let result:SubmitResult;
    try {
     const received=await adapter.submit({target:current.target,envelope:envelope.text,messageId:message.id,recipient:name,attempt:attempting.attempts.length});
