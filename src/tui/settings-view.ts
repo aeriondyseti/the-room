@@ -24,7 +24,7 @@ export const MS_MAX = 60_000;
  * from the panel writes a repaired file. Read structurally so the panel works with the view the service returns.
  */
 export interface SettingsProblem {
-  source: string;
+  source: 'file';
   code: string;
   message: string;
   fallback: 'last_good' | 'defaults';
