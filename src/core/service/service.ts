@@ -245,6 +245,8 @@ export class RoomService {
           const deliveries=this.ledger.relabelQueued(oldName,newName,target,this.ledger.roomState().paused);
           if(previous)this.ledger.putParticipant({...previous,name:newName,pending:this.ledger.queued(newName).length});
           this.ledger.recordParticipantAlias(oldName,target);
+          const openProposal=this.ledger.openKickProposal(target);
+          if(openProposal)this.ledger.putKickProposal({...openProposal,target:{...openProposal.target,name:newName}});
           return deliveries;
         });
         try{
