@@ -11,6 +11,11 @@ import {
   COMMAND_CATALOGUE,
   commandSuggestions,
   completeCommand,
+  deleteWordBackward,
+  visualRows,
+  type VisualRow,
+  wordLeft,
+  wordRight,
   type CommandInfo,
   EMPTY_DRAFT,
   EMPTY_HISTORY,
@@ -32,7 +37,7 @@ import {
   type Draft,
   type History,
 } from './composer.js';
-import { DELIVERY_LEGEND, colorFor, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
+import { DELIVERY_LEGEND, colorFor, cols, conversationLines, deliveryMark, fitLine, lineText, participantsSummary, relativeTime, sanitize, usageLabel, type Line } from './format.js';
 import { detailLines } from './detail.js';
 import { ActivityPane } from './activity.js';
 import { accountLines, activityLabel, livenessDot, participantLines, workspaceDetail } from './topbar.js';
@@ -66,9 +71,12 @@ export interface AppProps {
   /** Top bar density (6.10): the organised grid, or compact lines; /compact or Ctrl+T switches it. */
   topBar?: TopBarMode;
   onTopBarChange?: (mode: TopBarMode) => Promise<boolean>;
+  /** The most rows the composer grows to before it scrolls (config: tuiComposerMaxRows). */
+  composerMaxRows?: number;
 }
 
-const MAX_DRAFT_ROWS = 5;
+/** The conversation keeps at least this many rows however much the draft grows. */
+const MIN_VIEWPORT_ROWS = 3;
 /** Command suggestions shown at once (more are summarised as "+N more"). */
 const MAX_SUGGESTIONS = 6;
 /** Participant chips wrap over at most this many top-bar lines (then "+N more · /who"). */
@@ -77,8 +85,6 @@ const TOP_BAR_PARTICIPANT_LINES = 2;
 const TOP_BAR_AGENT_ROWS = 6;
 /** The full grid yields to chips when it would leave the conversation fewer rows than this. */
 const MIN_CONVERSATION_ROWS = 10;
-/** Header, rule, composer (rule + To + one draft row) and status bar. */
-const TOP_BAR_OTHER_CHROME_ROWS = 6;
 /** How often the top bar re-renders its reset countdowns. */
 const TOP_BAR_CLOCK_MS = 30_000;
 
@@ -109,6 +115,7 @@ function Room({
   onLayoutChange,
   topBar: initialTopBar = 'full',
   onTopBarChange,
+  composerMaxRows = DEFAULT_CONFIG.tuiComposerMaxRows,
 }: Omit<AppProps, 'theme'>) {
   const t = useTheme();
   const { exit } = useApp();
@@ -146,6 +153,14 @@ function Room({
   const leftFits = leftPanelFits(colsTotal, panelWidth, panelBreakpoint);
   const showLeft = layout === 'left' && leftFits;
   const stale = view.connection.state !== 'connected';
+  // Command discovery: typing "/" (plus a partial name) lists matching commands above the composer.
+  const suggestions = useMemo(() => (overlay ? [] : commandSuggestions(draft.text)), [draft.text, overlay]);
+  const [suggestIdx, setSuggestIdx] = useState(0);
+  useEffect(() => setSuggestIdx(0), [draft.text]);
+  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
+  // The draft as terminal rows (hard newlines and soft wraps, measured by display width), shared by layout and render.
+  const draftVisual = useMemo(() => visualRows(draft, colsTotal - 2 /* gutter */, cols, sanitize), [draft, colsTotal]);
+  const draftWanted = Math.min(composerMaxRows, draftVisual.rows.length);
   // Top bar (6.10, Kevin's mockup): AGENTS and BUDGETS as aligned, labelled grids; when a grid can't fit the width it
   // falls back to the wrapping chips / metric lines. Compact (explicit, never automatic): one line per section.
   const [topBar, setTopBar] = useState<TopBarMode>(initialTopBar);
@@ -160,14 +175,15 @@ function Room({
     // Height guard (like the width guard): the full grid never squeezes the conversation below a readable height; on a
     // short terminal the top bar shows the wrapping chips instead (the saved density is kept).
     // While an overlay (help, /who, detail, activity) is open it gets the room: the grid yields the same way.
-    // Persistent extra rows count too (the connection/notice banner, the left-layout notice); transient ones (feedback,
-    // a multi-line draft, suggestions) don't, so the grid doesn't flicker while typing.
+    // Every other row counts (6.13, TD-0027): header, banner, left-layout notice, rules, the composer as the draft needs it
+    // (with feedback and suggestions) and the status bar.
     const persistent = (view.connection.state !== 'connected' || (view.notice !== null && view.loaded) ? 1 : 0) + (layout === 'left' ? 1 : 0);
-    const gridFits = grid !== null && !overlay && rows - grid.length - persistent - TOP_BAR_OTHER_CHROME_ROWS >= MIN_CONVERSATION_ROWS;
+    const chrome = 1 /* header */ + persistent + 1 /* rule */ + 2 /* composer rule + To */ + draftWanted + (feedback ? 1 : 0) + suggestionRows + 1 /* status */;
+    const gridFits = grid !== null && !overlay && rows - grid.length - chrome >= MIN_CONVERSATION_ROWS;
     const lines = gridFits ? grid : [...chips(topBar === 'compact' ? 1 : TOP_BAR_PARTICIPANT_LINES), ...usage()];
     if (layout === 'left') lines.push(fitLine([{ text: `Left panel needs a terminal ${leftPanelMinCols(panelWidth, panelBreakpoint)}+ columns wide; showing the top bar until then.`, dim: true, italic: true }], colsTotal));
     return lines;
-  }, [showLeft, layout, topBar, overlay, rows, view.connection.state, view.notice, view.loaded, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
+  }, [showLeft, layout, topBar, overlay, rows, draftWanted, feedback, suggestionRows, view.connection.state, view.notice, view.loaded, view.participants, view.accounts, colsTotal, stale, t.mono, clock, panelBreakpoint, panelWidth]);
   const convWidth = colsTotal - (showLeft ? panelWidth + 1 : 0) - 1;
   const saveGen = useRef(0);
   const switchLayout = (next: TuiLayout): Feedback => {
@@ -200,12 +216,10 @@ function Room({
   const loadFailed = !view.loaded && view.notice !== null;
   const names = useMemo(() => view.participants.map((p) => p.name), [view.participants]);
 
-  const draftRows = Math.min(MAX_DRAFT_ROWS, draft.text.split('\n').length);
-  // Command discovery: typing "/" (plus a partial name) lists matching commands above the composer.
-  const suggestions = useMemo(() => (overlay ? [] : commandSuggestions(draft.text)), [draft.text, overlay]);
-  const [suggestIdx, setSuggestIdx] = useState(0);
-  useEffect(() => setSuggestIdx(0), [draft.text]);
-  const suggestionRows = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
+  // 6.13: the composer takes the rows its draft actually needs (soft wraps included), up to composerMaxRows and never
+  // below a readable conversation; beyond that it scrolls inside itself to follow the cursor. Nothing is ever drawn over
+  // the bottom bar.
+  const draftRows = Math.max(1, Math.min(draftWanted, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) - (2 + (feedback ? 1 : 0) + suggestionRows) - 1 /* status */ - MIN_VIEWPORT_ROWS));
   const composerHeight = 1 /* rule */ + 1 /* To: */ + draftRows + (feedback ? 1 : 0) + suggestionRows;
   const viewportHeight = Math.max(3, rows - 1 /* header */ - (banner ? 1 : 0) - (topLines.length + 1) /* top bar + rule */ - composerHeight - 1 /* status */);
 
@@ -462,8 +476,11 @@ function Room({
       return;
     }
     if (key.return) {
+      // Ctrl+Enter inserts a newline and never sends, runs a command or confirms (checked before anything else).
+      if (key.ctrl) return edit(insert(draft, '\n'));
+      // Alt+Enter is left to the terminal (Windows Terminal: fullscreen); if it arrives anyway it does nothing.
+      if (key.meta) return;
       if (busy) return;
-      if (key.meta) return edit(insert(draft, '\n'));
       if (draft.text.slice(0, draft.cursor).endsWith('\\') && draft.cursor === draft.text.length) {
         return edit({ text: draft.text.slice(0, -1) + '\n', cursor: draft.text.length });
       }
@@ -518,6 +535,10 @@ function Room({
       }
       return;
     }
+    // Modified keys before their plain forms: Ctrl+←/→ move by word; Ctrl+Backspace (or Ctrl+W) deletes a word.
+    if (key.leftArrow && key.ctrl) return edit(wordLeft(draft));
+    if (key.rightArrow && key.ctrl) return edit(wordRight(draft));
+    if ((key.backspace && key.ctrl) || (key.ctrl && input === 'w')) return edit(deleteWordBackward(draft));
     if (key.leftArrow) return edit(left(draft));
     if (key.rightArrow) return edit(right(draft));
     if (key.home) return edit(home(draft));
@@ -586,6 +607,7 @@ function Room({
         width={colsTotal}
         draft={draft}
         rows={draftRows}
+        visual={draftVisual}
         to={to}
         paused={view.room.paused}
         busy={busy}
@@ -872,6 +894,7 @@ function Composer(props: {
   width: number;
   draft: Draft;
   rows: number;
+  visual: { rows: VisualRow[]; cursorRow: number };
   to: { label: string; valid: boolean };
   paused: boolean;
   busy: boolean;
@@ -884,8 +907,12 @@ function Composer(props: {
   const t = useTheme();
   const accent = !props.connected ? 'gray' : props.paused ? 'yellow' : 'cyan';
   const toText = to.label === 'command' ? 'command' : `To: ${to.label}`;
-  const lines = draftLines(draft, props.rows);
-  const hints = props.suggestions.length > 0 ? 'Tab complete · ↑/↓ choose · Enter run · Esc clear' : 'Enter send · Alt+Enter newline · Tab @name · ? help';
+  // A window of the draft's visual rows that keeps the cursor visible; ↑ / ↓ in the gutter mark rows above / below.
+  const all = props.visual.rows;
+  const start = Math.min(Math.max(0, props.visual.cursorRow - props.rows + 1), Math.max(0, all.length - props.rows));
+  const lines = all.slice(start, start + props.rows);
+  const gutter = (i: number) => (start + i === 0 ? '› ' : i === 0 && start > 0 ? '↑ ' : i === lines.length - 1 && start + lines.length < all.length ? '↓ ' : '  ');
+  const hints = props.suggestions.length > 0 ? 'Tab complete · ↑/↓ choose · Enter run · Esc clear' : 'Enter send · Ctrl+Enter newline · Tab @name · ? help';
   // Keep the highlighted suggestion inside the visible window.
   const n = props.suggestions.length;
   const first = n <= MAX_SUGGESTIONS ? 0 : Math.min(Math.max(0, props.suggestIdx - MAX_SUGGESTIONS + 1), n - MAX_SUGGESTIONS);
@@ -916,11 +943,11 @@ function Composer(props: {
       </Box>
       {lines.map((l, i) => (
         <Box key={i} width={props.width}>
-          <Text color={t.color(accent)}>{i === 0 ? '› ' : '  '}</Text>
-          {l.before !== '' && <Text>{l.before}</Text>}
+          <Text color={t.color(accent)}>{gutter(i)}</Text>
+          {l.before !== '' && <Text wrap="truncate">{l.before}</Text>}
           {l.cursor !== null && <Text inverse>{l.cursor}</Text>}
           {l.after !== '' && <Text wrap="truncate">{l.after}</Text>}
-          {draft.text === '' && i === 0 && <Text dimColor wrap="truncate">Message everyone, or @name someone…</Text>}
+          {draft.text === '' && start + i === 0 && <Text dimColor wrap="truncate">Message everyone, or @name someone…</Text>}
         </Box>
       ))}
       {props.feedback && (
@@ -933,25 +960,6 @@ function Composer(props: {
   );
 }
 
-/** Split the draft into display rows (last `rows` lines around the cursor) with the cursor cell marked. */
-function draftLines(draft: Draft, rows: number): Array<{ before: string; cursor: string | null; after: string }> {
-  const all = draft.text.split('\n');
-  const before = draft.text.slice(0, draft.cursor);
-  const cursorRow = before.split('\n').length - 1;
-  const cursorCol = before.length - (before.lastIndexOf('\n') + 1);
-  const start = Math.max(0, Math.min(cursorRow - rows + 1, all.length - rows));
-  return all.slice(start, start + rows).map((text, idx) => {
-    const row = start + idx;
-    if (row !== cursorRow) return { before: sanitize(text), cursor: null, after: '' };
-    const cp = Array.from(text.slice(cursorCol))[0];
-    return {
-      before: sanitize(text.slice(0, cursorCol)),
-      cursor: cp !== undefined ? sanitize(cp) : ' ',
-      after: cp !== undefined ? sanitize(text.slice(cursorCol + cp.length)) : '',
-    };
-  });
-}
-
 /**
  * The help as lines (6.10: a pager like /detail, so a growing command list never falls off a short terminal). The key
  * column is measured, so like items line up and no key runs into its description.
@@ -960,7 +968,9 @@ export function helpLines(): Line[] {
   const keys: Array<[string, string]> = [
     ['Enter', 'send (to everyone unless you start with @names)'],
     ['@name …', 'address one or more agents; Tab completes names'],
-    ['Alt+Enter, or \\ at line end', 'new line'],
+    ['Ctrl+Enter, or \\ at line end', 'new line'],
+    ['Ctrl+← / Ctrl+→', 'move by word'],
+    ['Ctrl+Backspace, Ctrl+W', 'delete the previous word'],
     ['↑ / ↓', 'previous / next message you sent'],
     ['Esc', 'clear the draft (never interrupts an agent)'],
     ['PgUp / PgDn, Shift+↑/↓', 'scroll the conversation (and this help)'],
