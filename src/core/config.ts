@@ -1,6 +1,8 @@
 // Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
 
 export interface RoomConfig {
+  /** Bounded SQLite lock-contention wait. */
+  sqliteBusyTimeoutMs: number;
   /** Max envelope characters for `codex queue --message` (Windows command-line budget; proposal "Message envelope"). */
   codexMaxEnvelopeChars: number;
   /** Max envelope characters for the Claude messaging pipe. */
@@ -25,8 +27,16 @@ export interface RoomConfig {
   registryLockTimeoutMs: number;
   /** Poll interval while waiting for the registry lock. */
   registryLockPollMs: number;
-  /** Claude config dir holding `projects/` transcripts (else CLAUDE_CONFIG_DIR, else ~/.claude). */
+  /** Claude config dir holding `sessions/` and `projects/` (else CLAUDE_CONFIG_DIR, else ~/.claude). */
   claudeConfigDir: string | null;
+  /**
+   * After writing a message to a Claude pipe, how long to watch for the receiver closing the connection before
+   * reporting `submitted`. A close inside this window is reported `uncertain` (the protocol has no auth ack, so a
+   * rejected token is indistinguishable from a close after delivery — TD-0007).
+   */
+  claudeSubmitSettleMs: number;
+  /** Timeout for the process start-time query used to detect pid reuse. */
+  claudeProcStartTimeoutMs: number;
   /** Codex home holding `sessions/` rollouts (else CODEX_HOME, else ~/.codex). */
   codexHome: string | null;
   /** A usage reading older than this is labelled `stale` (values still shown). */
@@ -39,6 +49,7 @@ export interface RoomConfig {
 }
 
 export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
+  sqliteBusyTimeoutMs: 5000,
   codexMaxEnvelopeChars: 24_000,
   claudeMaxEnvelopeChars: 900_000,
   oversizePreviewChars: 2_000,
@@ -52,6 +63,8 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
   registryLockTimeoutMs: 5_000,
   registryLockPollMs: 50,
   claudeConfigDir: null,
+  claudeSubmitSettleMs: 300,
+  claudeProcStartTimeoutMs: 5_000,
   codexHome: null,
   usageStaleMs: 15 * 60_000,
   // Source: Kevin, 2026-09-28 ("your context limit is 1M tokens") for this deployment's Claude model.
@@ -59,6 +72,7 @@ export const DEFAULT_CONFIG: Readonly<RoomConfig> = Object.freeze({
 });
 
 const ENV_KEYS: Record<keyof RoomConfig, string> = {
+  sqliteBusyTimeoutMs: 'ROOM_SQLITE_BUSY_TIMEOUT_MS',
   codexMaxEnvelopeChars: 'ROOM_CODEX_MAX_ENVELOPE_CHARS',
   claudeMaxEnvelopeChars: 'ROOM_CLAUDE_MAX_ENVELOPE_CHARS',
   oversizePreviewChars: 'ROOM_OVERSIZE_PREVIEW_CHARS',
@@ -72,6 +86,8 @@ const ENV_KEYS: Record<keyof RoomConfig, string> = {
   registryLockTimeoutMs: 'ROOM_REGISTRY_LOCK_TIMEOUT_MS',
   registryLockPollMs: 'ROOM_REGISTRY_LOCK_POLL_MS',
   claudeConfigDir: 'ROOM_CLAUDE_CONFIG_DIR',
+  claudeSubmitSettleMs: 'ROOM_CLAUDE_SUBMIT_SETTLE_MS',
+  claudeProcStartTimeoutMs: 'ROOM_CLAUDE_PROC_START_TIMEOUT_MS',
   codexHome: 'ROOM_CODEX_HOME',
   usageStaleMs: 'ROOM_USAGE_STALE_MS',
   contextLimits: 'ROOM_CONTEXT_LIMITS',
