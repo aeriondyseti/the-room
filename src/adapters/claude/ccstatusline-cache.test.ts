@@ -1,10 +1,10 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccountUsage, AccountUsageProvider } from '../../contracts/account.js';
-import { bucketsFromCcstatusline, ccstatuslineCacheProvider, firstAvailable } from './ccstatusline-cache.js';
+import { bucketsFromCcstatusline, CCSTATUSLINE_SOURCE, ccstatuslineCacheProvider, firstAvailable, isDefaultClaudeProfile } from './ccstatusline-cache.js';
 import { claudeUsageApiProvider, type UsageFetch } from './usage-api.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'vp-ccsl-'));
@@ -14,74 +14,93 @@ const T0 = new Date('2026-09-28T15:40:00Z');
 const CACHE = { sessionUsage: 7, sessionResetAt: '2026-09-28T18:19:59.672Z', weeklyUsage: 21, weeklyResetAt: '2026-10-04T08:59:59.673Z',
   extraUsageEnabled: false, weeklySonnetUsage: 0, weeklyOpusUsage: 0, fableUsage: 22, fableResetAt: '2026-10-04T08:59:59.673Z', tokenHash: 'abc123' };
 
-test('maps ccstatusline cache → 5h + weekly + Fable weekly; zero-without-reset placeholders (Sonnet/Opus) are skipped', () => {
+test('maps ccstatusline cache → 5h + weekly + Fable; Fable 0% is a real reading; Sonnet/Opus 0 without reset are placeholders', () => {
   const b = bucketsFromCcstatusline(CACHE, T0.toISOString());
-  assert.deepEqual(b.map((x) => [x.id, x.label ?? null, x.windows.map((w) => [w.durationMinutes, w.usedPercent])]), [
-    ['claude', null, [[300, 7], [10_080, 21]]],
-    ['claude-fable', 'Fable', [[10_080, 22]]],
+  assert.deepEqual(b.map((x) => [x.id, x.windows.map((w) => [w.durationMinutes, w.usedPercent])]), [
+    ['claude', [[300, 7], [10_080, 21]]],
+    ['claude-fable', [[10_080, 22]]],
   ]);
+  const zeroFable = bucketsFromCcstatusline({ ...CACHE, fableUsage: 0, fableResetAt: undefined }, T0.toISOString());
+  assert.deepEqual(zeroFable.find((x) => x.id === 'claude-fable')?.windows[0]?.usedPercent, 0);
 });
 
-test('provider: reads the cache (observedAt = file mtime); missing/garbage/error → unavailable with a reason; never exposes the token hash', async () => {
+test('provider: reads the cache (observedAt = mtime); never throws on null/array/primitive JSON; fixed error text; no token hash exposed', async () => {
   const path = join(dir, 'usage.json');
   const p = ccstatuslineCacheProvider({ profileKey: 'k', path, now: () => T0 });
   assert.match((await p.sample()).reason ?? '', /no ccstatusline usage cache/);
   writeFileSync(path, JSON.stringify(CACHE));
   const ok = await p.sample();
-  assert.equal(ok.status, 'ok');
-  assert.equal(ok.source, 'ccstatusline cache');
+  assert.deepEqual([ok.status, ok.source], ['ok', CCSTATUSLINE_SOURCE]);
   assert.doesNotMatch(JSON.stringify(ok), /abc123|tokenHash/);
-  writeFileSync(path, '{not json');
-  assert.match((await p.sample()).reason ?? '', /unreadable/);
-  writeFileSync(path, JSON.stringify({ error: 'rate-limited' }));
-  assert.match((await p.sample()).reason ?? '', /ccstatusline reported a usage error \(rate-limited\)/);
+  for (const bad of ['null', '[1,2]', '42', '"x"']) {
+    writeFileSync(path, bad);
+    const r = await p.sample();
+    assert.deepEqual([r.status, r.reason], ['unavailable', 'the ccstatusline usage cache has an unexpected shape'], bad);
+  }
+  writeFileSync(path, JSON.stringify({ error: 'secret-ish upstream text' }));
+  const err = await p.sample();
+  assert.equal(err.reason, 'ccstatusline reported a usage fetch error');
+  assert.doesNotMatch(JSON.stringify(err), /secret-ish/, 'never echoes the cache error string');
 });
 
-test('firstAvailable: cheapest working source wins; only the statusline tap is flagged as a reduced fallback', async () => {
-  const src = (source: string, status: AccountUsage['status']): AccountUsageProvider => ({ harness: 'claude', id: source, sample: async () => ({
-    account: { harness: 'claude', scope: 'profile', key: 'k', sourceKey: 'k' }, buckets: [], status, source, checkedAt: null, observedAt: null, ...(status !== 'ok' ? { reason: `${source} down` } : {}) }) });
-  assert.equal((await firstAvailable('x', [src('ccstatusline cache', 'ok'), src('api', 'ok')]).sample()).source, 'ccstatusline cache');
-  const viaApi = await firstAvailable('x', [src('ccstatusline cache', 'unavailable'), src('claude api', 'ok')]).sample();
-  assert.deepEqual([viaApi.source, viaApi.fallback ?? false], ['claude api', false]);
-  const viaTap = await firstAvailable('x', [src('ccstatusline cache', 'unavailable'), src('claude statusline tap', 'ok')]).sample();
+test('the global ccstatusline cache is only for the default Claude profile', () => {
+  const home = join(dir, 'home');
+  assert.equal(isDefaultClaudeProfile(join(home, '.claude'), home), true);
+  assert.equal(isDefaultClaudeProfile(join(home, 'other-claude'), home), false);
+});
+
+test('firstAvailable: first FRESH ok wins; an old ok never blocks a fresher source; all-stale keeps the first ok; tap flagged only as fallback', async () => {
+  const src = (source: string, status: AccountUsage['status'], observedAt: string | null = T0.toISOString()): AccountUsageProvider => ({ harness: 'claude', id: source, sample: async () => ({
+    account: { harness: 'claude', scope: 'profile', key: 'k', sourceKey: 'k' }, buckets: [], status, source, checkedAt: null, observedAt, ...(status !== 'ok' ? { reason: `${source} down` } : {}) }) });
+  const fresh = { freshMs: 10 * 60_000, now: () => T0 };
+  const old = new Date(T0.getTime() - 60 * 60_000).toISOString();
+  assert.equal((await firstAvailable('x', [src('cache', 'ok'), src('api', 'ok')], fresh).sample()).source, 'cache');
+  assert.equal((await firstAvailable('x', [src('cache', 'ok', old), src('api', 'ok')], fresh).sample()).source, 'api', 'stale cache does not block the fresher endpoint');
+  assert.equal((await firstAvailable('x', [src('cache', 'ok', old), src('api', 'unavailable')], fresh).sample()).source, 'cache', 'nothing fresher: keep the stale reading (the monitor labels it)');
+  const viaTap = await firstAvailable('x', [src('cache', 'unavailable'), src('claude statusline tap', 'ok')], fresh).sample();
   assert.equal(viaTap.fallback, true);
-  const none = await firstAvailable('x', [src('ccstatusline cache', 'unavailable'), src('claude statusline tap', 'unavailable')]).sample();
-  assert.deepEqual([none.status, none.reason], ['unavailable', 'ccstatusline cache down'], 'the first reason is kept');
+  const none = await firstAvailable('x', [src('cache', 'unavailable'), src('claude statusline tap', 'unavailable')], fresh).sample();
+  assert.deepEqual([none.status, none.reason], ['unavailable', 'cache down']);
 });
 
-test('usage endpoint throttle: one call per interval (shared cache file); 429 backs off per Retry-After; errors retried after errorRetryMs', async () => {
+test('usage endpoint: throttled per interval, single-flight in-process, one reservation across instances; 429 honours Retry-After; errors reused', async () => {
   const home = join(dir, 'claude');
-  const { mkdirSync } = await import('node:fs');
   mkdirSync(home, { recursive: true });
   writeFileSync(join(home, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'tok' } }));
   let calls = 0;
   let status = 200;
+  let release: (() => void) | null = null;
   const fetch: UsageFetch = async () => {
     calls++;
+    if (release === null) await new Promise<void>((r) => { release = r; setTimeout(r, 20); });
     return status === 429 ? { status, body: '', retryAfterSec: 120 } : { status, body: JSON.stringify({ five_hour: { utilization: 5 }, seven_day: { utilization: 20 } }) };
   };
   let now = T0.getTime();
   const cachePath = join(dir, 'throttle-cache.json');
   const make = () => claudeUsageApiProvider({ claudeConfigDir: home, fetch, now: () => new Date(now), throttle: { cachePath, minIntervalMs: 300_000, rateLimitBackoffMs: 300_000, errorRetryMs: 60_000 } });
   const p = make();
-  assert.equal((await p.sample()).status, 'ok');
+  const [a, b] = await Promise.all([p.sample(), p.sample()]);
+  assert.deepEqual([a.status, b.status, calls], ['ok', 'ok', 1], 'concurrent samples share one call');
   now += 60_000;
-  assert.equal((await p.sample()).status, 'ok');
-  assert.equal((await make().sample()).status, 'ok', 'another service instance reuses the shared cache');
-  assert.equal(calls, 1, 'within the interval: no new calls, from this or another instance');
+  assert.equal((await make().sample()).status, 'ok', 'another instance reuses the shared cache');
+  assert.equal(calls, 1);
+  // A held reservation from another process makes this one serve the cache instead of calling.
   now += 300_000;
+  writeFileSync(`${cachePath}.lock`, String(now));
+  assert.equal((await make().sample()).status, 'ok');
+  assert.equal(calls, 1, 'reservation held elsewhere: no call');
+  rmSync(`${cachePath}.lock`);
   status = 429;
-  const limited = await p.sample();
-  assert.match(limited.reason ?? '', /rate-limiting; next try after/);
+  assert.match((await p.sample()).reason ?? '', /rate-limiting; next try after/);
   assert.equal(calls, 2);
-  now += 60_000; // still inside Retry-After (120s)
+  now += 60_000;
   await p.sample();
-  assert.equal(calls, 2, 'backing off: no call');
-  now += 90_000; // past Retry-After
+  assert.equal(calls, 2, 'inside Retry-After: no call');
+  now += 90_000;
   status = 500;
   assert.match((await p.sample()).reason ?? '', /HTTP 500/);
-  assert.equal(calls, 3);
   now += 30_000;
   await p.sample();
   assert.equal(calls, 3, 'errors are reused for errorRetryMs');
+  void utimesSync;
 });

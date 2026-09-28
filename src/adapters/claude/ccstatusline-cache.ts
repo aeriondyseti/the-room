@@ -1,20 +1,29 @@
-// Claude plan usage from ccstatusline's own cache (Kevin, 2026-09-28: "piggyback on ccstatusline's values so the
-// usage endpoint only needs to get called once"). ccstatusline already fetches Anthropic's usage endpoint (throttled,
-// 180s cache) and writes the parsed numbers to ~/.cache/ccstatusline/usage.json; it stores a token HASH, never the
-// token. Reading that file costs zero endpoint calls and touches no credentials. Read-only; we never write it.
-// Freshness comes from the file's mtime (ccstatusline refreshes it only while a Claude statusline is rendering), so the
-// AccountMonitor ages an old file into `stale`.
+// Claude plan usage from ccstatusline's own cache (Kevin, 2026-09-28: "piggyback on ccstatusline's values so that the
+// usage endpoint only needs to get called once"). ccstatusline fetches Anthropic's usage endpoint (throttled) and
+// writes the parsed numbers to ~/.cache/ccstatusline/usage.json with a token HASH (never the token). Reading that file
+// costs zero endpoint calls and touches no credentials. Read-only; we never write it.
+//
+// Attribution (Astra's review): the cache is GLOBAL — ccstatusline reads the DEFAULT Claude login — so it is only
+// used for the default Claude profile (no custom CLAUDE_CONFIG_DIR), and labelled as that shared source. Freshness
+// comes from the file mtime (ccstatusline refreshes it only while a Claude statusline renders).
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AccountUsage, AccountUsageProvider, UsageBucket, UsageWindow } from '../../contracts/account.js';
 
 export const CCSTATUSLINE_CACHE = join(homedir(), '.cache', 'ccstatusline', 'usage.json');
+export const CCSTATUSLINE_SOURCE = 'ccstatusline cache (default Claude login)';
+
+/** True when `claudeConfigDir` is the default profile ccstatusline reads (~/.claude). */
+export function isDefaultClaudeProfile(claudeConfigDir: string, home: string = homedir()): boolean {
+  const a = resolve(claudeConfigDir), b = resolve(home, '.claude');
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
 
 const pct = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null);
 const iso = (v: unknown): string | null => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null);
 
-/** ccstatusline's cached fields → buckets: main (5h + weekly) and model-scoped weeklies (Fable, Sonnet, Opus). */
+/** ccstatusline's cached fields → buckets: main (5h + weekly) and model-scoped weeklies. */
 export function bucketsFromCcstatusline(cache: Record<string, unknown>, observedAt: string): UsageBucket[] {
   const w = (kind: string, minutes: number, usage: unknown, reset: unknown): UsageWindow => {
     const usedPercent = pct(usage);
@@ -22,11 +31,13 @@ export function bucketsFromCcstatusline(cache: Record<string, unknown>, observed
       ...(usedPercent === null ? { reason: `ccstatusline has no ${minutes === 300 ? '5h' : 'weekly'} value` } : {}) };
   };
   const buckets: UsageBucket[] = [{ id: 'claude', windows: [w('five_hour', 300, cache.sessionUsage, cache.sessionResetAt), w('seven_day', 10_080, cache.weeklyUsage, cache.weeklyResetAt)] }];
-  // Model-scoped weeklies: shown when ccstatusline has a value (Sonnet/Opus often report 0 with no reset: a
-  // placeholder, not a reading, so those are only shown when they carry a reset time).
-  for (const [label, usage, reset] of [['Fable', 'fableUsage', 'fableResetAt'], ['Sonnet', 'weeklySonnetUsage', 'weeklySonnetResetAt'], ['Opus', 'weeklyOpusUsage', 'weeklyOpusResetAt']] as const) {
+  // Fable comes from ccstatusline's scoped-limit parser, which already filters placeholders, so any number is a
+  // reading (0% included). Sonnet/Opus come from buckets where ccstatusline maps a null bucket to 0, so a 0 without a
+  // reset time is a placeholder, not a reading.
+  const models = [['Fable', 'fableUsage', 'fableResetAt', false], ['Sonnet', 'weeklySonnetUsage', 'weeklySonnetResetAt', true], ['Opus', 'weeklyOpusUsage', 'weeklyOpusResetAt', true]] as const;
+  for (const [label, usage, reset, zeroIsPlaceholder] of models) {
     const value = pct(cache[usage]);
-    if (value === null || (value === 0 && !iso(cache[reset]))) continue;
+    if (value === null || (zeroIsPlaceholder && value === 0 && !iso(cache[reset]))) continue;
     buckets.push({ id: `claude-${label.toLowerCase()}`, label, windows: [{ kind: `weekly_${label.toLowerCase()}`, durationMinutes: 10_080, usedPercent: value, resetsAt: iso(cache[reset]), observedAt }] });
   }
   return buckets;
@@ -41,44 +52,64 @@ export function ccstatuslineCacheProvider(opts: { profileKey: string; path?: str
     id: `claude:${key}`,
     async sample(): Promise<AccountUsage> {
       const checkedAt = now().toISOString();
-      const base = { account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: key }, source: 'ccstatusline cache', checkedAt };
+      const base = { account: { harness: 'claude' as const, scope: 'profile' as const, key, sourceKey: key }, source: CCSTATUSLINE_SOURCE, checkedAt };
       const unavailable = (reason: string): AccountUsage => ({ ...base, buckets: [], status: 'unavailable', reason, observedAt: null });
-      let text: string;
-      let mtime: Date;
       try {
-        [text, mtime] = await Promise.all([readFile(path, 'utf8'), stat(path).then((s) => s.mtime)]);
+        let text: string;
+        let mtime: Date;
+        try {
+          [text, mtime] = await Promise.all([readFile(path, 'utf8'), stat(path).then((s) => s.mtime)]);
+        } catch {
+          return unavailable('no ccstatusline usage cache (is ccstatusline your Claude statusline?)');
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          return unavailable('the ccstatusline usage cache is unreadable');
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return unavailable('the ccstatusline usage cache has an unexpected shape');
+        const cache = parsed as Record<string, unknown>;
+        // Fixed text: never echo the cache's own error string.
+        if (cache.error !== undefined && cache.error !== null && cache.error !== '') return unavailable('ccstatusline reported a usage fetch error');
+        const observedAt = mtime.toISOString();
+        const buckets = bucketsFromCcstatusline(cache, observedAt);
+        if (!buckets.some((b) => b.windows.some((x) => x.usedPercent !== null))) return unavailable('the ccstatusline usage cache has no values yet');
+        return { ...base, buckets, status: 'ok', observedAt };
       } catch {
-        return unavailable('no ccstatusline usage cache (is ccstatusline your Claude statusline?)');
+        return unavailable('the ccstatusline usage cache could not be read');
       }
-      let cache: Record<string, unknown>;
-      try {
-        cache = JSON.parse(text) as Record<string, unknown>;
-      } catch {
-        return unavailable('the ccstatusline usage cache is unreadable');
-      }
-      if (typeof cache.error === 'string' && cache.error) return unavailable(`ccstatusline reported a usage error (${cache.error.slice(0, 60)})`);
-      const observedAt = mtime.toISOString();
-      const buckets = bucketsFromCcstatusline(cache, observedAt);
-      if (!buckets.some((b) => b.windows.some((x) => x.usedPercent !== null))) return unavailable('the ccstatusline usage cache has no values yet');
-      return { ...base, buckets, status: 'ok', observedAt };
     },
   };
 }
 
-/** First source that has a reading wins; the reason of the first failure is kept when all fail. */
-export function firstAvailable(id: string, providers: readonly AccountUsageProvider[]): AccountUsageProvider {
+/**
+ * Source selection with freshness (Astra's review): the first FRESH ok reading wins. If every ok reading is older than
+ * `freshMs`, the first ok one is returned anyway (the AccountMonitor ages it into `stale`, keeping e.g. Fable visible
+ * and labelled) — so an old ccstatusline cache never blocks a fresher opted-in source. When all fail, the first
+ * failure's reason is kept. Only the statusline tap is flagged as a reduced fallback (it lacks model limits).
+ */
+export function firstAvailable(id: string, providers: readonly AccountUsageProvider[], opts: { freshMs: number; now?: () => Date }): AccountUsageProvider {
+  const now = opts.now ?? (() => new Date());
   return {
     harness: 'claude',
     id,
     async sample(): Promise<AccountUsage> {
-      let first: AccountUsage | null = null;
+      let firstFailure: AccountUsage | null = null;
+      let firstOk: AccountUsage | null = null;
+      const mark = (a: AccountUsage) =>
+        firstFailure && a.source === 'claude statusline tap' ? { ...a, fallback: true, reason: `${firstFailure.source}: ${firstFailure.reason ?? 'unavailable'}` } : a;
       for (const p of providers) {
         const a = await p.sample();
-        // Only the statusline tap lacks model-specific limits, so only it is flagged as a (reduced) fallback.
-        if (a.status === 'ok') return first && a.source === 'claude statusline tap' ? { ...a, fallback: true, reason: `${first.source}: ${first.reason ?? 'unavailable'}` } : a;
-        first ??= a;
+        if (a.status !== 'ok') {
+          firstFailure ??= a;
+          continue;
+        }
+        const age = a.observedAt ? now().getTime() - Date.parse(a.observedAt) : Infinity;
+        if (age <= opts.freshMs) return mark(a);
+        firstOk ??= a;
       }
-      return first!;
+      return firstOk ? mark(firstOk) : firstFailure!;
     },
   };
 }
