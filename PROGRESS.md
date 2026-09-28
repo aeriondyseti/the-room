@@ -117,3 +117,14 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 | 7.6 | Delivery hold + same-sender batching + room settings | Astra (core) + Claude (envelope text, /settings, docs) | ✅ | **v0.8.1** · reviews: reviews/7.6-core.md (Astra lean gate + Claude cross-review; bad-settings blocker fixed) and reviews/7.6c.md (Claude lean gate + Astra cross-review) · 0.5s hold (urgent/stop bypass), per-sender batching into one envelope, .room/settings.json + TUI /settings with repair, ADR-0015 |
 
 > Released together as **v0.8.0** in one combined merge (main green at every commit; Kevin restarts the live service). Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core, Claude surfaces + spec. Native recall probes dropped per Kevin's scope decision.
+
+### Milestone 8 — Participant lifecycle (spec: docs/PARTICIPANT-LIFECYCLE-SPEC.md)
+
+| ID | Feature | Owner | Status | Notes |
+|---|---|---|---|---|
+| 8.1 | Ghost cleanup | fable | 🟡 | was 7.8; sprint/7.8 code written, 482/483 before the last flag fix; held for milestone alignment |
+| 8.2 | Rename without restart | Astra (core) + fable (surfaces) | ⬜ | relabel in-flight (Kevin) |
+| 8.3 | Kick by unanimous consent | Astra (core) + fable (surfaces) | ⬜ | voters = other registered agents online at open (Kevin); decision C open |
+| 8.4 | TUI | fable | ⬜ | |
+
+> Ownership proposed at the M7→M8 boundary; Astra to amend. Milestone 7 follow-up 7.7 (baseline text) stays on hold for Astra's delivery-token frontier.
