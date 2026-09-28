@@ -66,7 +66,8 @@ export function sendToPipe(opts: PipeSendOptions): Promise<PipeSendOutcome> {
     socket.on('error', (err) => onFailure(`pipe error (${describe(err)})`));
     socket.on('close', () => onFailure('receiver closed the connection'));
     socket.on('data', () => {
-      // Receivers may send control/status frames; MVP does not interpret them (TECH-DEBT candidate).
+      // Qualified (probes/claude-pipe-frames.md, TD-0008): the receiver sends no receipt/status frames for user
+      // frames, so there is nothing to interpret here; evidence is the write plus an open connection through settle.
     });
     socket.on('connect', () => {
       phase = 'auth';
