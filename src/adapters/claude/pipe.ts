@@ -3,13 +3,14 @@
 //   error before the message frame is handed to the OS  -> 'failed'    (definitely not delivered)
 //   error/close after the message frame was written     -> 'uncertain' (it may have been read)
 //   message written and the receiver stayed open for the settle window -> 'written'
-import { randomUUID } from 'node:crypto';
 import { connect, type Socket } from 'node:net';
 
 export interface PipeSendOptions {
   pipePath: string;
   /** Secret; never logged, never included in any returned value. */
   token: string;
+  /** Stable per delivery (see stableMsgId) so a re-sent delivery is recognizably the same message. */
+  msgId: string;
   content: string;
   /** Label shown to the receiving model as the sender address. */
   from: string;
@@ -27,7 +28,7 @@ export function buildAuthFrame(token: string): string {
   return JSON.stringify({ type: 'auth', token }) + '\n';
 }
 
-export function buildUserFrame(content: string, from: string, priority: PipeSendOptions['priority'], msgId: string = randomUUID()): string {
+export function buildUserFrame(content: string, from: string, priority: PipeSendOptions['priority'], msgId: string): string {
   return JSON.stringify({ type: 'user', message: { content }, from, priority, msg_id: msgId }) + '\n';
 }
 
@@ -72,7 +73,7 @@ export function sendToPipe(opts: PipeSendOptions): Promise<PipeSendOutcome> {
       socket!.write(buildAuthFrame(opts.token), (err) => {
         if (err || phase !== 'auth') return; // the error handler has already classified it
         phase = 'message';
-        socket!.write(buildUserFrame(opts.content, opts.from, opts.priority), (err2) => {
+        socket!.write(buildUserFrame(opts.content, opts.from, opts.priority, opts.msgId), (err2) => {
           if (err2 || phase !== 'message') return;
           phase = 'settling';
           settleTimer = setTimeout(() => {

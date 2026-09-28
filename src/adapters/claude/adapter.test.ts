@@ -142,10 +142,35 @@ test('several live processes claim the session → rebind_needed', async () => {
   assert.equal(out.status === 'unavailable' && out.reason, 'rebind_needed');
 });
 
-test('unknown start time is not treated as reuse', async () => {
+test('unknown start time: submit proceeds (pipe is session-bound) but probe says unknown, not online', async () => {
   const pipe = await fakePipe('accept');
   const f = fixture([record({ messagingSocketPath: pipe.path })], { startTimes: { 4242: null }, keys: [{ pid: 4242, pipe: pipe.path }] });
   assert.equal((await submit(adapter(f.deps), request())).status, 'submitted');
+  const p = await adapter(f.deps).probe({ harness: 'claude', sessionId: 'sess-1' });
+  assert.equal(p.liveness, 'unknown');
+  assert.match(p.detail ?? '', /could not be verified/);
+});
+
+test('msg_id is stable per (message, recipient) and differs across deliveries', async () => {
+  const pipe = await fakePipe('accept');
+  const f = fixture([record({ messagingSocketPath: pipe.path })], { keys: [{ pid: 4242, pipe: pipe.path }] });
+  const a = adapter(f.deps);
+  await submit(a, request());
+  await submit(a, request()); // same messageId + recipient (a retry)
+  await submit(a, { ...request(), recipient: 'other' });
+  const ids = pipe.lines.filter((_, i) => i % 2 === 1).map((l) => (JSON.parse(l) as { msg_id: string }).msg_id);
+  assert.equal(ids[0], ids[1]);
+  assert.notEqual(ids[0], ids[2]);
+  assert.match(ids[0]!, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test('an unreadable registry is an error (failed / unknown), not "offline"', async () => {
+  const f = fixture([]);
+  const deps = { ...f.deps, sessionsDir: join(f.dir, 'not-a-dir.json') };
+  writeFileSync(deps.sessionsDir, 'x'); // readdir on a file → ENOTDIR, not ENOENT
+  const out = await submit(adapter(deps), request());
+  assert.equal(out.status, 'failed');
+  assert.equal((await adapter(deps).probe({ harness: 'claude', sessionId: 'sess-1' })).liveness, 'unknown');
 });
 
 test('missing or malformed messaging key → failed (nothing sent)', async () => {

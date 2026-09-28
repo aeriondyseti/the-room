@@ -21,9 +21,12 @@ export interface ClaudeSessionRecord {
 }
 
 export type SessionLookup =
-  | { status: 'live'; record: ClaudeSessionRecord }
+  /** `verified`: false when the process start time couldn't be checked (the pid is alive but reuse is unexcluded). */
+  | { status: 'live'; record: ClaudeSessionRecord; verified: boolean }
   | { status: 'absent'; detail: string }
-  | { status: 'stale'; detail: string };
+  | { status: 'stale'; detail: string }
+  /** The registry itself couldn't be read (permissions, I/O): says nothing about the session. */
+  | { status: 'error'; detail: string };
 
 export interface ClaudeRegistryDeps {
   /** Directory containing `<pid>.json` records. */
@@ -88,8 +91,10 @@ export async function lookupSession(sessionId: string, deps: ClaudeRegistryDeps)
   let files: string[];
   try {
     files = await readdir(deps.sessionsDir);
-  } catch {
-    return { status: 'absent', detail: `no Claude session registry at ${deps.sessionsDir}` };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { status: 'absent', detail: `no Claude session registry at ${deps.sessionsDir}` };
+    return { status: 'error', detail: `cannot read the Claude session registry (${code ?? 'unknown error'})` };
   }
   const candidates: ClaudeSessionRecord[] = [];
   for (const file of files) {
@@ -106,14 +111,12 @@ export async function lookupSession(sessionId: string, deps: ClaudeRegistryDeps)
     return { status: 'stale', detail: `${live.length} live processes claim this session id` };
   }
   const record = live[0]!;
-  if (record.procStart !== null) {
-    const actual = await deps.processStartTime(record.pid);
-    // Unknown start time (query failed) is not evidence of reuse; only a positive mismatch is.
-    if (actual !== null && actual !== record.procStart) {
-      return { status: 'stale', detail: `pid ${record.pid} now belongs to a different process` };
-    }
+  const actual = record.procStart === null ? null : await deps.processStartTime(record.pid);
+  // Only a positive mismatch is evidence of reuse. An unknown start time is neither stale nor verified.
+  if (actual !== null && actual !== record.procStart) {
+    return { status: 'stale', detail: `pid ${record.pid} now belongs to a different process` };
   }
-  return { status: 'live', record };
+  return { status: 'live', record, verified: actual !== null };
 }
 
 /** Read the peer token for a live record's pipe. Returns null when no valid key is published. */
