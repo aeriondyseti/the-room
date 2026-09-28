@@ -551,7 +551,7 @@ function useRoomSync(
           items.push(...(await source.request('read', { limit: historyLimit, includeDeliveries: true })).items);
         }
         if (alive) {
-          dispatch({ type: 'snapshot', items, participants: who.participants, room: who.room });
+          dispatch({ type: 'snapshot', items, participants: who.participants, room: who.room, ...(who.accounts ? { accounts: who.accounts } : {}) });
           dispatch({ type: 'notice', notice: truncated ? 'Reconnected, but the catch-up was too long to load fully; newest messages may be missing — restart the TUI to reload.' : null });
         }
       } catch (err) {
