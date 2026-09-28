@@ -403,19 +403,20 @@ export class RoomService {
     // The native handoff may already be underway. It settles under the old label;
     // only rows still queued afterward can receive a broker cancellation tombstone.
     if(this.serviceStarted)await this.dispatcher.settleRecipient(target.name);
-    const cancelled=this.ledger.transaction(()=>{
+    const voters=proposal?proposal.voters.filter(v=>v.votedAt!==null).map(v=>v.name).join(', '):'human';
+    const completed=this.ledger.transaction(()=>{
       const rows=this.ledger.kickQueued({harness:target.harness,sessionId:target.sessionId});
       if(proposal)this.ledger.putKickProposal({...proposal,status:'executed'});
       if(superseded)this.ledger.putKickProposal({...superseded,status:'executed'});
       if(humanIntentId)this.ledger.deleteHumanKickIntent(humanIntentId);
-      return rows;
+      const notice=this.enqueueSystemNotice(`${target.name} was removed from the room by ${voters}. Reason: ${reason.replace(/\s+/g,' ').trim()}. Queued deliveries cancelled: ${rows.length}.`,registry);
+      return {rows,notice};
     });
     try{await this.participants();}catch(error){console.error(`room: participant display refresh skipped after kick: ${error instanceof Error?error.message:String(error)}`);}
-    for(const delivery of cancelled)this.publish({type:'delivery.updated',delivery});
-    const voters=proposal?proposal.voters.filter(v=>v.votedAt!==null).map(v=>v.name).join(', '):'human';
-    const noticeId=this.postSystemNotice(`${target.name} was removed from the room by ${voters}. Reason: ${reason.replace(/\s+/g,' ').trim()}. Queued deliveries cancelled: ${cancelled.length}.`,registry);
+    for(const delivery of completed.rows)this.publish({type:'delivery.updated',delivery});
+    this.publishSystemNotice(completed.notice);
     this.scheduleKickExpiry();
-    return{status:'executed',proposal:proposal?{...proposal,status:'executed'}:null,removed:target,cancelled:cancelled.length,noticeId,vote:proposal?'recorded':'human'};
+    return{status:'executed',proposal:proposal?{...proposal,status:'executed'}:null,removed:target,cancelled:completed.rows.length,noticeId:completed.notice.message.id,vote:proposal?'recorded':'human'};
   }
   private inboxDisplay(scope:string) {
     const display=this.ledger.inboxDisplay(scope);if(!display)return null;
