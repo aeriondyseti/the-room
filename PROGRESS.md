@@ -22,7 +22,7 @@ their own rows**.
 
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
-| 1.1 | SQLite ledger | Astra | ⬜ | |
+| 1.1 | SQLite ledger | Astra | 🟡 | Atomic persistence and retry history in sprint/1.1. |
 | 1.2 | Service process and IPC | Astra | ⬜ | |
 | 1.3 | Dispatcher, states, and pause | Astra | ⬜ | |
 
