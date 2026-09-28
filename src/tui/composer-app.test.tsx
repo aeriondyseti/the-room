@@ -172,16 +172,19 @@ test('Tab completes the highlighted command; ↑/↓ move the highlight; history
   const t = await setup();
   await t.type('/ac');
   await t.type(K.tab);
-  assert.match(t.frame(), /› \/activity /, 'completed with a trailing space because it takes arguments');
+  await waitFor(t.frame, /› \/activity\s/); // completed (with a trailing space: it takes arguments)
   await t.type(K.esc);
+  await waitFor(t.frame, /Message everyone/);
   await t.type('/re');
+  await waitFor(t.frame, /\/retry #N/);
   await t.type('\u001B[B'); // down → /resume (catalogue order: restart, resume, retry)
   await t.type(K.tab);
-  assert.match(t.frame(), /› \/resume/);
+  await waitFor(t.frame, /› \/resume/);
   await t.type(K.esc);
+  await waitFor(t.frame, /Message everyone/);
   await t.type('@as');
   await t.type(K.tab);
-  assert.match(t.frame(), /@astra/, '@name completion unchanged');
+  await waitFor(t.frame, /@astra/); // @name completion unchanged
 });
 
 test('a partial name + Enter runs the highlighted no-argument command; /restart still needs its confirmation', async () => {
@@ -190,9 +193,10 @@ test('a partial name + Enter runs the highlighted no-argument command; /restart 
   await t.type(K.enter);
   await waitFor(t.frame, /Participants \(2\)/);
   await t.type(K.esc);
+  await waitFor(t.frame, /Message everyone/);
   await t.type('/rest');
   await t.type(K.enter);
-  assert.match(t.frame(), /Restart the room service\?/, 'confirmation first');
+  await waitFor(t.frame, /Restart the room service\?/); // confirmation first
   assert.equal(t.src.requests.filter((r) => r.method === 'shutdown').length, 0);
   await t.type(K.enter);
   await waitFor(t.frame, /Room service stopped; reconnecting/);
