@@ -307,8 +307,9 @@ online agents; renames relabel in-flight deliveries. Ownership per the spec §6 
   **Done-when:** `room_rename` / `room rename` (self only, binding-resolved) and the human's `room rename OLD NEW` /
   `/rename`; registry moved atomically under the lock; the ledger row and every QUEUED delivery (held, waiting and burst members
   included; never submitted, uncertain or in-flight attempts) to the old name relabelled in one transaction with
-  targets unchanged; tokens unaffected; a system message announces the new name
-  to every agent; the old name is refused with a "renamed to" hint.
+  targets unchanged; tokens unaffected; a system message announces the new name to the other agents on a self-rename
+  (the renamer learns from its tool result) and to every agent on a human rename; the old name is refused with a
+  "renamed to" hint.
 - [x] **8.3 Kick by unanimous consent** *(Astra core; fable surfaces)*
   **Done-when:** `room_kick { name, reason }` is one verb meaning "I vote to remove": the first call opens a persisted
   proposal (TTL, default 10 min) announced as a system message; votes count once per binding from the agents
