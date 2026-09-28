@@ -194,8 +194,9 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
     {
       title: 'Read room messages',
       description:
-        'Read recent room messages (newest last), messages after a given #number, or one message in full by id/#number ' +
-        '(use this when a delivery said the full text is available via room read).',
+        'Read recent room messages (newest last), messages after a given #number, or one message in full by id/#number. ' +
+        'This is history only: to review messages addressed to you before replying (including a long message a delivery ' +
+        'only previewed), use room_inbox, which is what your snapshot covers.',
       inputSchema: {
         message_id: z.string().optional().describe('A message id or #number to fetch in full.'),
         after: z.number().int().nonnegative().optional().describe('Only messages after this #number.'),

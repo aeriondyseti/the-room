@@ -26,7 +26,8 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  }
  const full=header+message.body+footer;
  if(full.length<=limit)return{text:full,referenced:false,snapshot:false};
- const reference=`\n[Referenced content: fetch the complete original with room_read({message_id:"${message.id}"}) or room read ${message.id}.]\n`;
+ // M7: coverage comes only from room_inbox (which pages long bodies), so that is where a reference sends the reader.
+ const reference=`\n[Referenced content: this is only a preview. Review the whole message with room_inbox (pass your latest snapshot; long messages arrive in parts) or room inbox --snapshot <token>. Until every part has come back there it is not covered, and a reply will come back NOT SENT.]\n`;
  const budget=Math.min(loadConfig().oversizePreviewChars,limit-header.length-reference.length-footer.length);
  if(budget<0)throw new RoomError('message_too_large','The envelope limit cannot hold the room identifiers and fetch instruction.');
  let preview=message.body.slice(0,budget);
