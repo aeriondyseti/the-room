@@ -19,14 +19,31 @@ const HELP: Record<Key, string> = {
 export const MS_STEP = 100;
 export const MS_MAX = 60_000;
 
+/**
+ * A settings file the service could not use: delivery continues on the last good values (or the defaults), and a save
+ * from the panel writes a repaired file. Read structurally so the panel works with the view the service returns.
+ */
+export interface SettingsProblem {
+  source: string;
+  code: string;
+  message: string;
+  fallback: 'last_good' | 'defaults';
+}
+export type SettingsViewData = RoomSettingsView & { problem?: SettingsProblem };
+
 export interface SettingsState {
-  view: RoomSettingsView;
+  view: SettingsViewData;
   /** Unsaved edits: a value, or null to reset that key to its default. */
   draft: DeliverySettingsPatch;
   selected: number;
 }
 
-export function initialSettings(view: RoomSettingsView): SettingsState {
+/** Enter has something to save: edits, or a broken settings file to repair (an empty patch rewrites it). */
+export function canSave(s: SettingsState): boolean {
+  return isDirty(s) || s.view.problem !== undefined;
+}
+
+export function initialSettings(view: SettingsViewData): SettingsState {
   return { view, draft: {}, selected: 0 };
 }
 
@@ -80,7 +97,15 @@ function show(key: Key, v: DeliverySettings[Key]): string {
 
 /** Panel lines at `width`: one row per setting, its status, the selected row's help, and the key hints. */
 export function settingsLines(s: SettingsState, width: number): Line[] {
-  const out: Line[] = [fitLine([{ text: 'ROOM SETTINGS', dim: true, bold: true }, { text: '  apply to messages sent after saving', dim: true }], width), []];
+  const out: Line[] = [fitLine([{ text: 'ROOM SETTINGS', dim: true, bold: true }, { text: '  apply to messages sent after saving', dim: true }], width)];
+  const problem = s.view.problem;
+  if (problem) {
+    out.push(
+      fitLine([{ text: `  The ${problem.source === 'file' ? 'settings file' : problem.source} can't be used (${problem.code}): ${problem.message}`, color: 'red' }], width),
+      fitLine([{ text: `  Delivering with ${problem.fallback === 'last_good' ? 'the last good settings' : 'the default settings'} meanwhile; Enter saves a repaired file.`, color: 'red', dim: true }], width),
+    );
+  }
+  out.push([]);
   const labelW = Math.max(...SETTING_KEYS.map((k) => LABEL[k].length));
   SETTING_KEYS.forEach((k, i) => {
     const sel = i === s.selected;
@@ -106,8 +131,9 @@ export function settingsLines(s: SettingsState, width: number): Line[] {
   const k = SETTING_KEYS[s.selected]!;
   out.push([], fitLine([{ text: '  ' + HELP[k], dim: true, italic: true }], width));
   if (s.view.overridden.includes(k)) out.push(fitLine([{ text: '  Saved here, but an environment variable wins until it is unset.', dim: true, italic: true }], width));
-  const problem = draftProblem(s);
-  if (problem) out.push(fitLine([{ text: '  ' + problem, color: 'red' }], width));
-  out.push([], fitLine([{ text: '↑↓ choose · ←→ change · r default · Enter save · Esc ' + (isDirty(s) ? 'discard' : 'close'), dim: true }], width));
+  const draftIssue = draftProblem(s);
+  if (draftIssue) out.push(fitLine([{ text: '  ' + draftIssue, color: 'red' }], width));
+  const enter = isDirty(s) ? 'Enter save' : s.view.problem ? 'Enter repair file' : 'Enter close';
+  out.push([], fitLine([{ text: `↑↓ choose · ←→ change · r default · ${enter} · Esc ${isDirty(s) ? 'discard' : 'close'}`, dim: true }], width));
   return out;
 }

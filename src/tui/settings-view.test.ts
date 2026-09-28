@@ -86,3 +86,14 @@ test('with the hold off, batching and its cap say they have no effect', () => {
   assert.match(t, /Longest batch hold\s+2s\s+default · no effect while the hold is off/);
   assert.doesNotMatch(text(initialSettings(view())), /no effect/);
 });
+test('a broken settings file is explained, with the fallback in use and the repair key', () => {
+  const problem = { source: 'file', code: 'invalid_json', message: 'Unexpected token } at 12', fallback: 'last_good' as const };
+  const s = initialSettings({ ...view(), problem });
+  const t = text(s);
+  assert.match(t, /The settings file can't be used \(invalid_json\): Unexpected token \} at 12/);
+  assert.match(t, /Delivering with the last good settings meanwhile; Enter saves a repaired file\./);
+  assert.match(t, /Enter repair file · Esc close/);
+  assert.match(text(initialSettings({ ...view(), problem: { ...problem, fallback: 'defaults' } })), /Delivering with the default settings/);
+  for (const l of settingsLines(s, 40)) assert.ok(lineCols(l) <= 40, lineText(l));
+  assert.match(text(initialSettings(view())), /Enter close · Esc close/);
+});

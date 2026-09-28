@@ -124,3 +124,14 @@ test('fixing a draft problem clears its error', async () => {
   for (let i = 0; i < 16; i++) await t.type(K.left);
   assert.doesNotMatch(t.frame(), /must be at least the hold/);
 });
+test('with a broken settings file, Enter (no edits) saves the repair and confirms it', async () => {
+  const t = await setup();
+  t.src.settings = { ...t.src.settings, problem: { source: 'file', code: 'invalid_json', message: 'bad', fallback: 'defaults' } } as typeof t.src.settings;
+  await open(t);
+  assert.match(t.frame(), /can't be used \(invalid_json\)/);
+  await t.type(K.enter);
+  await tick();
+  assert.deepEqual(t.updates().map((u) => u.patch), [{}]);
+  assert.match(t.frame(), /Settings file repaired and saved/);
+  assert.doesNotMatch(t.frame(), /ROOM SETTINGS/);
+});
