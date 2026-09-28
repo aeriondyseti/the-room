@@ -3,8 +3,8 @@
 
 // ---- parsing --------------------------------------------------------------------------------------------
 
-export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit';
-export const COMMANDS: readonly ComposerCommand[] = ['pause', 'resume', 'retry', 'detail', 'who', 'help', 'quit'];
+export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart';
+export const COMMANDS: readonly ComposerCommand[] = ['pause', 'resume', 'retry', 'detail', 'who', 'help', 'quit', 'restart'];
 
 /** Parse `#N` (or `N`) for /detail. */
 export function parseSeqArg(args: string): number | null {

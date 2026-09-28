@@ -214,6 +214,8 @@ test('probe reports liveness and activity from the registry', async () => {
   assert.equal(activityOf({ status: 'waiting', waitingFor: 'permission prompt' }), 'waiting_permission');
   assert.equal(activityOf({ status: 'waiting', waitingFor: 'something new' }), 'unknown');
   assert.equal(activityOf({ status: null, waitingFor: null }), 'unknown');
+  assert.equal(activityOf({ status: 'shell', waitingFor: null }), 'idle', 'a job session back at its prompt between turns');
+  assert.equal(activityOf({ status: 'something-new', waitingFor: null }), 'unknown', 'unrecognized statuses stay unknown');
 });
 
 test('registry ignores records that are not addressable sessions', async () => {

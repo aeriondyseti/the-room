@@ -1,3 +1,4 @@
+import { probeCodexStatus } from './status.js';
 import { accessSync, constants, statSync } from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
@@ -14,8 +15,10 @@ export interface CodexOptions {
  commandLineBudget:number;maxOutputBytes:number;
  /** Test fixture prefix; production queue invokes the executable directly with no shell. */
  prefixArgs?:string[];
+ statusTimeoutMs?:number;statusMaxBytes?:number;
 }
 export function codexOptionsFrom(config:RoomConfig,cwd:string):CodexOptions{return{
+ statusTimeoutMs:config.codexStatusTimeoutMs,statusMaxBytes:config.codexStatusMaxBytes,
  executable:config.codexExecutable,cwd,timeoutMs:config.adapterTimeoutMs,maxEnvelopeChars:config.codexMaxEnvelopeChars,
  commandLineBudget:config.codexCommandLineBudget,maxOutputBytes:config.codexMaxOutputBytes,
  env:{...process.env,...(config.codexHome?{CODEX_HOME:config.codexHome}:{})},
@@ -46,7 +49,11 @@ export class CodexAdapter implements DeliveryAdapter {
   // conservative effective cap makes the core reference fallback safe for arbitrary message text.
   this.maxEnvelopeChars=process.platform==='win32'?Math.max(0,Math.min(options.maxEnvelopeChars,Math.floor((Math.min(options.commandLineBudget,32767)-overhead-3)/2))):options.maxEnvelopeChars;
  }
- async probe(_target:TargetSnapshot):Promise<LivenessProbe>{return{liveness:'unknown',activity:'unknown',detail:this.executable?'Queue acceptance does not establish whether the thread is loaded or processing.':'Native Codex executable unavailable; set ROOM_CODEX_EXECUTABLE to codex.exe.'};}
+ async probe(target:TargetSnapshot):Promise<LivenessProbe>{
+  if(!this.executable||this.options.prefixArgs||target.harness!=='codex'||!uuidPattern.test(target.sessionId))return{liveness:'unknown',activity:'unknown'};
+  return probeCodexStatus({executable:this.executable,home:this.runtimeContext.home!,cwd:this.options.cwd,
+   env:this.options.env,timeoutMs:this.options.statusTimeoutMs??this.options.timeoutMs,maxBytes:this.options.statusMaxBytes??this.options.maxOutputBytes},target.sessionId);
+ }
  async submit(request:SubmitRequest):Promise<SubmitResult>{
   if(request.target.harness!=='codex'||!uuidPattern.test(request.target.sessionId))return{status:'failed',error:{code:'bad_request',message:'Codex delivery requires an exact native thread UUID.'}};
   if(!this.executable)return{status:'failed',error:{code:'service_unavailable',message:'Native Codex executable was not found.',hint:'Install Codex on PATH or set ROOM_CODEX_EXECUTABLE to the native executable, not a shell wrapper.'}};
