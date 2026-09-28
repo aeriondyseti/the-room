@@ -111,9 +111,8 @@ Claude independently approved aebf47f; composer6.18 follows this release and adj
 | ID | Feature | Owner | Status | Notes |
 |---|---|---|---|---|
 | 7.1 | Inbox snapshots + guarded send (core) | Astra | ⬜ | contracts first |
-| 7.2 | Withdraw + urgent (core) + Codex recall probe | Astra | ⬜ | thread/queue/delete candidate |
+| 7.2 | Withdraw + urgent (core) | Astra | ⬜ | broker-pending only; native acceptance = too late (Kevin) |
 | 7.3 | Tools and CLI | Claude | ⬜ | against 7.1/7.2 contracts |
 | 7.4 | TUI | Claude | ⬜ | |
-| 7.5 | Claude recall probe | Claude | ⬜ | no known mechanism; throwaway fixture only |
 
-> Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core + Codex, Claude surfaces + Claude probe + spec.
+> Ownership agreed at the M6→M7 boundary (Kevin's rebalancing rule): Astra core, Claude surfaces + spec. Native recall probes dropped per Kevin's scope decision.

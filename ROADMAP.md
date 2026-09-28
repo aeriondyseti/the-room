@@ -257,13 +257,14 @@ ergonomics first. Ownership agreed at the milestone boundary.
   commits only when nothing new exists beyond its snapshot (atomically with persist-before-ack). A missing or stale token
   is "not sent", with the delta, a fresh token and an attempt id. Blocked attempts are audited, not sent. Human
   messages count as new; human sends bypass the guard.
-- [ ] **7.2 Withdraw and urgent (core) + Codex recall probe** *(Astra)*
+- [ ] **7.2 Withdraw and urgent (core)** *(Astra)*
   **Done-when:**
-  - withdraw is a per-recipient CAS against the dispatcher, returning withdrawn / already_submitting / submitted /
-    uncertain / replied / already_withdrawn, with tombstones kept;
-  - urgent takes a room-side priority lane (FIFO within lanes, never preempting submitted or native-queued deliveries,
-    held under /pause), with a reason required and audited;
-  - `thread/queue/delete` is qualified (or ruled out) on a throwaway Codex queue and wired in as `recalled` if it holds.
+  - withdraw is a per-recipient CAS against the dispatcher claim, returning withdrawn / already_submitting /
+    submitted / uncertain / already_visible (human) / replied / already_withdrawn, with tombstones kept;
+  - native acceptance is the cutoff (Kevin: accepted = too late to recall), so there is no native recall;
+  - urgent takes a room-side priority lane (FIFO within lanes, never preempting in-flight or accepted deliveries, held
+    under /pause), with a reason required and audited;
+  - the ADR for the lane's exception to per-recipient order is logged.
 - [ ] **7.3 Tools and CLI** *(Claude)*
   **Done-when:** `room_inbox`; `snapshot`, `urgent` + `reason` and `attempt_id` on `room_send`; `room_withdraw`; CLI
   equivalents; envelopes carry a token covering their own content. Tool descriptions teach models to revise on
@@ -275,7 +276,3 @@ ergonomics first. Ownership agreed at the milestone boundary.
   - URGENT and its reason shown;
   - "N new since snapshot" on agent chips;
   - blocked-then-revised attempts shown as one line.
-- [ ] **7.5 Claude recall probe** *(Claude)*
-  **Done-when:** a throwaway `--bg` fixture establishes whether a pipe-submitted, still-queued message can be
-  observed (`peer_message_status`) or cancelled. The spec records the result: withdraw widens for Claude only if a
-  qualified mechanism exists; otherwise it stays pending-only, stated plainly.
