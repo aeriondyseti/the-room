@@ -7,15 +7,25 @@ import { ActivityReader } from '../../observer/activity-reader.js';
 import { claudeActivityParser } from '../../observer/claude-activity.js';
 import { codexActivityParser } from '../../observer/codex-activity.js';
 import { claudeAccountUsageProvider } from '../../adapters/claude/rate-limits.js';
-import { claudeCombinedProvider, claudeUsageApiProvider } from '../../adapters/claude/usage-api.js';
+import { claudeUsageApiProvider, sharedUsageCachePath } from '../../adapters/claude/usage-api.js';
+import { ccstatuslineCacheProvider, firstAvailable, isDefaultClaudeProfile } from '../../adapters/claude/ccstatusline-cache.js';
+import { claudeProfileKey } from '../../adapters/claude/rate-limits.js';
 import { resolveClaudeConfigDir } from '../../adapters/claude/registry.js';
 import { CodexAccountProvider, codexAccountOptionsFrom } from '../../observer/codex-account.js';
 const root=process.argv[2];
-/** Claude plan usage: the statusline tap, plus (opt-in, Kevin-approved) the usage endpoint with the tap as fallback. */
-const claudeProvider=(claudeConfigDir:string,usageApi:string,timeoutMs:number)=>{
-  const tap=claudeAccountUsageProvider({claudeConfigDir});
-  if(usageApi!=='on')return tap;
-  return claudeCombinedProvider(claudeUsageApiProvider({claudeConfigDir,timeoutMs}),tap);
+/**
+ * Claude plan usage, cheapest source first: ccstatusline's own cache (zero extra endpoint calls, no credentials; Kevin's
+ * statusline already refreshes it) → our throttled usage-endpoint call (opt-in ROOM_CLAUDE_USAGE_API=on) → the
+ * statusline tap (no model-specific limits).
+ */
+const claudeProvider=(claudeConfigDir:string,usageApi:string,timeoutMs:number,freshMs:number)=>{
+  const key=claudeProfileKey(claudeConfigDir);
+  return firstAvailable(`claude:${key}`,[
+    // ccstatusline's cache is global (the default Claude login), so only the default profile may use it.
+    ...(isDefaultClaudeProfile(claudeConfigDir)?[ccstatuslineCacheProvider({profileKey:key})]:[]),
+    ...(usageApi==='on'?[claudeUsageApiProvider({claudeConfigDir,timeoutMs,throttle:{cachePath:sharedUsageCachePath(claudeConfigDir)}})]:[]),
+    claudeAccountUsageProvider({claudeConfigDir}),
+  ],{freshMs});
 };
 if(!root)throw new Error('Room service requires a canonical root argument.');
 try {
@@ -27,7 +37,7 @@ try {
   const running=await startServer(canonical,{adapters:defaultAdapters(canonical),
     monitor:{observer:new UsageObserver(usage),intervalMs:config.participantRefreshMs},
     activity:{reader:activity,intervalMs:config.activityPollMs},
-    accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs}});
+    accounts:{providers:[claudeProvider(resolveClaudeConfigDir(config.claudeConfigDir),config.claudeUsageApi,config.claudeUsageTimeoutMs,config.accountsStaleMs),new CodexAccountProvider(codexAccountOptionsFrom(config,canonical))],intervalMs:config.accountsPollMs,staleAfterMs:config.accountsStaleMs}});
   for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>{void running.close().then(()=>{process.exitCode=0;});});
 }catch(error){
   // A competing auto-start won the OS bind. Its clients will find that service during readiness probes.

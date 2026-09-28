@@ -87,7 +87,7 @@ test('combined provider: the endpoint when it works; otherwise the statusline ta
 
   // Once the endpoint has worked, a later failure is returned as-is (the monitor keeps the Fable reading as stale).
   let status = 200;
-  const flaky = claudeCombinedProvider(claudeUsageApiProvider({ claudeConfigDir: dir, fetch: async () => ({ status, body: JSON.stringify(RESPONSE) }), now: () => T0 }), tap);
+  const flaky = claudeCombinedProvider(claudeUsageApiProvider({ claudeConfigDir: dir, fetch: async () => ({ status, body: JSON.stringify(RESPONSE) }), now: () => T0, throttle: { minIntervalMs: 0, errorRetryMs: 0 } }), tap);
   assert.equal((await flaky.sample()).buckets.length, 2);
   status = 429;
   const after = await flaky.sample();
