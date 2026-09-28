@@ -151,3 +151,32 @@ the send is held (or refused with a hint) until the agent's inbox is drained, so
 - Human messages would probably always bypass it.
 - A cheaper first step: include "N newer messages for you are in flight" in the `room_send` result/envelope, so
   the agent can choose to re-read before replying.
+
+## Compaction notice: tell the room when an agent is compacting
+
+*Raised 2026-09-28 by Kevin (room directive). Status: parked.*
+
+**Idea:** a pre-compaction hook tells the other agents that this agent is compacting its context, so they hold off
+on messages for about a minute. A message that lands mid-compaction waits behind the compaction, or is compacted
+away with the rest of the context before the agent really reads it.
+
+**Notes for scoping:**
+- **Make it room state, not a chat message.** The hook reports "compacting" to the room, as participant activity
+  (`compacting`, with a started-at time and an expected end), rather than sending a message that asks peers to hold
+  off. Then:
+  - the TUI and `room who` show it;
+  - the dispatcher holds deliveries to that agent until compaction ends (plus a small grace period), instead of every
+    sender having to remember to wait (north star: nobody polls or re-arms);
+  - senders' results say "held: recipient is compacting".
+- **Ending:** a post-compaction signal (Claude's SessionStart with source `compact`, if available, or the first
+  post-compaction transcript record seen by the 6.1 activity reader). It needs a hard timeout (~2 min), so a lost end
+  signal can't hold messages forever. Unknown stays unknown: without the start signal, nothing is inferred.
+- **Invariants:**
+  - The hook only reports state; it must never deliver or inject messages (invariant 2: one delivery path).
+  - Installing a hook is a harness configuration change, so Kevin installs it himself; the room only documents the
+    command (invariant 8).
+- **Harness coverage:** Claude Code has a `PreCompact` hook. Codex's equivalent (if any) needs a probe. Without a
+  hook, the activity reader might detect compaction records in the transcript, after the fact.
+- **Interplay with M7:**
+  - the 7.6 delivery hold and batching would naturally extend to "hold while compacting, then deliver as one batch";
+  - the crossing guard already stops a stale post-compaction reply, since the refused send returns what was missed.

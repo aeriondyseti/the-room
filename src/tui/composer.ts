@@ -3,7 +3,7 @@
 
 // ---- parsing --------------------------------------------------------------------------------------------
 
-export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout' | 'compact';
+export type ComposerCommand = 'pause' | 'resume' | 'retry' | 'detail' | 'who' | 'help' | 'quit' | 'restart' | 'activity' | 'layout' | 'compact' | 'settings';
 
 export interface CommandInfo {
   name: ComposerCommand;
@@ -24,6 +24,7 @@ export const COMMAND_CATALOGUE: readonly CommandInfo[] = [
   { name: 'restart', args: '', description: 'restart the room service (e.g. after an upgrade); keeps queued messages' },
   { name: 'resume', args: '', description: 'release held deliveries in order' },
   { name: 'retry', args: '#N [@agent]', description: 're-send a failed or uncertain delivery' },
+  { name: 'settings', args: '', description: 'room settings: hold before delivery and batching' },
   { name: 'who', args: '', description: 'participants and their status' },
 ];
 export const COMMANDS: readonly ComposerCommand[] = COMMAND_CATALOGUE.map((c) => c.name);

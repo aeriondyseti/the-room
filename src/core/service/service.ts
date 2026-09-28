@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { RoomSettings } from '../settings.js';
 import { InboxStore } from '../ledger/inbox.js';
 import type { GuardedSendOutcome, InboxRequest } from '../../contracts/crossing.js';
 import { Dispatcher } from '../dispatch/dispatcher.js';
@@ -23,13 +24,14 @@ const ACTIVITY_CURSORS='activity-reader';
 
 export class RoomService {
   readonly ledger: Ledger;
+  readonly settings: RoomSettings;
   readonly inbox: InboxStore;
   readonly dispatcher: Dispatcher;
   private listeners = new Set<(event: RoomEvent)=>void>();
   private monitor: ParticipantMonitor|null=null;
   private activity: ActivityService|null=null;
   private accounts: AccountMonitor|null=null;
-  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = []) { this.ledger = new Ledger(root);this.inbox=new InboxStore(this.ledger);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event),(scope,messageId)=>this.inbox.envelopeToken(scope,messageId)); }
+  constructor(readonly root: string, private readonly adapters:DeliveryAdapter[] = [],private readonly options:{sendHoldMs?:number}={}) { this.settings=new RoomSettings(root);this.ledger = new Ledger(root);this.inbox=new InboxStore(this.ledger);this.dispatcher=new Dispatcher(root,this.ledger,adapters,event=>this.publish(event),(scope,messageId)=>this.inbox.envelopeToken(scope,messageId)); }
   /** Keep participant liveness/activity/usage current (opt-in: production enables it; tests stay hermetic). */
   /** With a workspace provider, every participant reports workspace (null = not observed yet), so /who can say so. */
   private workspaceEnabled=false;
@@ -55,6 +57,8 @@ export class RoomService {
   async handle(request:RequestFrame, client:ClientKind): Promise<unknown> {
     const p=record(request.params);
     switch(request.method) {
+      case 'settings_get': return this.settings.get();
+      case 'settings_update': requireHuman(p.caller,client);return this.settings.update(p.patch);
       case 'withdraw': {
         const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
         const messageId=text(p.messageId,'messageId');
@@ -82,6 +86,7 @@ export class RoomService {
       case 'guarded_send':
       case 'send': {
         const registry=await readRegistry(this.root);const caller=resolveCaller(p.caller,client,registry);
+        const deliverySettings=(await this.settings.get()).effective;
         const guarded=request.method==='guarded_send';
         if(!guarded&&caller.sender.kind==='agent')throw new RoomError('bad_request','Agent sends require guarded_send with an inbox snapshot.');
         const urgent=p.urgent===undefined?null:{reason:text(record(p.urgent).reason,'urgent.reason')};
@@ -125,7 +130,7 @@ export class RoomService {
           }
           const result=this.ledger.enqueue({sender:caller.sender,senderScope:caller.scope,crossing,body,requestedRecipients:broadcast?null:requested,
             recipients:targets,addressing:broadcast?'broadcast':'direct',replyTo:optionalText(p.replyTo,'replyTo'),
-            clientMessageId:optionalText(p.clientMessageId,'clientMessageId'),held:this.ledger.roomState().paused});
+            clientMessageId:optionalText(p.clientMessageId,'clientMessageId'),holdMs:this.options.sendHoldMs??deliverySettings.deliveryHoldMs,batchHeld:deliverySettings.batchHeld,batchMaxHoldMs:Math.max(deliverySettings.batchMaxHoldMs,this.options.sendHoldMs??0),held:this.ledger.roomState().paused});
           let replyDelivery=null;
           if(!result.deduplicated&&result.message.replyTo&&caller.sender.kind==='agent'){
             const prior=this.ledger.deliveries(result.message.replyTo).find(d=>d.recipient===caller.sender.name&&`${d.target.harness}:${d.target.sessionId}`===caller.scope);
@@ -138,10 +143,12 @@ export class RoomService {
         if(!result.deduplicated){
           this.refreshInboxDisplay();
           this.publish({type:'message.created',message:result.message,deliveries:result.deliveries});
+          for(const delivery of result.updatedDeliveries??[])this.publish({type:'delivery.updated',delivery});
           if(replyDelivery)this.publish({type:'delivery.updated',delivery:replyDelivery});
           void this.dispatcher.kick();
         }
-        return guarded?{status:'sent',result,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:result;
+        const {updatedDeliveries:_,...publicResult}=result;
+        return guarded?{status:'sent',result:publicResult,attemptId:crossing.attemptId,guard:crossing.guard,newSinceSnapshot:crossing.newSinceSnapshot}:publicResult;
       }
       case 'read': {
         const id=optionalText(p.messageId,'messageId');

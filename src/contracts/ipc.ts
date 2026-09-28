@@ -15,6 +15,7 @@ import type {
 } from './domain.js';
 import type { ActivityItem, ActivityPage, ActivityRequest, ActivityStreamId } from './activity.js';
 import type { AccountUsage } from './account.js';
+import type { DeliverySettingsPatch, RoomSettingsView } from './settings.js';
 import type { InboxRequest, InboxReviewPage, GuardedSendRequest, GuardedSendOutcome, WithdrawRequest, WithdrawOutcome } from './crossing.js';
 
 export const PROTOCOL_VERSION = 1;
@@ -58,6 +59,11 @@ export type Caller =
 export type ClientKind = 'tui' | 'cli' | 'mcp';
 
 export interface RequestMap {
+  settings_get: { params: Record<string, never>; result: RoomSettingsView };
+  settings_update: {
+    params: { caller: { kind: 'human' }; patch: DeliverySettingsPatch };
+    result: RoomSettingsView;
+  };
   inbox: { params: InboxRequest; result: InboxReviewPage };
   guarded_send: { params: GuardedSendRequest; result: GuardedSendOutcome };
   withdraw: { params: WithdrawRequest; result: WithdrawOutcome };
@@ -147,6 +153,8 @@ export interface RequestMap {
 
 export type Method = keyof RequestMap;
 export const METHODS = [
+  'settings_get',
+  'settings_update',
   'inbox',
   'guarded_send',
   'withdraw',

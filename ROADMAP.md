@@ -276,3 +276,18 @@ ergonomics first. Ownership agreed at the milestone boundary.
   - URGENT and its reason shown;
   - "N new since snapshot" on agent chips;
   - blocked-then-revised attempts shown as one line.
+- [x] **7.6 Delivery hold, same-sender batching and room settings** *(Astra core; Claude envelope text, TUI `/settings`, docs)*
+  Kevin, 2026-09-28: a half-second hold before delivery, configurable in settings, letting queued messages
+  (especially his) go as one message.
+  **Done-when:**
+  - `.room/settings.json` holds room settings (`deliveryHoldMs` 500, `batchHeld` true, `batchMaxHoldMs` 2000), read
+    live by the service (ROOM_* env still overrides), and editable from the TUI's `/settings`. Edits apply to newly
+    committed messages;
+  - an ordinary delivery isn't claimable until its hold expires. Hold deadlines are persisted and survive a restart
+    without restarting the clock. Withdraw works until claim; urgent messages and stop requests bypass both hold and
+    batching; pause stays independent;
+  - consecutive held ordinary deliveries from the same sender (same native identity and authority) to the same
+    recipient binding go as ONE native envelope (`buildBatchEnvelope`): one authority header, each message whole in
+    order, cut only at message boundaries. The token covers exactly the included messages. Claim and settlement are
+    atomic per batch; a withdraw before claim removes just that message;
+  - the tool, CLI help and skill text explain the hold and batching; the spec records Kevin's choice.

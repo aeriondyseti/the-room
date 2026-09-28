@@ -99,8 +99,14 @@ model considered or understood. It can know which addressed messages the snapsho
   - Tombstones and history are kept; withdrawing never erases history that was already exposed.
   - Never infer "not received" from the absence of a reply.
   - The tool description says plainly that withdraw covers only messages the room has not yet handed to the harness.
-- **Option for Kevin (not a default):** a short broker-side hold before submission would widen that window at a latency
-  cost on every message. It is listed so he can choose it; nothing is silently delayed.
+- **Delivery hold (chosen by Kevin, 2026-09-28; 7.6):**
+  - Ordinary messages wait a short hold before delivery (`deliveryHoldMs`, default 500 ms, in `.room/settings.json`,
+    editable from the TUI's `/settings`), so an immediate withdraw usually succeeds.
+  - Urgent messages and stop requests skip the hold.
+  - During the hold, later messages from the same sender to the same recipient join a batch delivered as one native
+    envelope (`batchHeld`). The hold restarts with each joining message, capped at `batchMaxHoldMs` from the first.
+  - Batches never mix senders, because the envelope's first-line header is the recipient's only trusted authority
+    marker.
 
 ## 6. Native recall: out of scope
 

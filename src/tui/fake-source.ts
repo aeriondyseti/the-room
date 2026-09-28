@@ -13,6 +13,7 @@ import { HUMAN } from '../contracts/domain.js';
 import type { Method, Params, Result, RoomEvent } from '../contracts/ipc.js';
 import type { ActivityItem, ActivityPage, ActivityStreamId } from '../contracts/activity.js';
 import type { AccountUsage } from '../contracts/account.js';
+import type { DeliverySettings, RoomSettingsView } from '../contracts/settings.js';
 import type { ConnectionStatus, RoomSource } from './source.js';
 
 type Listener<T> = (value: T) => void;
@@ -31,6 +32,8 @@ export class FakeRoomSource implements RoomSource {
   private activity = new Map<string, { stream: ActivityStreamId; items: ActivityItem[]; coverage: ActivityPage['coverage']; reason?: string; olderEvicted: boolean }>();
 
   private accounts: AccountUsage[] | null = null;
+  /** 7.6 room settings; tests may replace it (e.g. to mark a key as set by the environment). */
+  settings: RoomSettingsView = { defaults: { deliveryHoldMs: 500, batchHeld: true, batchMaxHoldMs: 2000 }, configured: { deliveryHoldMs: 500, batchHeld: true, batchMaxHoldMs: 2000 }, effective: { deliveryHoldMs: 500, batchHeld: true, batchMaxHoldMs: 2000 }, overridden: [] };
 
   /** Subscription usage the fake `who` reports; `announce` also emits `account.updated` for each (as the service would). */
   setAccounts(accounts: AccountUsage[], announce = false): void {
@@ -189,6 +192,22 @@ export class FakeRoomSource implements RoomSource {
       case 'deliveries': {
         const p = params as Params<'deliveries'>;
         return { deliveries: structuredClone(this.items.find((i) => i.message.id === p.messageId)?.deliveries ?? []) };
+      }
+      case 'settings_get':
+        return structuredClone(this.settings);
+      case 'settings_update': {
+        // Mirrors the service: merge only supplied keys, null resets to the default, overridden keys are saved but
+        // their effective value stays under the environment.
+        const p = params as Params<'settings_update'>;
+        const s = this.settings;
+        for (const [k, v] of Object.entries(p.patch) as Array<[keyof DeliverySettings, DeliverySettings[keyof DeliverySettings] | null | undefined]>) {
+          if (v === undefined) continue;
+          (s.configured as unknown as Record<string, unknown>)[k] = v === null ? s.defaults[k] : v;
+          if (!s.overridden.includes(k)) (s.effective as unknown as Record<string, unknown>)[k] = s.configured[k];
+        }
+        // A successful update writes a valid file, so any reported file problem is repaired.
+        delete (s as { problem?: unknown }).problem;
+        return structuredClone(s);
       }
       default:
         throw new RoomError('bad_request', `fake source does not implement ${method}`);

@@ -22,6 +22,9 @@ export interface EnqueueInput {
   kind?: RoomMessage['kind'];
   clientMessageId?: string | null;
   held?: boolean;
+  holdMs?: number;
+  batchHeld?: boolean;
+  batchMaxHoldMs?: number;
   crossing?: RoomMessage['crossing'];
 }
 export interface UsageCursor { source: string; offset: number; identity: string; updatedAt: string }
@@ -126,7 +129,7 @@ export class Ledger {
     } finally { this.transactionDepth--; }
   }
 
-  enqueue(input: EnqueueInput): MessageWithDeliveries & { deduplicated: boolean } {
+  enqueue(input: EnqueueInput): MessageWithDeliveries & { deduplicated: boolean; updatedDeliveries?:Delivery[] } {
     if (!input.senderScope || !input.body.trim()) throw new RoomError('bad_request', 'Sender scope and message body are required.');
     const key = input.clientMessageId ?? null;
     if (key !== null && !key.trim()) throw new RoomError('bad_request', 'client_message_id cannot be empty.');
@@ -151,20 +154,45 @@ export class Ledger {
       const inserted = this.db.prepare('INSERT INTO messages(id,sender_scope,client_key,fingerprint,payload) VALUES(?,?,?,?,?)').run(message.id, input.senderScope, key, fingerprint, JSON.stringify(message));
       message.seq = Number(inserted.lastInsertRowid);
       this.db.prepare('UPDATE messages SET payload=? WHERE id=?').run(JSON.stringify(message), message.id);
+      const updatedDeliveries:Delivery[]=[];
       for (const recipient of input.recipients) {
         if (!recipient.target) {
           if (recipient.name !== HUMAN) throw new RoomError('bad_request', 'Only the human recipient may omit a native delivery target.');
           continue;
         }
+        const ordinary=!input.crossing?.urgent&&(input.kind??'chat')==='chat';
+        const holdMs=input.holdMs??0;
+        if(!Number.isSafeInteger(holdMs)||holdMs<0||holdMs>60000)throw new RoomError('bad_request','Invalid delivery hold.');
+        const maxHoldMs=input.batchMaxHoldMs??holdMs;
+        if(!Number.isSafeInteger(maxHoldMs)||maxHoldMs<holdMs||maxHoldMs>60000)throw new RoomError('bad_request','Invalid batch maximum hold.');
+        let burst:Delivery['burst'];
+        let notBefore=ordinary&&holdMs>0?new Date(Date.parse(now)+holdMs).toISOString():undefined;
+        if(ordinary&&holdMs>0&&input.batchHeld){
+          // Inspect the actual last addressed row, including terminal/urgent rows:
+          // a different sender or an intervening claim must end the burst.
+          const row=this.db.prepare('SELECT d.payload,m.sender_scope FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.recipient=? ORDER BY m.seq DESC LIMIT 1').get(recipient.name) as {payload:string;sender_scope:string}|undefined;
+          const prior:Delivery|undefined=row?JSON.parse(row.payload):undefined;
+          if(prior?.burst&&prior.state==='queued'&&!prior.attempts.length&&row!.sender_scope===input.senderScope&&
+             prior.target.harness===recipient.target.harness&&prior.target.sessionId===recipient.target.sessionId&&
+             prior.burst.holdMs===holdMs&&prior.burst.maxHoldMs===maxHoldMs&&Date.parse(prior.notBefore??'')>Date.parse(now)&&
+             JSON.stringify(this.read(prior.messageId).message.from)===JSON.stringify(message.from)){
+            burst=prior.burst;
+            notBefore=new Date(Math.min(Date.parse(now)+holdMs,Date.parse(burst.startedAt)+maxHoldMs)).toISOString();
+            for(const sibling of this.queued(recipient.name))if(sibling.burst?.id===burst.id&&!sibling.attempts.length){
+              updatedDeliveries.push(this.updateDelivery(sibling.messageId,sibling.recipient,d=>{d.notBefore=notBefore;}));
+            }
+          }else burst={id:randomUUID(),startedAt:now,holdMs,maxHoldMs};
+        }
         const delivery: Delivery = {
           messageId: message.id, recipient: recipient.name, target: structuredClone(recipient.target),
           state: 'queued', held: input.held ?? false, waiting: null, repliedBy: null,
+          ...(notBefore?{notBefore}:{}),...(burst?{burst}:{}),
           priority:input.crossing?.urgent?'urgent':'normal',
           referenced: false, attempts: [], updatedAt: now,
         };
         this.db.prepare('INSERT INTO deliveries(message_id,recipient,state,held,payload) VALUES(?,?,?,?,?)').run(message.id, recipient.name, delivery.state, Number(delivery.held), JSON.stringify(delivery));
       }
-      return { ...this.read(message.id), deduplicated: false };
+      return { ...this.read(message.id), deduplicated: false, updatedDeliveries };
     });
   }
 
