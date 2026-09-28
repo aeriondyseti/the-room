@@ -193,7 +193,7 @@ Milestone 6+ only after the v0.1.0 tag.
 
 ## Milestone 5 — Ergonomics polish (then tag v0.1.0)
 
-- [ ] **5.1 TUI polish** *(Claude)* — visual hierarchy, theming (colour and no-colour), help overlay,
+- [x] **5.1 TUI polish** *(Claude)* — visual hierarchy, theming (colour and no-colour), help overlay,
   key-binding hints, message formatting (wrapping, code blocks), empty and first-run states, and
   onboarding hints.
   **Done-when:** a documented UX pass with before/after notes; snapshot tests updated; no regressions.

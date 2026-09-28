@@ -214,9 +214,7 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   lines.push(fitLine(candidates.find((l) => lineCols(l) <= ctx.width) ?? candidates.at(-1)!, ctx.width));
 
   const bodyStyle: Segment = message.kind === 'system' ? { text: '', dim: true, italic: true } : { text: '' };
-  for (const text of wrapText(message.body, ctx.width - INDENT.length)) {
-    lines.push([{ text: INDENT }, { ...bodyStyle, text }]);
-  }
+  lines.push(...bodyLines(message.body, ctx.width, bodyStyle));
 
   // Delivery marks wrap onto more lines rather than hiding a state behind an ellipsis (invariant 3).
   let marks: Line = [{ text: INDENT }];
@@ -236,6 +234,87 @@ export function messageLines(item: MessageWithDeliveries, ctx: FormatContext): L
   });
   if (item.deliveries.length > 0) lines.push(fitLine(marks, ctx.width));
   return lines;
+}
+
+const FENCE_OPEN = /^\s*(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
+
+/**
+ * CommonMark-style opening fence: 3+ backticks or tildes plus an info string. A backtick fence whose info string
+ * contains a backtick is inline code (e.g. "```npm test``` fails"), not a fence, so that line stays prose.
+ */
+function openFence(line: string): { ch: string; len: number; info: string } | null {
+  const m = FENCE_OPEN.exec(line);
+  if (!m) return null;
+  const info = m[2]!.trim();
+  if (m[1]![0] === '`' && info.includes('`')) return null;
+  return { ch: m[1]![0]!, len: m[1]!.length, info };
+}
+
+/** A closing fence uses the same character, is at least as long as the opener, and has nothing else on the line. */
+function closesFence(line: string, open: { ch: string; len: number }): boolean {
+  const m = FENCE_CLOSE.exec(line);
+  return !!m && m[1]![0] === open.ch && m[1]!.length >= open.len;
+}
+
+/**
+ * Message body → lines. Prose is word-wrapped; fenced code blocks (``` or ~~~) keep their indentation, are
+ * hard-wrapped (never re-flowed) and sit behind a gutter, so code stays readable and copyable at any width.
+ * An unclosed fence runs to the end of the message.
+ */
+export function bodyLines(body: string, width: number, style: Segment = { text: '' }): Line[] {
+  const out: Line[] = [];
+  const text = body.replace(/\r\n?/g, '\n');
+  let prose: string[] = [];
+  const flushProse = () => {
+    if (prose.length) for (const t of wrapText(prose.join('\n'), width - INDENT.length)) out.push([{ text: INDENT }, { ...style, text: t }]);
+    prose = [];
+  };
+  let fence: { ch: string; len: number } | null = null;
+  for (const raw of text.split('\n')) {
+    const open: ReturnType<typeof openFence> = fence === null ? openFence(raw) : null;
+    if (open) {
+      flushProse();
+      fence = open;
+      // The whole info string is shown (wrapped, never dropped — invariant 9).
+      hardWrap(sanitize(open.info || 'code'), width - INDENT.length - 2).forEach((part, i) =>
+        out.push([{ text: INDENT }, { text: `${i === 0 ? '┌' : ' '} ${part}`, dim: true }]),
+      );
+      continue;
+    }
+    if (fence !== null) {
+      if (closesFence(raw, fence)) {
+        out.push([{ text: INDENT }, { text: '└', dim: true }]);
+        fence = null;
+        continue;
+      }
+      for (const chunk of hardWrap(sanitize(raw.replace(/\t/g, '  ')), width - INDENT.length - 2)) {
+        out.push([{ text: INDENT }, { text: '│ ', dim: true }, { text: chunk }]);
+      }
+      continue;
+    }
+    prose.push(raw);
+  }
+  flushProse();
+  if (fence !== null) out.push([{ text: INDENT }, { text: '└', dim: true }]);
+  return out;
+}
+
+/** Split into ≤ width-column pieces by grapheme, keeping leading spaces (code indentation). Empty → one blank. */
+function hardWrap(line: string, width: number): string[] {
+  const w = Math.max(1, width);
+  if (line === '') return [' '];
+  const out: string[] = [];
+  let cur = '';
+  for (const { segment } of graphemes.segment(line)) {
+    if (cols(cur) + cols(segment) > w && cur !== '') {
+      out.push(cur);
+      cur = '';
+    }
+    cur += segment;
+  }
+  out.push(cur);
+  return out;
 }
 
 // ---- participants & usage ----------------------------------------------------------------------------------
