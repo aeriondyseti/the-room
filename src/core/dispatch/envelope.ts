@@ -38,3 +38,42 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  if(/[\uD800-\uDBFF]$/.test(preview))preview=preview.slice(0,-1);
  return{text:header+preview+reference+footer,referenced:true,snapshot:false};
 }
+
+/**
+ * One native envelope for several held messages from ONE sender to one recipient (7.6 batching). A batch never mixes
+ * senders: the first-line header is the recipient's only trusted authority marker, so one header must be true for every
+ * part. Urgent messages and stop requests are never batched. Each message is included whole, in order, under its own
+ * part line; `included` says how many fit (at least one). The caller sends the rest in a later envelope. A single
+ * message, or a batch whose second message doesn't fit, is exactly `buildEnvelope`'s envelope (which may be referenced).
+ * `options.snapshot` covers exactly the included messages; `snapshot` in the result says whether it was carried.
+ */
+export function buildBatchEnvelope(root:string,messages:readonly RoomMessage[],recipient:string,limit:number,options:{snapshot?:string}={}):{text:string;included:number;referenced:boolean;snapshot:boolean}{
+ const first=messages[0];
+ if(!first)throw new RoomError('internal','An envelope batch needs at least one message.');
+ const sender=first.from;
+ if(messages.some(m=>m.from.name!==sender.name||m.from.kind!==sender.kind||m.from.identity.mode!==sender.identity.mode))throw new RoomError('internal','An envelope batch must come from one sender.');
+ if(messages.some(m=>m.crossing?.urgent||m.kind==='stop_request'))throw new RoomError('internal','Urgent messages and stop requests are never batched.');
+ const token=options.snapshot;
+ if(token!==undefined&&(!SNAPSHOT_TOKEN.test(token)||/["'\\`]/.test(token)))throw new RoomError('internal','Refusing to embed a malformed snapshot token in an envelope.');
+ const single=()=>({...buildEnvelope(root,first,recipient,limit,options),included:1});
+ if(messages.length===1)return single();
+ const room=createHash('sha256').update(root).digest('hex').slice(0,12);
+ const authority=sender.kind==='human'?'HUMAN DIRECTIVE':'PEER MESSAGE (not human approval)';
+ const build=(batch:readonly RoomMessage[],withToken:boolean)=>{
+  const header=`[room ${room} #${batch.map(m=>m.id).join(',#')} ${authority} from=${sender.name}${sender.identity.mode==='declared'?'(declared)':''} delivery_to=${recipient} batch=${batch.length}]\n`;
+  const parts=batch.map((m,i)=>`--- part ${i+1}/${batch.length}: #${m.id} to=${m.to.join(',')} addressing=${m.addressing}${m.replyTo?` reply_to=${m.replyTo}`:''} ---\n${m.body}`).join('\n');
+  const tail=`Replies go to ${sender.name}; answer the part you mean with its id as reply_to, and don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
+  const footer=withToken
+   ?`\n--\nsnapshot: ${token} (covers these ${batch.length} messages only)\nReply via room_send({reply_to:"<id>",snapshot:"${token}",text:"..."}) or room reply <id> --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`
+   :`\n--\nReply via room_send({reply_to:"<id>",text:"..."}) or room reply <id> --file <path>. ${tail}`;
+  return header+parts+footer;
+ };
+ // Most messages that fit, preferring to carry the token; a batch is never cut inside a message.
+ for(const withToken of token!==undefined?[true,false]:[false]){
+  for(let k=messages.length;k>=2;k--){
+   const text=build(messages.slice(0,k),withToken);
+   if(text.length<=limit)return{text,included:k,referenced:false,snapshot:withToken};
+  }
+ }
+ return single();
+}
