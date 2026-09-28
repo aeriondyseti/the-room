@@ -116,5 +116,8 @@ export function activityOf(record: Pick<ClaudeSessionRecord, 'status' | 'waiting
   if (record.status === 'waiting' && record.waitingFor !== null && /permission/i.test(record.waitingFor)) return 'waiting_permission';
   if (record.status === 'busy') return 'busy';
   if (record.status === 'idle') return 'idle';
+  // Observed live (Claude Code 2.1.283, 2026-09-28): a background-job session writes "shell" between turns — it is
+  // back at its prompt, i.e. idle. It stayed "busy" through every tool call and flipped to "shell" only at turn end.
+  if (record.status === 'shell') return 'idle';
   return 'unknown';
 }
