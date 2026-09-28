@@ -44,3 +44,25 @@ test('baseline exempts only history at its call; later human message still block
  assert.equal(result.inbox.items.length,1);
  await assert.rejects(call(room,'guarded_send',{caller:agent(b),to:['human'],body:'x',revisesAttemptId:result.attemptId}),/does not belong/);
 });
+
+test('a self-addressed outgoing message does not become new external inbox content',async t=>{
+ const room=await fixture(t);const page=await call(room,'inbox',{caller:agent(a)});
+ assert.equal((await call(room,'guarded_send',{caller:agent(a),to:['a'],body:'own note',snapshot:page.snapshot})).status,'sent');
+ assert.equal((await call(room,'guarded_send',{caller:agent(a),to:['human'],body:'follow-up',snapshot:page.snapshot})).status,'sent');
+});
+
+test('withdrawn pending content cannot arrive by inbox pull or block a previously current sender',async t=>{
+ const room=await fixture(t);const page=await call(room,'inbox',{caller:agent(a)});
+ const pending=await call(room,'send',{caller:{kind:'human'},to:['a'],body:'cancel this before delivery'});
+ assert.equal((await call(room,'withdraw',{caller:{kind:'human'},messageId:pending.message.id})).recipients[0]?.disposition,'withdrawn');
+ const pulled=await call(room,'inbox',{caller:agent(a),snapshot:page.snapshot});assert.equal(pulled.items.length,0);assert.equal(pulled.remaining,0);
+ const sent=await call(room,'guarded_send',{caller:agent(a),to:['human'],body:'still current',snapshot:page.snapshot});assert.equal(sent.status,'sent');
+ const history=room.ledger.read(pending.message.id);assert.equal(history.deliveries[0]?.state,'withdrawn');assert.equal(history.message.body,'cancel this before delivery');
+});
+
+test('service rejects over-budget urgent reasons before recording any message',async t=>{
+ const room=await fixture(t);
+ const {loadConfig}=await import('../config.js');
+ await assert.rejects(call(room,'guarded_send',{caller:agent(a),to:['b'],body:'urgent',urgent:{reason:'x'.repeat(loadConfig().urgentReasonMaxChars+1)}}),{code:'bad_request'});
+ assert.equal(room.ledger.list(0,10).items.length,0);
+});

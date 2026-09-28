@@ -60,6 +60,7 @@ export class RoomService {
         const messageId=text(p.messageId,'messageId');
         if(p.recipients!==undefined&&(!Array.isArray(p.recipients)||p.recipients.some(n=>typeof n!=='string')))throw new RoomError('bad_request','Withdraw recipients must be strings.');
         const result=this.ledger.withdraw(caller.scope,messageId,p.recipients as string[]|undefined);
+        this.refreshInboxDisplay();
         for(const r of result.recipients)if(r.disposition==='withdrawn')this.publish({type:'delivery.updated',delivery:this.ledger.delivery(messageId,r.recipient)});
         // Recompute pending for existing bindings without changing their inbox coverage.
         for(const participant of this.ledger.participants()){
@@ -84,7 +85,7 @@ export class RoomService {
         const guarded=request.method==='guarded_send';
         if(!guarded&&caller.sender.kind==='agent')throw new RoomError('bad_request','Agent sends require guarded_send with an inbox snapshot.');
         const urgent=p.urgent===undefined?null:{reason:text(record(p.urgent).reason,'urgent.reason')};
-        if(urgent&&urgent.reason.length>1000)throw new RoomError('bad_request','Urgency reason exceeds 1000 characters.');
+        if(urgent&&urgent.reason.length>loadConfig().urgentReasonMaxChars)throw new RoomError('bad_request',`Urgency reason exceeds ${loadConfig().urgentReasonMaxChars} characters.`);
         const snapshot=optionalText(p.snapshot,'snapshot')??undefined;
         const revisesAttemptId=optionalText(p.revisesAttemptId,'revisesAttemptId');
         if(revisesAttemptId&&!this.ledger.crossing(revisesAttemptId,caller.scope,'blocked_send'))throw new RoomError('bad_request','Revised attempt does not belong to this sender.');

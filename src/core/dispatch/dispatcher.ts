@@ -59,6 +59,7 @@ export class Dispatcher {
   while(!this.stopped){
    const next=this.ledger.queued(name).find(d=>!d.held);if(!next)return;selected(next);
    const registry=await readRegistry(this.root);const binding=registry[name];
+   if(this.ledger.delivery(next.messageId,name).state!=='queued')continue;
    if(!binding||binding.harness!==next.target.harness||binding.session_id!==next.target.sessionId){
     this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;
    }
@@ -67,6 +68,7 @@ export class Dispatcher {
    probe=await adapter.probe(next.target);
    if(this.stopped)return;
    const fresh=(await readRegistry(this.root))[name];
+   const afterProbe=this.ledger.delivery(next.messageId,name);if(afterProbe.state!=='queued'||afterProbe.held)continue;
    if(!fresh||fresh.harness!==next.target.harness||fresh.session_id!==next.target.sessionId){this.change(next,d=>{d.held=true;d.waiting='rebind_needed';});continue;}
    const old=this.ledger.participants().find(p=>p.name===name&&p.sessionId===next.target.sessionId&&p.harness===next.target.harness);
    const participant={...old,name,...next.target,liveness:probe.liveness,livenessCheckedAt:new Date().toISOString(),activity:probe.activity,pending:this.ledger.queued(name).length,usage:old?.usage??null};
@@ -83,14 +85,21 @@ export class Dispatcher {
    let envelope;
    try{
     envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars);
-    if(!envelope.referenced&&this.snapshotFor){
-     const snapshot=this.snapshotFor(`${current.target.harness}:${current.target.sessionId}`,message.id);
-     envelope=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars,{snapshot});
-     // An omitted token has no authority effect: issuing it never advances a
-     // global reviewed watermark. Only its eventual explicit use can authorize.
-    }
    }catch(error){
     this.change(current,d=>{d.state='failed';d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error:{code:'message_too_large',message:(error as Error).message}});});continue;
+   }
+   // Snapshot issuance is optional assistance. A storage/read failure must not be
+   // misreported as message_too_large or stop an otherwise valid native delivery.
+   if(!envelope.referenced&&this.snapshotFor){
+    const scope=`${current.target.harness}:${current.target.sessionId}`;let snapshot:string|undefined;
+    try{
+     snapshot=this.snapshotFor(scope,message.id);
+     const candidate=buildEnvelope(this.root,message,name,adapter.maxEnvelopeChars,{snapshot});
+     if(candidate.snapshot)envelope=candidate;
+     else this.ledger.discardCrossing(snapshot,scope,'snapshot');
+    }catch{
+     if(snapshot)try{this.ledger.discardCrossing(snapshot,scope,'snapshot');}catch{/* Best effort cleanup; use the plain envelope. */}
+    }
    }
    const attempting=this.change(current,d=>{d.waiting=null;d.referenced=envelope.referenced;d.attempts.push({n:d.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:null,outcome:'in_flight',evidence:null,error:null,...(adapter.runtimeContext?{runtimeContext:{...adapter.runtimeContext}}:{})});});
    let result:SubmitResult;

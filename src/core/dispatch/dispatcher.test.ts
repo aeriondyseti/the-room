@@ -214,3 +214,19 @@ test('urgent arrival while an ordinary native probe waits changes the next dispa
  release();await room.dispatcher.idle();
  assert.deepEqual(adapter.sent.map(s=>s.messageId),[urgent.result.message.id,normal.message.id]);
 });
+
+test('snapshot storage failure falls back to the plain envelope, not an oversize failure',async t=>{
+ const {room,adapter}=await setup(t);room.inbox.envelopeToken=()=>{throw Error('fixture storage unavailable');};
+ const first=await send(room,'deliver despite token issue');await room.dispatcher.idle();
+ assert.equal(room.ledger.delivery(first.message.id,'astra').state,'submitted');
+ assert.equal(adapter.sent.length,1);assert.ok(!adapter.sent[0]!.envelope.includes('snapshot:'));
+});
+
+test('an envelope token omitted for space is discarded from persistent storage',async t=>{
+ const {room,adapter,root}=await setup(t);let issued='';const original=room.inbox.envelopeToken.bind(room.inbox);
+ room.inbox.envelopeToken=(scope,messageId)=>{issued=original(scope,messageId);return issued;};
+ const first=room.ledger.enqueue({sender:{name:'human',kind:'human',identity:{mode:'human',source:'tui'}},senderScope:'human',body:'body',requestedRecipients:['astra'],recipients:[{name:'astra',target:{harness:'codex',sessionId:a}}],addressing:'direct'});
+ adapter.maxEnvelopeChars=buildEnvelope(root,first.message,'astra',24000).text.length;
+ await room.dispatcher.idle();assert.ok(issued);assert.equal(room.ledger.crossing(issued,'codex:'+a,'snapshot'),null);
+ assert.equal(room.ledger.delivery(first.message.id,'astra').state,'submitted');
+});
