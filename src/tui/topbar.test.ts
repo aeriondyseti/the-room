@@ -60,7 +60,7 @@ test('disconnected → "(last known)" and no warning colour; a tap fallback is l
   const last = dis.find((s) => s.text.startsWith('90.0%'));
   assert.deepEqual([last?.text, last?.color, last?.dim], ['90.0%', undefined, true], 'last-known values: dim, no colour, no warning');
   assert.match(lineText(accountSegments(acct({ fallback: true }), { mono: false, now: NOW })), /\(via statusline, no model limits\)/);
-  assert.match(lineText(accountSegments(acct({ source: 'shared ccstatusline cache (login unverified)' }), { mono: false, now: NOW })), /\(ccstatusline, login unverified\)/);
+  assert.doesNotMatch(lineText(accountSegments(acct({ source: 'shared ccstatusline cache (login unverified)' }), { mono: false, now: NOW })), /unverified/, 'hidden (Kevin, 6.10): almost always true, so no information');
   const reordered = acct({ buckets: [{ id: 'claude-fable', label: 'Fable', windows: [{ kind: 'x', durationMinutes: 10_080, usedPercent: 5, resetsAt: null }] }, ...acct().buckets] });
   assert.match(lineText(accountSegments(reordered, { mono: false, now: NOW })), /^Claude {2}5h \S+ 38\.0%.* {2}Fable weekly \S+ 5\.0%$/);
 });

@@ -45,7 +45,7 @@ test('side panel: name + ctx, status, model · branch per agent; usage one windo
   assert.ok(lines.every((l) => lineCols(l) <= 32), 'no line exceeds the panel width');
   assert.deepEqual(text.slice(1, 6), ['● claude', '  busy · 1 queued', '  ctx ▓▓▓▓░░░░░░ 42.0%', '  opus-5-5 · sprint/6.8*2', '● astra']);
   const u = text.indexOf('PLAN USAGE');
-  assert.deepEqual(text.slice(u + 1, u + 7), ['Claude', '  (ccstatusline, login', '  unverified)', '  5h ▓░░░░░░░░░ 7.0%', '  weekly ▓▓░░░░░░░░ 21.0%', '  Fable weekly ▓▓░░░░░░░░ 22.0%'], 'qualifiers first, wrapped, never cut');
+  assert.deepEqual(text.slice(u + 1, u + 5), ['Claude', '  5h ▓░░░░░░░░░ 7.0%', '  weekly ▓▓░░░░░░░░ 21.0%', '  Fable weekly ▓▓░░░░░░░░ 22.0%'], 'no \"login unverified\" note (hidden, 6.10)');
   assert.ok(text.includes('you: Kevin'));
 });
 
@@ -192,11 +192,11 @@ test('review fixes: quick successive saves persist the latest choice', async () 
   assert.deepEqual(results, [true, true, true]);
   assert.equal(await readSavedLayout(path), 'left');
 });
-test('cross-review (Astra): on a very short panel a shown value never loses its identity qualifier', () => {
+test('cross-review (Astra): on a very short panel a shown value never loses its source qualifier', () => {
   for (const height of [7, 8, 9, 10, 11, 12]) {
-    const text = sidePanelLines([], [claude], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
+    const text = sidePanelLines([], [{ ...claude, fallback: true }], { width: 32, height, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(lineText);
     const firstValue = text.findIndex((l) => /\d+\.\d%/.test(l));
     if (firstValue < 0) continue;
-    assert.ok(text.slice(0, firstValue).some((l) => /unverified/.test(l)), `height ${height}: "${text.join(' | ')}"`);
+    assert.ok(text.slice(0, firstValue).some((l) => /statusline/.test(l)), `height ${height}: "${text.join(' | ')}"`);
   }
 });

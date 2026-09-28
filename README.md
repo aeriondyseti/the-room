@@ -73,8 +73,8 @@ The top bar has two labelled sections: **AGENTS**, one aligned row per agent (st
 - **Codex:** read-only from the running Codex daemon (`account/rateLimits/read`). No credentials or auth files are read. Codex currently reports only a weekly window, so its 5h shows `n/a`.
 - **Claude:** sources are tried cheapest first, and the first with a reading wins.
   1. **ccstatusline's cache** (recommended; no credentials, no extra calls; used only for the default Claude profile).
-     It is one shared file written by whichever ccstatusline ran last, so the login it reflects is not verified and
-     it's labelled as such. If your statusline is
+     It is one shared file written by whichever ccstatusline ran last, so the login it reflects is not verified (the room
+     records that, but doesn't repeat it on screen). If your statusline is
      [ccstatusline](https://github.com/sirmalloc/ccstatusline), it already fetches plan usage (5h, weekly and
      model-specific limits such as Fable) and caches the numbers in `~/.cache/ccstatusline/usage.json`. The room just
      reads that file. When no Claude session is rendering a statusline, the file ages and is shown `(stale)`.

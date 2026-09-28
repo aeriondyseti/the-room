@@ -72,20 +72,22 @@ test('BUDGETS: 5h / weekly named once; one row per limit; "—" where there is n
   const rows = budgetGrid([claude, codex], { width: 120, now: NOW })!;
   const text = rows.map(lineText);
   assert.match(text[0]!, /^BUDGETS +5h +weekly$/);
-  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻1h53m +▓▓░{8} 24\.0% +login unverified$/);
+  assert.match(text[1]!, /^ Claude +▓▓▓░{7} 29\.0% +↻1h53m +▓▓░{8} 24\.0%$/);
   assert.match(text[2]!, /^ Fable +— +▓▓▓░{7} 27\.0%$/);
   assert.match(text[3]!, /^ Codex +— +▓▓░{8} 18\.0% +stale$/);
   assert.equal(colOf(text[0]!, '5h'), colOf(text[1]!, '▓'), '5h header over its column');
   assert.equal(colOf(text[0]!, 'weekly'), colOf(text[2]!, '▓'), 'weekly header over its column');
   assert.equal(colOf(text[2]!, '—'), colOf(text[1]!, '▓'), 'the dash sits in the 5h column');
   assert.ok(rows[3]!.every((s) => !s.color), 'stale values: colourless');
-  assert.ok(rows[1]!.find((s) => s.text.includes('login unverified'))?.dim);
+  assert.ok(!text.join('\n').includes('unverified'), 'login unverified is hidden (Kevin, 6.10)');
+  const fb = budgetGrid([{ ...claude, fallback: true }], { width: 120, now: NOW })!;
+  assert.ok(fb[1]!.find((s) => s.text.includes('via statusline, no model limits'))?.dim, 'other caveats: quiet, on the account row');
 });
 
 test('BUDGETS: caveats wrap to a continuation row rather than being cut; bars go before that; unavailable says why; null when it cannot fit', () => {
-  const mid = budgetGrid([claude], { width: 56, now: NOW })!.map(lineText);
+  const mid = budgetGrid([{ ...claude, fallback: true }], { width: 56, now: NOW })!.map(lineText);
   assert.ok(mid.every((l) => l.length <= 56), mid.join('\n'));
-  assert.ok(mid.some((l) => l.trim() === 'login unverified') || mid.some((l) => /login unverified$/.test(l)), 'the caveat is kept whole');
+  assert.ok(mid.join(' ').replace(/\s+/g, ' ').includes('via statusline, no model limits'), 'the caveat is kept whole (wrapped, not cut)');
   assert.ok(mid.join('\n').includes('29.0%') && mid.join('\n').includes('27.0%'), 'no value is cut');
   const down: AccountUsage = { ...claude, status: 'unavailable', reason: 'no ccstatusline usage cache', buckets: [] };
   assert.match(budgetGrid([down], { width: 120, now: NOW })!.map(lineText)[1]!, /^ Claude +usage unavailable — no ccstatusline usage cache$/);
@@ -124,13 +126,13 @@ test('app: the full grid by default; /compact and Ctrl+T switch density and it i
 });
 
 test('like pieces line up (Kevin): reset times, caveats and percentages each have their own column', () => {
-  const withResets: AccountUsage = { ...claude, buckets: [
+  const withResets: AccountUsage = { ...claude, fallback: true, buckets: [
     { id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: '2026-09-28T17:53:00Z' }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: '2026-10-04T08:59:00Z' }] },
     { id: 'claude-fable', label: 'Fable', windows: [{ kind: 'c', durationMinutes: 10_080, usedPercent: 7, resetsAt: '2026-10-04T08:59:00Z' }] }] };
   const text = budgetGrid([withResets, { ...codex, buckets: [{ id: 'codex', windows: [{ kind: 'w', durationMinutes: 10_080, usedPercent: 18, resetsAt: '2026-10-03T15:09:00Z' }] }] }], { width: 120, now: NOW })!.map(lineText);
   const weeklyResets = text.slice(1).map((l) => l.lastIndexOf('↻'));
   assert.equal(new Set(weeklyResets).size, 1, `weekly resets share a column:\n${text.join('\n')}`);
-  assert.equal(colOf(text[1]!, 'login unverified'), colOf(text[3]!, 'stale'), 'caveats share a column');
+  assert.equal(colOf(text[1]!, 'via statusline'), colOf(text[3]!, 'stale'), 'caveats share a column');
   assert.equal(text[2]!.indexOf(' 7.0%'), text[1]!.lastIndexOf('24.0%'), 'percentages are right-aligned (decimals line up)');
 });
 

@@ -228,8 +228,8 @@ export function windowLine(w: WindowMetric): Line {
 export function accountNotes(a: AccountUsage, disconnected = false): string[] {
   const notes: string[] = [];
   if (a.fallback) notes.push('(via statusline, no model limits)');
-  // A shared source whose login can't be verified says so on screen, not only in the IPC payload.
-  if (/unverified/i.test(a.source)) notes.push('(ccstatusline, login unverified)');
+  // (6.10, Kevin: "hide login unverified; that's almost always going to be true, so doesn't provide any useful
+  // information.") The shared ccstatusline source keeps its unverified attribution in the data (source, key), not on screen.
   if (disconnected) notes.push('(last known)');
   else if (a.status === 'stale') notes.push('(stale)');
   return notes;
