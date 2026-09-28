@@ -242,12 +242,17 @@ function Room({
   // The conversation always keeps 2 rows (a pager's content line plus its "↓ N more" marker; the side panel's summary).
   const needRows = 1 /* draft */ + 2 /* conversation */ + (suggestions.length ? 1 : 0);
   const topRoom = Math.max(0, rows - essentialRows - needRows);
-  const topShown: Line[] =
-    topLines.length <= topRoom
-      ? topLines
-      : topRoom === 0
-        ? []
-        : [...topLines.slice(0, topRoom - 1), fitLine([{ text: 'top bar trimmed — the terminal is too short · /who', dim: true, italic: true }], colsTotal)];
+  // Trimming keeps the left-layout notice (it explains why the panel isn't showing) and says what was hidden.
+  const leftNotice = layout === 'left' && !showLeft ? topLines.at(-1) : undefined;
+  const topBody = leftNotice ? topLines.slice(0, -1) : topLines;
+  const topShown: Line[] = (() => {
+    if (topLines.length <= topRoom) return topLines;
+    if (topRoom === 0) return [];
+    const keep = Math.max(0, topRoom - 1 - (leftNotice ? 1 : 0));
+    const budgetsHidden = view.accounts.length > 0;
+    const marker = fitLine([{ text: `top bar trimmed — the terminal is too short · /who${budgetsHidden ? ' · budgets hidden' : ''}`, dim: true, italic: true }], colsTotal);
+    return [...topBody.slice(0, keep), marker, ...(leftNotice && topRoom >= 2 ? [leftNotice] : [])];
+  })();
   let spare = Math.max(needRows, rows - essentialRows - topShown.length);
   spare -= 3; // one draft row and two conversation rows, always
   const suggestionRows = suggestions.length === 0 ? 0 : Math.min(suggestionRowsWanted, Math.max(1, spare - (MIN_VIEWPORT_ROWS - 2)));

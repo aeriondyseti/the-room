@@ -236,7 +236,7 @@ test('TD-0034 review: the worst case still fits — banner + error line + "/" + 
   const many = Array.from({ length: 10 }, (_, i) => agent(`agent_${i}`));
   const account = { account: { harness: 'claude' as const, scope: 'profile' as const, key: 'k', sourceKey: 'k' }, status: 'ok' as const, source: 's', checkedAt: null, observedAt: null,
     buckets: [{ id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: null }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: null }] }] };
-  for (const [layout, width] of [['top', 100], ['top', 30], ['left', 60], ['left', 120]] as const) {
+  for (const [layout, width] of [['top', 100], ['top', 30], ['top', 20], ['left', 60], ['left', 120]] as const) {
     for (const height of [12, 13, 14]) {
       const src = new FakeRoomSource({ participants: many });
       src.setAccounts([account]);
@@ -295,6 +295,8 @@ test('6.18 review: the smallest viewport still announces — the help pager keep
   }
   const tiny = sidePanelLines(many, [account], { width: 32, height: 2, stale: false, mono: false, now: Date.now(), humanName: 'Kevin' }).map((l) => l.map((s) => s.text).join(''));
   assert.deepEqual(tiny, ['AGENTS · 10 · /who', '+ budgets · /layout top'], 'a 2-row panel says what it cannot show');
+  const asking = sidePanelLines([...many.slice(0, 9), { ...agent('asks'), activity: 'waiting_permission' as const }], [account], { width: 40, height: 2, stale: false, mono: false, now: Date.now(), humanName: 'Kevin' }).map((l) => l.map((s) => s.text).join(''));
+  assert.equal(asking[0], 'AGENTS · 10 · 1 need attention · /who', 'the attention count survives the tiny summary');
   // Cramped enough to fold: 12 rows, 30 columns, a banner and an error line.
   const src = new FakeRoomSource({ participants: [agent('astra')] });
   const ui = render(<App source={src} humanName="Kevin" width={30} height={12} windowsTerminal={true} />);

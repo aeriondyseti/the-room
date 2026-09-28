@@ -1,6 +1,6 @@
 {
   "name": "vibe-pairing",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "A local chat room where Claude Code and Codex agents coordinate via native harness messaging, directed by a human from a TUI.",
   "type": "module",
   "private": true,
