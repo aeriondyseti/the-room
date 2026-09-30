@@ -14,7 +14,7 @@ No remaining source findings. The executable path examples in `poc/README.md` an
 - **Important:** 63 linked worktrees have absolute paths into `X:\Development\vibe-pairing`. Repair all links with `git worktree repair` after the directory moves, then verify representative worktrees. Verifier confidence: 100.
 - **Important:** active room services and MCP processes, Codex and Claude MCP registrations, and the existing global npm link use the old path. Update the registrations and link after the move; live harness sessions need a reload to adopt the new registration. Verifier confidence: 100.
 
-The local move is pending because the Codex app currently holds the source directory open. No symlink or junction was created for the migration.
+The local move is pending because the Codex app currently holds the source directory open. The move will use no compatibility alias at the old checkout path; Kevin approved replacing the existing global npm link after the move.
 
 ## Tech debt
 
