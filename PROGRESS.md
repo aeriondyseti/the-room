@@ -87,7 +87,7 @@ their own rows**.
 
 ---
 
-**Summary:** 20 / 22 features complete (MVP + polish; Milestone 6 is post-release) (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · **current version: v0.3.1** · last tag: v0.3.1
+**Summary:** M0–M5 (MVP + polish, v0.1.0) complete (+ follow-ups 2.1b, 2.3b, 2.5b, 5.1b, 5.1c) · M6 all done except 6.2 and 6.3 (⬜; patches 6.3a/6.3c shipped) · M7 done (7.7 on hold) · M8 done · **current version: v0.9.0** · last tag: v0.9.0
 
 ### Post-release patch 6.3a (Astra)
 ✅ v0.1.1: Git discovery and fixture environments isolated; TD-0005/TD-0010 disposition recorded;
