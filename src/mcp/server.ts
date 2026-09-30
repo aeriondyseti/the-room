@@ -31,7 +31,7 @@ const READ_DEFAULT = 20;
 const READ_MAX = 100;
 
 export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
-  const server = new McpServer({ name: 'vibe-pairing-room', version: VERSION });
+  const server = new McpServer({ name: 'the-room', version: VERSION });
   // One shared connection attempt at a time: concurrent first calls await the same promise (no leaked sockets).
   let link: Promise<RoomLink> | null = null;
 

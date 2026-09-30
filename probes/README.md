@@ -18,7 +18,7 @@ The installed Node executable discovered on this machine is:
 ```toml
 [mcp_servers.thread-id-probe]
 command = 'C:\Users\Kevin\AppData\Local\mise\installs\node\24.18.0\node.exe'
-args = ['X:\Development\vibe-pairing\probes\thread-id-mcp.mjs']
+args = ['X:\Development\the-room\probes\thread-id-mcp.mjs']
 ```
 
 Do **not** set or explicitly forward `CODEX_THREAD_ID` or `CODEX_SESSION_ID` for the first experiment: that would contaminate the default-inheritance observation. No thread ID is baked into this server or its configuration.

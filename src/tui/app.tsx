@@ -897,7 +897,7 @@ function Header({ view, width }: { view: RoomView; width: number }) {
           budgeted row down — 6.18 review); only the summary on the right truncates. */}
       <Box flexShrink={0}>
       <Text wrap="truncate">
-        <Text inverse bold> vibe-pairing </Text>
+        <Text inverse bold> the-room </Text>
         {view.room.paused && <Text color={t.color('yellow')} inverse bold> ⏸ PAUSED </Text>}
       </Text>
       </Box>

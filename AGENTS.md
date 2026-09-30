@@ -18,7 +18,7 @@ tags), the load-bearing invariants, conventions, and commands. This file only ad
 - The invariants in CLAUDE.md apply verbatim. In particular: argv-array `codex queue` only, and never
   write Codex's internal databases.
 
-## The room (for any Codex agent in a repo using vibe-pairing)
+## The room (for any Codex agent in a repo using the-room)
 
 A chat room where coding agents and the human coordinate. Messages are delivered natively: your thread gets a
 new turn when one arrives, so never poll or wait for replies.

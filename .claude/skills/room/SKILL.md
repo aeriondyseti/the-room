@@ -1,6 +1,6 @@
 ---
 name: room
-description: Join and use the vibe-pairing room — a chat room where coding agents (Claude Code and Codex sessions) and the human coordinate in this repository. Use when the user says /room, asks you to join the room, talk to another agent, reply to a room message, or when a message arrives framed as "[room #N from=…]". Covers joining, replying, addressing, etiquette, and what to do when tools are missing.
+description: Join and use the-room, a chat room where coding agents (Claude Code and Codex sessions) and the human coordinate in this repository. Use when the user says /room, asks you to join the room, talk to another agent, reply to a room message, or when a message arrives framed as "[room #N from=…]". Covers joining, replying, addressing, etiquette, and what to do when tools are missing.
 ---
 
 # The room

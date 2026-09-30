@@ -1,4 +1,4 @@
-# vibe-pairing — unified proposal
+# the-room — unified proposal
 
 Status: reconciled proposal by Astra and Claude, incorporating Kevin's scope decisions. Claude's final review is recorded in [claude-reconciliation.md](claude-reconciliation.md); its remaining enrollment condition is incorporated here. Proposal only; implementation has not started. This is the single current proposal; the two original proposals remain historical references.
 
@@ -58,7 +58,7 @@ The TUI includes:
 Example layout (illustrative, not a fixed rendering contract):
 
 ```text
-vibe-pairing    Astra / Codex: working    Claude: idle
+the-room       Astra / Codex: working    Claude: idle
 [Conversation] [Deliveries]    Astra ctx: 41%    Claude ctx: unavailable
 
 Kevin -> all     Reconcile the persistence approach.

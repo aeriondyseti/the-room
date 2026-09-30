@@ -23,7 +23,7 @@ export function claudeAdapterOptionsFrom(config: RoomConfig, registry: ClaudeReg
     maxEnvelopeChars: config.claudeMaxEnvelopeChars,
     timeoutMs: config.adapterTimeoutMs,
     settleMs: config.claudeSubmitSettleMs,
-    from: 'vibe-pairing room',
+    from: 'the-room',
   };
 }
 

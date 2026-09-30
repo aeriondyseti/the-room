@@ -223,7 +223,7 @@ test('TD-0034: at every height and in both layouts the frame holds — header, t
         const rows = plain(ui.lastFrame()).split('\n');
         const where = `${layout} h=${height} typed ${JSON.stringify(typed)}:\n${rows.join('\n')}`;
         assert.equal(rows.length, height, `frame height — ${where}`);
-        assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where}`);
+        assert.match(rows[0]!, /the-room/, `header kept — ${where}`);
         assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where}`);
         const statusAt = rows.findIndex((r) => r.startsWith('● live'));
         assert.equal(statusAt, height - 1, `status bar on the last row (no outer divider since its removal) — ${where}`);
@@ -250,7 +250,7 @@ test('TD-0034 review: the worst case still fits — banner + error line + "/" + 
       let rows = plain(ui.lastFrame()).split('\n');
       const where = () => `${layout} w=${width} h=${height}:\n${rows.join('\n')}`;
       assert.equal(rows.length, height, `frame height — ${where()}`);
-      assert.match(rows[0]!, /vibe-pairing/, `header kept — ${where()}`);
+      assert.match(rows[0]!, /the-room/, `header kept — ${where()}`);
       assert.ok(rows.some((r) => /^(To: |command)/.test(r)), `To:/command row kept — ${where()}`);
       assert.ok(rows.some((r) => /(^|\s)▸ \//.test(r)), `the highlighted command is visible — ${where()}`);
       assert.ok(rows.some((r) => /\+\d+ (more|↑\/↓)/.test(r)), `hidden suggestions are announced — ${where()}`);
