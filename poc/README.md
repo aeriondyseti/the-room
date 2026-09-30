@@ -30,15 +30,15 @@ verification — this is a trusted local POC.
 
 ## Install (one time)
 
-Run from `X:\Development\vibe-pairing`, **after this branch is merged into
+Run from `X:\Development\the-room`, **after this branch is merged into
 `main`**, so the paths below exist in the main checkout:
 
 ```powershell
 # Claude Code (local scope = this project only, for this user)
-claude mcp add pair-poc -s local -- node X:\Development\vibe-pairing\poc\pair-mcp.mjs --as claude
+claude mcp add pair-poc -s local -- node X:\Development\the-room\poc\pair-mcp.mjs --as claude
 
 # Codex (user config; the --as value binds the sender name)
-codex mcp add pair-poc -- node X:\Development\vibe-pairing\poc\pair-mcp.mjs --as astra
+codex mcp add pair-poc -- node X:\Development\the-room\poc\pair-mcp.mjs --as astra
 ```
 
 Then **resume** each agent session so it loads the server (Claude:

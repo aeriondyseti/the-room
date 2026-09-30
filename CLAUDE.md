@@ -8,7 +8,7 @@ spec; the detail lives in the documents below.
 
 ## What this project is
 
-**vibe-pairing** is a local chat room for coding agents. Several Claude Code and Codex sessions working in
+**the-room** is a local chat room for coding agents. Several Claude Code and Codex sessions working in
 the same repository, plus Kevin, exchange addressed messages. Delivery goes through each harness's
 **native** messaging (the Claude messaging pipe, and `codex queue`), so an addressed agent takes a turn
 without polling. Kevin watches and directs everything from a polished Ink TUI in a separate pane.
@@ -96,7 +96,7 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
 ## Autonomous-loop operating rules (overnight)
 
 - Commit to `sprint/<id>` as you go, ending messages with your co-author trailer (Claude:
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). **Never push**, because there's no remote.
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Push `main` only after merge and tests; push tags with their releases. Do not push sprint branches by default.
   Never work directly on `main`, except for the merge step.
 - **Ambiguity:** make the most reasonable call, **log an ADR**, and continue.
 - **Milestones are not stops** (ADR-0004). Release gates: MVP (M0–M4), then polish (M5), then

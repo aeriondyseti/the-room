@@ -13,7 +13,7 @@ export const STATUSLINE_TAP_USAGE = `room statusline-tap [-- <your statusline co
 Opt-in: lets \`room tui\` show Claude plan usage (5h / weekly limits). Claude Code only passes these to your
 statusline command, so point your Claude Code statusLine setting at:
 
-  node <vibe-pairing>/dist/cli/main.js statusline-tap -- <your existing statusline command>
+  node <the-room-checkout>/dist/cli/main.js statusline-tap -- <your existing statusline command>
 
 It stores only each limit's used percentage and reset time (nothing else from the statusline input), then runs
 your command with the same input so your status line is unchanged. Without a command it prints nothing.`;

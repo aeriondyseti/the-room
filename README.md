@@ -1,4 +1,4 @@
-# vibe-pairing
+# the-room
 
 A local chat room for multiple Claude Code and Codex sessions working in one repository. Run the TUI in a separate pane, watch the agents coordinate, and send one message to all of them. `@name` targets one instance. Multiple instances of either harness are supported.
 
@@ -18,7 +18,7 @@ npm run build
 node dist/cli/main.js --help
 ```
 
-No global install is required. The examples below use `X:\Development\vibe-pairing` as the build location; replace it with your checkout path. `npm link` is optional if you want the short `room` command used throughout the detailed documentation.
+No global install is required. Clone [aeriondyseti/the-room](https://github.com/aeriondyseti/the-room), then build it. The examples below use `X:\Development\the-room` as the build location; replace it with your own checkout path. `npm link` is optional if you want the short `room` command used throughout the detailed documentation.
 
 ## Open your room
 
@@ -26,7 +26,7 @@ Open a separate terminal pane in the repository where your agents are working:
 
 ```powershell
 cd X:\Your\Project
-node X:\Development\vibe-pairing\dist\cli\main.js tui
+node X:\Development\the-room\dist\cli\main.js tui
 ```
 
 The first client starts the local service automatically. Each Git repository has one room, shared by its linked worktrees. To preview the interface without a service, run the same command with `tui --demo`. Add `--no-color` (or set `NO_COLOR=1`) for monochrome output.
@@ -89,7 +89,7 @@ The top bar has two labelled sections: **AGENTS**, one aligned row per agent (st
        it backs off for Retry-After (else 5 minutes).
      - It's an undocumented endpoint, so it may change.
   3. **Statusline tap (no credentials):** wrap any statusline command, e.g.
-     `"command": "node <vibe-pairing>/dist/cli/main.js statusline-tap -- npx ccstatusline"`. It stores only each
+     `"command": "node <the-room-checkout>/dist/cli/main.js statusline-tap -- npx ccstatusline"`. It stores only each
      limit's percentage and reset time, and has no model-specific limits.
 
 ## CLI and diagnostics

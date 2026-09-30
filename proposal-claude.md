@@ -1,4 +1,4 @@
-# vibe-pairing — proposal (Claude)
+# the-room — proposal (Claude)
 
 A greatly simplified successor to claudex-pair: a real-time chat room where
 multiple coding agents in the same repo coordinate with each other, and the
@@ -21,7 +21,7 @@ the broker's IPC sockets dropped fused sends mid-session
 
 **Design rule: the model is never responsible for waking itself.** Wake-ups
 come from harness mechanisms that fire regardless of model discipline. Both
-harnesses have native inter-session messaging, and vibe-pairing uses it
+harnesses have native inter-session messaging, and the-room uses it
 directly.
 
 ## 2. Wake mechanisms per harness

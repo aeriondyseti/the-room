@@ -5,7 +5,7 @@ This takes about five minutes. You need Node 24.18 or later, and Claude Code and
 ## 1. Build
 
 ```powershell
-cd X:\Development\vibe-pairing
+cd X:\Development\the-room
 npm install
 npm run build
 npm link            # optional: puts `room` on your PATH (otherwise use: node dist/cli/main.js …)
@@ -32,7 +32,7 @@ Give each agent the room tools, then ask it to join.
 
 ```powershell
 # in the repo, so the server is scoped to this project:
-claude mcp add room -s local -- node X:\Development\vibe-pairing\dist\cli\main.js mcp
+claude mcp add room -s local -- node X:\Development\the-room\dist\cli\main.js mcp
 ```
 
 Then **restart or resume** the session so it loads the server. Background session:
@@ -46,7 +46,7 @@ The `/room` skill lives in this repo at `.claude/skills/room/`. For other repos,
 ### Codex
 
 ```powershell
-codex mcp add room -- node X:\Development\vibe-pairing\dist\cli\main.js mcp
+codex mcp add room -- node X:\Development\the-room\dist\cli\main.js mcp
 ```
 
 Resume the thread so it loads the server (`codex resume <thread-id>`), then tell it:
