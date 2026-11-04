@@ -1,4 +1,4 @@
-# Machine-specific participant registry (see proposal.md)
+# Machine-specific participant registry (see docs/reference/design.md, Scope)
 session.toml
 # Room runtime data
 .room/

@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases up to 0.9.0 were written up from the tags and their merged records when the changelog was created on
-2026-11-03. Versions `0.0.1`–`0.0.23` each count one merged sprint; `0.1.0`–`0.9.0` count milestones and their
-follow-ups. Neither scheme is semver; versions follow semver from the next release.
+2026-11-03. Versions `0.0.1`–`0.0.23` each count one merged sprint; from `0.1.0` to `0.9.0` the minor rose for
+each feature-sized release (Milestone 6's features, then Milestones 7 and 8) and the patch for follow-ups. Neither
+scheme is semver; versions follow semver from the next release.
 
 ## [Unreleased]
 
@@ -19,7 +20,9 @@ follow-ups. Neither scheme is semver; versions follow semver from the next relea
 
 ### Changed
 
-- The project is renamed from vibe-pairing to the-room (the package name and the paths in the docs).
+- The project is renamed from vibe-pairing to the-room: the package name, the MCP server name (was
+  `vibe-pairing-room`), the sender name on Claude pipe frames, the TUI header, the usage endpoint's User-Agent, and
+  the paths in the docs.
 - Versions follow semver from this release; earlier versions counted sprints and milestones.
 - The project's docs follow the shared docs process: `AGENTS.md`, `docs/decisions/` (one record per decision),
   `docs/reference/` (design, glossary, operations) and `plan/`. The onboarding guide is now
@@ -292,11 +295,14 @@ Task 5.3, and the release of the MVP (Milestones 0–4) plus polish (Milestone 5
 
 ### Added
 
-- `room doctor`, a read-only setup check that explains failures; a README quickstart checked from a clean clone; a
-  first-run experience for `room tui`.
+- A README quickstart checked from a clean clone, and a first-run experience for `room tui`.
 - Release qualification on throwaway sessions: 20 idle-wake trials each for the Claude pipe and Codex queue, a
   two-hour mixed exercise on Claude fixtures, a bounded busy-Codex scenario, and the four-agent scenarios passing on
   re-run, with the first failures kept in the record.
+
+### Changed
+
+- `room doctor` is the one-command, read-only setup check that explains failures.
 
 ## [0.0.23] - 2026-09-28
 

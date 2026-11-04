@@ -13,8 +13,8 @@ tags: [versions]
 ## Context and Problem Statement
 
 ADR-0003 numbered each merged sprint `0.0.N` and reserved the number over pair-poc at merge. The tags followed it
-through `v0.0.23`; from `v0.1.0` they counted milestones in the minor and follow-ups in the patch, up to `v0.9.0`,
-which ADR-0003 does not describe. Seven commits on `main` since `v0.9.0` are untagged. Kevin's process (2026-11-03)
+through `v0.0.23`; from `v0.1.0` to `v0.9.0` the minor rose for each feature-sized release (Milestone 6's
+features, then Milestones 7 and 8) and the patch for follow-ups, which ADR-0003 does not describe. Seven commits on `main` since `v0.9.0` are untagged. Kevin's process (2026-11-03)
 gives every repo one version format, plain semver, bumped by the kind of change; a repo whose tags are already
 valid `vX.Y.Z` cuts over rather than retagging.
 

@@ -69,7 +69,7 @@ node scripts/acceptance/run.mjs [--claude 2] [--codex 0] [--trials 20] [--scenar
 node scripts/acceptance/smoke-one.mjs          one Claude fixture joins a scratch room and replies
 node scripts/acceptance/smoke-codex.mjs <dist/cli/main.js>   Codex fixture registration and queue
 node scripts/smoke-claude-adapter.mjs <session-id>   one message to a Claude session you own
-node scripts/smoke-codex-adapter.mjs           one message to an explicitly chosen throwaway Codex thread
+node scripts/smoke-codex-adapter.mjs <throwaway-thread-uuid>   one message to an explicitly chosen throwaway Codex thread
 node scripts/probes/activity-live.mjs          activity reader against a throwaway fixture
 node scripts/probes/claude-usage-live.mjs      the Claude usage endpoint (prints mapped windows only)
 node scripts/probes/pipe-frames.mjs <session-id> idle|burst|badtoken   frames a Claude pipe sends back (vpfix- fixtures only)
@@ -111,8 +111,9 @@ node probes/smoke-test.mjs                     the identity probe's own plumbing
 ### Hands off harness state
 
 Tests use fakes, fixtures and throwaway sessions. Never message, stop or reconfigure Kevin's or another agent's live
-sessions, except through the room's own messaging. Never restart the live room service; Kevin does. `session.toml`
-and `.room/` at the room root are live runtime state: never edit, move or commit them.
+sessions, except through the room's own messaging. Kevin restarts the live room service after a release (as in
+ADR-0014); agents don't. `session.toml` and `.room/` at the room root are the live room's runtime state (other repos
+keep theirs too): never edit, move or commit them by hand; the room's own commands write them.
 
 ### Conventions
 
@@ -167,7 +168,8 @@ Known false positives (reviewers skip them; discard any that slip through):
 - An agent's decision is a new record with `status: proposed`. Records are superseded, never amended.
 - Versions: semver, tagged `vX.Y.Z`; before 1.0.0 every merged task is a release, bumped from its changelog
   section by `tools/release.ts`. Cut over on 2026-11-03: the old tags (`v0.0.1`–`v0.0.23` per sprint, then
-  `v0.1.0`–`v0.9.0`) stay, and the next release is `v0.10.0` (ADR-0018, proposed, replacing ADR-0003).
+  `v0.1.0`–`v0.9.0`) stay, and the next release is `v0.10.0` (ADR-0018, proposed, replacing ADR-0003): cut it with
+  `--bump minor`, since `[Unreleased]` alone reads as a patch.
 - Run `bun tools/docs-check.ts` before every commit that touches docs; `--write` regenerates the decision index.
 
 ## The room (for any Codex agent in a repo using the-room)
@@ -205,6 +207,8 @@ turn when one arrives, so never poll or wait for replies.
   rejected send. Use only when intentionally accepting that trade-off.
 - **Look around** with `room_who` (participants and liveness), `room_read` (history), and `room_inbox` (your
   uncovered addressed content and snapshot).
+- When a room tool is unavailable, fall back to the documented CLI, never to hand-built shell strings with
+  interpolated message text.
 - Never put secrets in room messages. Onboarding and install steps: `docs/reference/operations.md`.
 
 When working on this repo, a Codex agent uses its own co-author identity, never Claude's, and sends `codex queue`
@@ -217,7 +221,9 @@ only as an argv array.
 - Container layout: `X:\Development\the-room\` holds the bare repository, the trunk's worktree `main\` and one
   worktree per task in progress, named like its branch. Never make a worktree inside a checkout
   (`.claude/worktrees/` is gitignored in case a harness does). This repo has not moved yet; until it does, the
-  checkout is `X:\Development\the-room\` and task worktrees go beside it, not inside it.
+  checkout is `X:\Development\the-room\` and task worktrees go in a folder of their own outside it, never inside it
+  (the move is a chore in `plan/chores/`).
+- Never work directly on `main`, except for the merge step.
 - Integration: local `git merge --no-ff`; never squash, never rebase a shared branch. **Only one merge into `main`
   may be in flight at a time:** announce "MERGE-REQUEST <id>" in the room and wait until no other merge is in
   flight, merge, run `npm test` on `main` after the merge and before tagging, then announce
