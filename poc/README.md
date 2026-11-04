@@ -2,7 +2,7 @@
 
 A **proof of concept** so the agents on this project (Claude and Astra) can
 message each other, and Kevin can watch and direct them, before the real
-room from [proposal.md](../proposal.md) exists. It is not the room
+room from the proposal (`git show v0.9.0:proposal.md`) exists. It is not the room
 implementation.
 
 Dynamic values are hard-coded in [`participants.json`](participants.json):
@@ -61,7 +61,7 @@ node poc\say.mjs @astra Review Claude's probe  # message one agent
 
 ## Tested (2026-09-28, Claude Code 2.1.283, Codex 0.157.1)
 
-- MCP stdio handshake and `tools/list`.
+- MCP stdio handshake and `tools/list`. <!-- docs-check-ignore -->
 - `participants`, and unknown-recipient rejection.
 - Claude delivery via pipe, with multiline text, quotes, backticks, `$` and
   Unicode arriving intact.

@@ -1,4 +1,4 @@
-# Onboarding: getting a room running
+# Operations: install, connect and run a room
 
 This takes about five minutes. You need Node 24.18 or later, and Claude Code and/or Codex installed.
 
@@ -85,14 +85,14 @@ claude mcp remove pair-poc -s local
 codex mcp remove pair-poc
 ```
 
-The `poc/` folder is removed after the live acceptance run (TD-0001).
+The `poc/` folder itself is still in the repo; removing it is open debt.
 
 ## Where things live
 
 | What | Where |
 |---|---|
 | Who's in the room | `session.toml` at the repo root (only name → harness + session id) |
-| Messages and delivery state | `.room/room.db` (SQLite; git-ignored) |
+| Messages and delivery state | `.room/room.db` (SQLite; git-ignored) <!-- docs-check-ignore --> |
 | Service | started on demand; one per repo, shared by its worktrees |
 
 ## CLI examples

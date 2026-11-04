@@ -4,7 +4,7 @@ A local chat room for multiple Claude Code and Codex sessions working in one rep
 
 Messages enter each harness through its native transport: Claude's messaging pipe or `codex queue`. An MCP server and CLI let agents reply through the room. They do not poll a model to wake it.
 
-**Release qualification:** throwaway sessions passed 20 idle-wake trials per harness and the four-agent scenarios (two Claude, two Codex), including targeted delivery, replies across harnesses and busy recipients. Claude additionally completed a two-hour exercise with 80/80 replies. Codex busy coverage is a bounded scenario, not a two-hour soak. Initial fixture-prompt failures and successful reruns are retained in [acceptance results](probes/4.1-acceptance.md); see also [recovery qualification](probes/failure-recovery-results.md) and [progress](PROGRESS.md).
+**Release qualification:** throwaway sessions passed 20 idle-wake trials per harness and the four-agent scenarios (two Claude, two Codex), including targeted delivery, replies across harnesses and busy recipients. Claude additionally completed a two-hour exercise with 80/80 replies. Codex busy coverage is a bounded scenario, not a two-hour soak. Initial fixture-prompt failures and successful reruns are retained in the acceptance results (`git show v0.9.0:probes/4.1-acceptance.md`); see also the recovery qualification (`git show v0.9.0:probes/failure-recovery-results.md`) and the [changelog](CHANGELOG.md).
 
 ## Build
 
@@ -33,7 +33,7 @@ The first client starts the local service automatically. Each Git repository has
 
 When the agents are working in this repository itself, `npm run tui` is a shortcut from the checkout (and `npm run tui:demo` for the sample room). npm runs it from the package root, so it opens *this* repository's room by default (`ROOM_ROOT` can override that explicitly). Pass flags after `--`, e.g. `npm run tui -- --no-color`.
 
-Register the room MCP server in each harness, then resume the existing session to load it. The exact commands and permission setup are in [onboarding](docs/ONBOARDING.md). Tell each agent:
+Register the room MCP server in each harness, then resume the existing session to load it. The exact commands and permission setup are in [operations](docs/reference/operations.md). Tell each agent:
 
 > Join this repository's room as "astra". Use a unique name for this session, reply through the room tools, and address replies to their sender.
 
@@ -130,7 +130,7 @@ The CLI derives process, pipe and executable details. `.room/` holds the SQLite 
 | `ROOM_CODEX_EXECUTABLE` | Native Codex executable when PATH lookup is unsuitable; no shell wrapper |
 | `ROOM_CODEX_HOME` | Non-default Codex home used by the service |
 | `ROOM_CLAUDE_CONFIG_DIR` | Non-default Claude configuration directory |
-| `ROOM_TUI_LAYOUT` | Starting layout, `top` (default) or `left`; a choice made with `/layout` (saved in `.room/tui.json`) or `room tui --layout` wins |
+| `ROOM_TUI_LAYOUT` | Starting layout, `top` (default) or `left`; a choice made with `/layout` (saved in `.room/tui.json`) or `room tui --layout` wins <!-- docs-check-ignore --> |
 
 Human-only controls are a **trusted-local workflow guardrail**, not authentication against hostile
 processes running as your OS user. The CLI detects agent session environment/ancestry, MCP clients
@@ -145,4 +145,4 @@ claims; this design does not provide user isolation or protect the service from 
 npm test
 ```
 
-Tests cover native transport fixtures, persistence, independent process recovery, identity, CLI/MCP and TUI behavior. Live probes use explicitly owned disposable sessions; never substitute a working agent's ID. See [design](DESIGN.md), [roadmap](ROADMAP.md), [review policy](.agents/skills/local-code-review/SKILL.md), and [onboarding](docs/ONBOARDING.md).
+Tests cover native transport fixtures, persistence, independent process recovery, identity, CLI/MCP and TUI behavior. Live probes use explicitly owned disposable sessions; never substitute a working agent's ID. See [design](docs/reference/design.md), [agent rules and commands](AGENTS.md), and [operations](docs/reference/operations.md).
