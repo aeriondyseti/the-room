@@ -1,4 +1,4 @@
-// TD-0008 qualification probe: what does a Claude messaging pipe send back after auth + a user frame?
+// Task 6.3b qualification probe: what does a Claude messaging pipe send back after auth + a user frame?
 // THROWAWAY FIXTURES ONLY: refuses any session whose registry name doesn't start with "vpfix-".
 // Logs frame types and key names only (never values); the peer token is never printed (scrubbed from every line).
 //   node scripts/probes/pipe-frames.mjs <sessionId> <case: idle|burst|badtoken> [listenMs]

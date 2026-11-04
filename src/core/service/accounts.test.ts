@@ -103,7 +103,7 @@ test('Claude provider: no tap â†’ unavailable with the setup hint; a tap file â†
   assert.equal((await provider.sample()).status, 'unavailable');
 });
 
-test('TD-0023: stop() abandons a hung provider after the grace period; nothing is published afterwards', async () => {
+test('bounded shutdown (6.9): stop() abandons a hung provider after the grace period; nothing is published afterwards', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
   const events: RoomEvent[] = [];

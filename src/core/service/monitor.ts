@@ -1,4 +1,4 @@
-// Participant monitor (ROADMAP 2.5b): keeps each participant's liveness, activity and context usage current, so
+// Participant monitor (task 2.5b): keeps each participant's liveness, activity and context usage current, so
 // `who` and the TUI show observed state instead of "unknown". Read-only by construction: adapter probes and the
 // usage observer never message or modify a session (invariant 8). Unknown stays unknown (invariant 3).
 import type { DeliveryAdapter } from '../../contracts/adapter.js';
@@ -58,7 +58,7 @@ export class ParticipantMonitor {
   }
 
   /**
-   * Stop polling. An in-flight pass gets a short grace, then is abandoned (TD-0023: shutdown never waits out a slow
+   * Stop polling. An in-flight pass gets a short grace, then is abandoned (bounded shutdown, 6.9: shutdown never waits out a slow
    * probe or git sample); an abandoned pass saves, publishes and persists nothing.
    */
   async stop(): Promise<void> {

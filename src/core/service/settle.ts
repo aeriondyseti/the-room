@@ -1,5 +1,5 @@
 /**
- * Wait for `work` to settle, but at most `ms` (TD-0023): shutdown must not wait out slow, bounded observations such
+ * Wait for `work` to settle, but at most `ms` (bounded shutdown, 6.9): shutdown must not wait out slow, bounded observations such
  * as git sampling or a daemon read. Resolves true if it settled in time, false if it was abandoned. Never rejects.
  */
 export async function settleWithin(work: Promise<unknown> | null, ms: number): Promise<boolean> {

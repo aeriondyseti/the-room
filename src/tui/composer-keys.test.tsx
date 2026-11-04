@@ -1,4 +1,4 @@
-// 6.13: composer word editing, raw key identity and the growing composer (Astra's spec docs/COMPOSER-KEYS-SPEC.md;
+// 6.13: composer word editing, raw key identity and the growing composer (Astra's spec, git show v0.9.0:docs/COMPOSER-KEYS-SPEC.md;
 // key bytes from Kevin's live Windows Terminal probe: Enter CR, Ctrl+Enter LF, Backspace DEL, Ctrl+Backspace BS,
 // Ctrl+Left ESC[1;5D, Ctrl+Right ESC[1;5C).
 import { test, afterEach } from 'node:test';
@@ -211,7 +211,7 @@ test('cross-review: a key release (CSI-u event type 3) never acts — one press 
   await t.type('\r');
   assert.equal(t.sends()[0]?.body, 'one \nx', 'exactly one deletion and one newline');
 });
-test('TD-0034: at every height and in both layouts the frame holds — header, the To:/command row and the status bar survive suggestions, feedback and a long draft', async () => {
+test('frame fits (6.18): at every height and in both layouts the frame holds — header, the To:/command row and the status bar survive suggestions, feedback and a long draft', async () => {
   for (const layout of ['top', 'left'] as const) {
     for (const height of [12, 13, 14, 16, 20]) {
       for (const typed of ['/', '@nobody hi\r', 'a\nb\nc\nd\ne\nf\ng\nh', 'a\nb\nc\nd\ne\nf\ng\nh\u0017']) {
@@ -232,7 +232,7 @@ test('TD-0034: at every height and in both layouts the frame holds — header, t
     }
   }
 });
-test('TD-0034 review: the worst case still fits — banner + error line + "/" + a multi-line top bar at 12 rows; the highlighted command is always on screen', async () => {
+test('frame fits (6.18 review): the worst case still fits — banner + error line + "/" + a multi-line top bar at 12 rows; the highlighted command is always on screen', async () => {
   const many = Array.from({ length: 10 }, (_, i) => agent(`agent_${i}`));
   const account = { account: { harness: 'claude' as const, scope: 'profile' as const, key: 'k', sourceKey: 'k' }, status: 'ok' as const, source: 's', checkedAt: null, observedAt: null,
     buckets: [{ id: 'claude', windows: [{ kind: 'a', durationMinutes: 300, usedPercent: 29, resetsAt: null }, { kind: 'b', durationMinutes: 10_080, usedPercent: 24, resetsAt: null }] }] };
@@ -263,7 +263,7 @@ test('TD-0034 review: the worst case still fits — banner + error line + "/" + 
   }
 });
 
-test('TD-0034 review: tall terminals behave exactly as before — 6 suggestions + "+N more"; a long draft grows to the configured max; the conversation keeps 3 rows', async () => {
+test('frame fits (6.18 review): tall terminals behave exactly as before — 6 suggestions + "+N more"; a long draft grows to the configured max; the conversation keeps 3 rows', async () => {
   const t = await setup(30);
   await t.type('/');
   let rows = t.frame().split('\n');

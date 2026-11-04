@@ -1,4 +1,4 @@
-// MCP front-end (ROADMAP 2.4): a thin client of the room service. No store, queue, or wake logic here — every
+// MCP front-end (task 2.4): a thin client of the room service. No store, queue, or wake logic here — every
 // tool resolves the caller fresh, forwards one IPC request, and formats the answer for an agent to act on.
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

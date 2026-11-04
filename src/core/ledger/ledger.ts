@@ -289,7 +289,7 @@ export class Ledger {
    *
    * Run it only while the dispatcher is stopped or the old name's worker is quiesced (8.1 calls it before the
    * dispatcher starts): a worker that has selected a queued row but not yet claimed it would find the row gone
-   * (TD-0041; 8.2's live rename must drain the old name's worker first or make that path tolerant).
+   * (a review finding of 8.1, fixed in 8.2; 8.2's live rename must drain the old name's worker first or make that path tolerant).
    */
   relabelQueued(from:string,to:string,target:Delivery['target'],paused:boolean):Delivery[] {
     return this.transaction(()=>{

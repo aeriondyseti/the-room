@@ -1,5 +1,5 @@
 // Pure parsers for harness transcript records → usage samples. Formats qualified on Claude Code 2.1.283 and
-// Codex 0.157.1 (DESIGN §3: version-sensitive details stay in one place). Unknown shapes yield null, never 0.
+// Codex 0.157.1 (design.md, Architecture: version-sensitive details stay in one place). Unknown shapes yield null, never 0.
 
 export interface TokenCounters {
   /** Non-cached input tokens. */

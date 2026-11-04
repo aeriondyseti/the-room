@@ -191,7 +191,7 @@ test('review fixes: a short panel ends usage with "more usage" (never silently);
   assert.ok(tall.some((l) => /^Claude +stale$/.test(l)) && tall.some((l) => /^Codex +stale$/.test(l)), 'the staleness qualifier rides on the account heading (right-aligned)');
   assert.ok(tall.some((l) => l.includes('░')), 'room to spare: bars');
   // 6.16: compact mode only shortens notes (resets are inline here; they take their own row only when too wide), so a
-  // short panel ends with the marker. Folding reset rows away in compact mode is TD-0033.
+  // short panel ends with the marker. Folding reset rows away in compact mode is plan/debt/compact-budgets-keep-reset-rows.md.
   const short = sidePanelLines([], [stale('claude'), stale('codex')], { width: 32, height: 11, stale: false, mono: false, now: NOW, humanName: 'Kevin' }).map(barText);
   assert.equal(short.length, 11);
   assert.ok(short.includes('+ more usage · /layout top'), 'short: the cut is announced');

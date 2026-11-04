@@ -1,4 +1,4 @@
-// Pure composer logic (ROADMAP 3.2): parsing what the human typed into a message or a command, @name completion,
+// Pure composer logic (task 3.2): parsing what the human typed into a message or a command, @name completion,
 // and a tiny text-editing model. No I/O — the App turns parse results into IPC requests.
 
 // ---- parsing --------------------------------------------------------------------------------------------
@@ -264,7 +264,7 @@ export function historyDown(h: History): { history: History; text: string } | nu
   return { history: { ...h, index }, text: index === -1 ? h.saved : h.entries[h.entries.length - 1 - index]! };
 }
 
-// ---- word editing and navigation (6.13; Astra's spec docs/COMPOSER-KEYS-SPEC.md) ------------------------------
+// ---- word editing and navigation (6.13; Astra's spec, git show v0.9.0:docs/COMPOSER-KEYS-SPEC.md) ----
 // Words are whitespace-delimited tokens, deliberately: paths, @mentions and punctuation stay attached (this is not
 // language-aware code editing). All boundaries are grapheme-safe (never half a surrogate pair, combining sequence or
 // joined emoji).

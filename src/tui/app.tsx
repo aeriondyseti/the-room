@@ -1,4 +1,4 @@
-// The room TUI (ROADMAP 3.1 + 3.2): header, participants, a line-accurate conversation viewport, and the composer.
+// The room TUI (tasks 3.1 + 3.2): header, participants, a line-accurate conversation viewport, and the composer.
 // Presentation only — all behavior lives in the service; this talks to a RoomSource.
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { randomUUID } from 'node:crypto';
@@ -170,7 +170,7 @@ function Room({
   const suggestions = useMemo(() => (overlay ? [] : commandSuggestions(draft.text)), [draft.text, overlay]);
   const [suggestIdx, setSuggestIdx] = useState(0);
   useEffect(() => setSuggestIdx(0), [draft.text]);
-  // The rows the suggestion list would like; what it actually gets is budgeted with the draft below (TD-0034).
+  // The rows the suggestion list would like; what it actually gets is budgeted with the draft below (6.18).
   const suggestionRowsWanted = suggestions.length === 0 ? 0 : Math.min(MAX_SUGGESTIONS, suggestions.length) + (suggestions.length > MAX_SUGGESTIONS ? 1 : 0);
   // The draft as terminal rows (hard newlines and soft wraps, measured by display width), shared by layout and render.
   // Tabs are shown as two spaces (as in messages), so the measured width is the drawn width.
@@ -190,7 +190,7 @@ function Room({
     // Height guard (like the width guard): the full grid never squeezes the conversation below a readable height; on a
     // short terminal the top bar shows the wrapping chips instead (the saved density is kept).
     // While an overlay (help, /who, detail, activity) is open it gets the room: the grid yields the same way.
-    // Every other row counts (6.13, TD-0027): header, banner, left-layout notice, rules, the composer as the draft needs it
+    // Every other row counts (6.13): header, banner, left-layout notice, rules, the composer as the draft needs it
     // (with feedback and suggestions) and the status bar.
     const persistent = (view.connection.state !== 'connected' || (view.notice !== null && view.loaded) ? 1 : 0) + (layout === 'left' ? 1 : 0);
     const chrome = 1 /* header */ + persistent + 1 /* rule */ + 2 /* composer rule + To */ + draftWanted + (feedback ? 1 : 0) + suggestionRowsWanted + 1 /* status */;
@@ -234,7 +234,7 @@ function Room({
   // 6.13: the composer takes the rows its draft actually needs (soft wraps included), up to composerMaxRows and never
   // below a readable conversation; beyond that it scrolls inside itself to follow the cursor. Nothing is ever drawn over
   // the bottom bar.
-  // One budget that always fits the frame (TD-0034: at 12 rows the "/" list plus a fixed 3-row conversation overflowed,
+  // One budget that always fits the frame (6.18: at 12 rows the "/" list plus a fixed 3-row conversation overflowed,
   // clipping the header and the To: row). Rows are handed out in priority order against what is actually left — never
   // independent floors that could add up to more than the terminal:
   //   essential chrome (header, banner, rules, To:, feedback, status) → one draft row → two conversation rows → the
@@ -960,7 +960,7 @@ export function EmptyState({ participants }: { participants: readonly Participan
     const steps: Array<[string, string]> = [
       ['1', 'In each agent\'s session, ask it to join: "join the room as <name>". It uses the room_join tool (or `room join --as <name>` from its shell).'],
       ['2', 'Joined agents appear here with their status. Enter sends to everyone; start with @name to pick one.'],
-      ['3', 'Something off? Run `room doctor`, or see docs/ONBOARDING.md. Press ? for keys and commands.'],
+      ['3', 'Something off? Run `room doctor`, or see docs/reference/operations.md. Press ? for keys and commands.'],
     ];
     return (
       <Box flexDirection="column" flexShrink={0}>

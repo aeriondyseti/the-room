@@ -1,6 +1,6 @@
 import type { WorkspaceInfo } from './workspace.js';
 // Domain contract: the shapes every module (core, adapters, IPC, CLI, MCP, TUI) agrees on.
-// Changes here are coordinated between agents (CLAUDE.md "Contracts are shared").
+// Changes here are coordinated between agents (AGENTS.md "Contracts are shared").
 
 export const HARNESSES = ['claude', 'codex'] as const;
 export type Harness = (typeof HARNESSES)[number];
@@ -92,7 +92,7 @@ export interface RoomMessage {
 }
 
 /**
- * Per-recipient delivery lifecycle (proposal "Delivery states"):
+ * Per-recipient delivery lifecycle (pre-build proposal "Delivery states", git show v0.9.0:proposal.md):
  * queued -> submitted -> replied, with failed / uncertain outcomes. `held` is independent.
  */
 export const DELIVERY_STATES = ['queued', 'submitted', 'replied', 'failed', 'uncertain', 'withdrawn'] as const;

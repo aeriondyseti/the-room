@@ -2,7 +2,7 @@
 session.toml
 # Room runtime data
 .room/
-# Agent worktrees
+# Worktrees live beside the trunk's checkout, never inside it; this catches one a harness makes here.
 .claude/worktrees/
 # pair-poc message log
 .room-poc/

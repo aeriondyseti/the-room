@@ -1,4 +1,4 @@
-// Delivery detail (ROADMAP 3.3): everything the room knows about one message's per-recipient delivery — state,
+// Delivery detail (task 3.3): everything the room knows about one message's per-recipient delivery — state,
 // target session, reply link, and every attempt with its evidence or error. Built as wrapped lines (never cut;
 // invariant 9) so the App can scroll it like the conversation. Only renders fields the service reported.
 import type { Delivery, DeliveryAttempt, MessageWithDeliveries, SubmitEvidence } from '../contracts/domain.js';

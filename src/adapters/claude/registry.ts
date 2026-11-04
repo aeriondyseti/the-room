@@ -1,5 +1,5 @@
 // Read-only view of Claude Code's local session registry (`<claudeConfigDir>/sessions/<pid>.json` + `.key`).
-// Version-sensitive details (qualified on Claude Code 2.1.283) live here and in pipe.ts only (DESIGN §3).
+// Version-sensitive details (qualified on Claude Code 2.1.283) live here and in pipe.ts only (docs/reference/design.md, Architecture).
 // Invariant 8: this module never writes Claude's files. Invariant 6: tokens never leave this process.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -54,7 +54,7 @@ export function defaultRegistryDeps(claudeConfigDir: string, procStartTimeoutMs:
 /**
  * Cache successful start-time lookups per pid for `ttlMs` (the monitor probes every few seconds; each lookup spawns
  * PowerShell). Failures (null) are not cached. A stale cached value can only make a reused pid look like the old
- * process for up to `ttlMs`; delivery is still safe because the pipe name is session-bound (TD-0006 reasoning).
+ * process for up to `ttlMs`; delivery is still safe because the pipe name is session-bound (plan/debt/claude-start-time-unverified.md).
  */
 export function cachedStartTime(lookup: (pid: number) => Promise<string | null>, ttlMs: number, now: () => number = Date.now): (pid: number) => Promise<string | null> {
   const cache = new Map<number, { value: string; at: number }>();

@@ -265,7 +265,7 @@ test('integration: observer cursors survive a service restart', { timeout: 20_00
   }
 });
 
-test('TD-0023: stop() abandons a hung pass after the grace period; the abandoned pass then saves and publishes nothing', async () => {
+test('bounded shutdown (6.9): stop() abandons a hung pass after the grace period; the abandoned pass then saves and publishes nothing', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
   const h = harness({ adapters: [adapter(async () => { await gate; return { liveness: 'online', activity: 'busy' }; })], stopGraceMs: 30 });

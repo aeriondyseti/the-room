@@ -1,4 +1,4 @@
-// TUI theming (ROADMAP 5.1): full colour, or monochrome for NO_COLOR / --no-color / TERM=dumb terminals.
+// TUI theming (task 5.1): full colour, or monochrome for NO_COLOR / --no-color / TERM=dumb terminals.
 // Monochrome drops colours only — bold, dim and inverse stay, so the cursor and emphasis still show — and every
 // state that colour alone would carry also has a glyph or a word (delivery marks, liveness dots, "!" on high usage).
 import { createContext, useContext } from 'react';

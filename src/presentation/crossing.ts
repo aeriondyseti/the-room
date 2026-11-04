@@ -1,4 +1,4 @@
-// Model-facing text for the crossing guard, urgent sends and withdraw (M7, docs/CROSSING-GUARD-SPEC.md §7).
+// Model-facing text for the crossing guard, urgent sends and withdraw (M7, git show v0.9.0:docs/CROSSING-GUARD-SPEC.md §7).
 // Pure formatting over the contract shapes; MCP and CLI share it so both surfaces say the same thing.
 import type { GuardedSendOutcome, InboxReviewItem, InboxReviewPage, WithdrawDisposition, WithdrawOutcome } from '../contracts/crossing.js';
 import type { MessageWithDeliveries } from '../contracts/domain.js';

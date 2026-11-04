@@ -1,4 +1,4 @@
-// Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
+// Tunables (AGENTS.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
 
 export interface RoomConfig {
   workspaceReadBytes: number;
@@ -18,7 +18,7 @@ export interface RoomConfig {
   servicePollMs: number;
   /** Bounded SQLite lock-contention wait. */
   sqliteBusyTimeoutMs: number;
-  /** Max envelope characters for `codex queue --message` (Windows command-line budget; proposal "Message envelope"). */
+  /** Max envelope characters for `codex queue --message` (Windows command-line budget; pre-build proposal "Message envelope"). */
   codexMaxEnvelopeChars: number;
   /** Max envelope characters for the Claude messaging pipe. */
   claudeMaxEnvelopeChars: number;
@@ -51,7 +51,7 @@ export interface RoomConfig {
   /**
    * After writing a message to a Claude pipe, how long to watch for the receiver closing the connection before
    * reporting `submitted`. A close inside this window is reported `uncertain` (the protocol has no auth ack, so a
-   * rejected token is indistinguishable from a close after delivery — TD-0007).
+   * rejected token is indistinguishable from a close after delivery — plan/debt/claude-auth-rejection-uncertain.md).
    */
   claudeSubmitSettleMs: number;
   /** Timeout for the process start-time query used to detect pid reuse. */
