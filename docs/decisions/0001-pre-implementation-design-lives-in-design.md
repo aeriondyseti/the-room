@@ -2,7 +2,6 @@
 id: ADR-0001
 status: accepted
 date: 2026-09-28
-decision-makers: [Claude]
 made-in: trunk
 supersedes: []
 superseded-by:
@@ -24,3 +23,7 @@ and pins the load-bearing invariants. This log starts from the first build sprin
 
 For "why is it this way", read DESIGN.md, then the proposal, then the ADRs. If an implementation choice contradicts
 DESIGN.md or the proposal, the ADR records the deviation and DESIGN.md is updated to cite it.
+
+## More Information
+
+Decision-makers, as first recorded: Claude.

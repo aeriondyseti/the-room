@@ -2,7 +2,6 @@
 id: ADR-0014
 status: accepted
 date: 2026-09-28
-decision-makers: [Claude, Astra]
 made-in: M7
 supersedes: []
 superseded-by:
@@ -35,3 +34,5 @@ because they leave main red in between.
 ## More Information
 
 The old log gave this record no status line or author; it is converted as accepted (it shipped in v0.8.0).
+
+Decision-makers, as first recorded: Claude, Astra.

@@ -2,7 +2,6 @@
 id: ADR-0007
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin]
 made-in: "2.2"
 supersedes: []
 superseded-by:

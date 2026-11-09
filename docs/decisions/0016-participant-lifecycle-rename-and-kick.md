@@ -2,7 +2,6 @@
 id: ADR-0016
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, fable, Astra]
 made-in: M8
 supersedes: []
 superseded-by:
@@ -48,3 +47,5 @@ batching of notices. All added machinery for little value while the human sees e
 
 The old log gave this record no status line or author; it is converted as accepted (it shipped in v0.9.0). The
 decision-makers are taken from the old roadmap (fable owned the spec; Astra cross-reviewed).
+
+Decision-makers, as first recorded: Kevin, fable, Astra.

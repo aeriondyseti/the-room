@@ -2,7 +2,6 @@
 id: ADR-0002
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Claude]
 made-in: trunk
 supersedes: []
 superseded-by:
@@ -27,3 +26,7 @@ other. Two agents on one trunk risk conflicting edits and racing merges or tags.
 
 Features can proceed in parallel when their dependencies are met. Doc conflicts are resolved at merge without
 overwriting the other agent's rows. Ownership can change by agreement, noted in the progress dashboard.
+
+## More Information
+
+Decision-makers, as first recorded: Kevin, Claude.

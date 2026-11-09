@@ -2,7 +2,6 @@
 id: ADR-0015
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Astra, Claude]
 made-in: "7.6"
 supersedes: []
 superseded-by:
@@ -46,3 +45,5 @@ in environment variables only was rejected because they aren't editable settings
 
 The old log gave this record no status line or author; it is converted as accepted (it shipped in v0.8.1). The
 progress notes name Astra (core) and Claude (envelope text, `/settings`, docs) as 7.6's owners.
+
+Decision-makers, as first recorded: Kevin, Astra, Claude.

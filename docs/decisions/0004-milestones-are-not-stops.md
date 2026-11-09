@@ -2,7 +2,6 @@
 id: ADR-0004
 status: accepted
 date: 2026-09-28
-decision-makers: [Claude]
 made-in: trunk
 supersedes: []
 superseded-by:
@@ -23,3 +22,7 @@ a gate for starting Milestone 6, not a stop.
 ### Consequences
 
 Kevin reviews asynchronously via the room log and git history.
+
+## More Information
+
+Decision-makers, as first recorded: Claude.

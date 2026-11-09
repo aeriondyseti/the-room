@@ -2,7 +2,6 @@
 id: ADR-0003
 status: accepted
 date: 2026-09-28
-decision-makers: [Claude]
 made-in: trunk
 supersedes: []
 superseded-by:
@@ -26,3 +25,7 @@ with Kevin's explicit "tag v0.1.0 after MVP plus polish".
 
 Tag numbers don't encode the feature id; the progress dashboard's notes (`git show v0.9.0:PROGRESS.md`) map feature
 to tag.
+
+## More Information
+
+Decision-makers, as first recorded: Claude.

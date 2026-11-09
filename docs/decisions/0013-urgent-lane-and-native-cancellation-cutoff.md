@@ -2,7 +2,6 @@
 id: ADR-0013
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Astra]
 made-in: "7.2"
 supersedes: []
 superseded-by:
@@ -31,3 +30,5 @@ immediate model processing or automatic interruption is made.
 
 The old log gave this record no status line, author or sprint; it is converted as accepted (it shipped in v0.8.0
 and invariant 4 cites it). The task is inferred from the old roadmap, whose 7.2 Done-when asked for this ADR.
+
+Decision-makers, as first recorded: Kevin, Astra.

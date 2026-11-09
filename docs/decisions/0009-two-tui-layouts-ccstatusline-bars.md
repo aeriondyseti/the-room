@@ -2,7 +2,6 @@
 id: ADR-0009
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Claude]
 made-in: "6.8"
 supersedes: []
 superseded-by:
@@ -31,3 +30,7 @@ ccstatusline "slider" bars. Astra researched his settings and the renderer, read
 - High usage no longer turns red or yellow; it keeps its group colour plus a bold `!`.
 - The left panel needs `max(tuiPanelBreakpoint, tuiPanelWidth + 51)` columns; the default panel is 34 wide, so a bar
   plus "Fable weekly" fits.
+
+## More Information
+
+Decision-makers, as first recorded: Kevin, Claude.

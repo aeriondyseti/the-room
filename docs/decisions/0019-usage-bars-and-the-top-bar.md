@@ -2,7 +2,6 @@
 id: ADR-0019
 status: proposed
 date: 2026-11-03
-decision-makers: [Kevin, Claude]
 made-in: trunk
 supersedes: [ADR-0009, ADR-0010, ADR-0011, ADR-0012]
 superseded-by:
@@ -60,3 +59,5 @@ src/tui/topbar.test.ts, src/tui/topgrid.test.tsx, src/tui/layout.test.tsx.
 
 Drafted at the docs migration of 2026-11-03 to consolidate the chain. Proposed: ADR-0009 to ADR-0012 stay in force
 until Kevin accepts this record.
+
+Decision-makers, as first recorded: Kevin, Claude.

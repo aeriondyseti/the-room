@@ -2,7 +2,6 @@
 id: ADR-0010
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Claude]
 made-in: "6.10"
 supersedes: []
 superseded-by:
@@ -31,3 +30,7 @@ mockup's state colours for bars, keeping per-agent name colours. The scope is th
 - ccstatusline's bar format is kept, but its palette is not.
 - The left panel is unchanged apart from the bar colours.
 - The message stream and bottom-bar parts of the mockup are deferred.
+
+## More Information
+
+Decision-makers, as first recorded: Kevin, Claude.

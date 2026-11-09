@@ -2,7 +2,6 @@
 id: ADR-0012
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Claude]
 made-in: "6.15"
 supersedes: []
 superseded-by:
@@ -33,3 +32,5 @@ surface.
 
 The old log titled this record "amends ADR-0011's rendering". Records are no longer amended; ADR-0019 (proposed)
 states the bar decisions of ADR-0009 to ADR-0012 as one record.
+
+Decision-makers, as first recorded: Kevin, Claude.

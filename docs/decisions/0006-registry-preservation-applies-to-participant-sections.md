@@ -2,7 +2,6 @@
 id: ADR-0006
 status: accepted
 date: 2026-09-28
-decision-makers: [Astra]
 made-in: "0.2"
 supersedes: []
 superseded-by:
@@ -28,3 +27,7 @@ Machine configuration stays outside the registry. Changed native bindings requir
 simultaneous enrollment cannot silently replace another session. A crashed registry writer leaves a lock requiring
 owner verification before manual removal; it is never stolen on a timeout. Service-owner crash recovery is a
 separate feature (1.2).
+
+## More Information
+
+Decision-makers, as first recorded: Astra.

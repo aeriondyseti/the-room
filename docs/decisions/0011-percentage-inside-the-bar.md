@@ -2,7 +2,6 @@
 id: ADR-0011
 status: accepted
 date: 2026-09-28
-decision-makers: [Kevin, Claude]
 made-in: "6.14"
 supersedes: []
 superseded-by:
@@ -27,3 +26,7 @@ Kevin asked for the percentages inside the progress bars and chose the htop/btop
   narrower panes.
 - Reverse video keeps the fill visible without colour.
 - Supersedes the "bar then number" form from ADR-0009 and ADR-0010; the state colours from ADR-0010 are unchanged.
+
+## More Information
+
+Decision-makers, as first recorded: Kevin, Claude.

@@ -2,7 +2,6 @@
 id: ADR-0008
 status: accepted
 date: 2026-09-28
-decision-makers: [Astra]
 made-in: "1.2"
 supersedes: []
 superseded-by:
@@ -28,3 +27,7 @@ Stale diagnostic files cannot block startup or cause lock stealing. A listener u
 reported, not replaced. Native Windows is the qualified platform; Unix stale socket-path recovery requires separate
 qualification. Registry formatting/comments are normalized by TOML serialization; all other participant values are
 preserved (ADR-0006).
+
+## More Information
+
+Decision-makers, as first recorded: Astra.

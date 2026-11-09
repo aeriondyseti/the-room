@@ -2,7 +2,6 @@
 id: ADR-0020
 status: proposed
 date: 2026-11-03
-decision-makers: [Kevin]
 made-in: trunk
 supersedes: [ADR-0001]
 superseded-by:

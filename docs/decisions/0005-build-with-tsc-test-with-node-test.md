@@ -2,7 +2,6 @@
 id: ADR-0005
 status: accepted
 date: 2026-09-28
-decision-makers: [Claude]
 made-in: trunk
 supersedes: []
 superseded-by:
@@ -27,3 +26,7 @@ toolchain.
 ### Consequences
 
 The service stays built-in-only (`node:sqlite`, `node:net`); the TUI and MCP carry the dependencies.
+
+## More Information
+
+Decision-makers, as first recorded: Claude.
