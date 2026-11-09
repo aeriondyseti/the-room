@@ -9,28 +9,7 @@ TUI in a separate pane. **North star:** the model is never responsible for wakin
 agents at once (Claude sessions such as fable, and Astra on Codex), and other repos run their rooms on it. The full
 picture is in `docs/reference/design.md`.
 
-## Docs
-
-| Doc | Role | Path |
-| --- | --- | --- |
-| README | For people: build, open a room, the TUI, the CLI | `README.md` |
-| Agents | This file: docs, folder tree, commands, rules, git | `AGENTS.md` |
-| Changelog | Every release, Keep a Changelog, newest first | `CHANGELOG.md` |
-| Ideas | New features not committed, one file per idea | `plan/ideas/` |
-| Debt | Problems in what exists, one file per problem | `plan/debt/` |
-| Chores | Kevin's own acts and live checks, one file each | `plan/chores/` |
-| Roadmap | Committed milestones not started, no order | `plan/roadmap/` |
-| Milestones | Started, not released: `milestone.md` plus one file per task | `plan/milestones/` |
-| Decisions in force | The rules in force, plus "Awaiting Kevin" | `docs/decisions/index.md` |
-| Decision history | Superseded, rejected and deprecated records | `docs/decisions/history.md` |
-| Design | Purpose, scope, public API, architecture, what is built | `docs/reference/design.md` |
-| Glossary | The domain terms, and the words not to use | `docs/reference/glossary.md` |
-| Operations | Install, connect agents, run and check a room | `docs/reference/operations.md` |
-| Room skill | How a Claude agent uses the room (copied into other repos) | `.claude/skills/room/SKILL.md` |
-| Docs check | Checks ids, statuses, cited paths, the decision index | `tools/docs-check.ts` |
-| Release | Cuts and tags a version from CHANGELOG | `tools/release.ts` |
-
-## Folder tree
+## Where things are
 
 ```
 src/             the room: contracts/, core/ (service), adapters/, ipc/, cli/, mcp/, tui/, observer/, presentation/
@@ -39,9 +18,26 @@ probes/          standalone identity probes and their README (live checks, not t
 poc/             pair-poc, the interim messaging tool from before the room
 plan/            work that comes and goes; an item leaves when it finishes
 docs/            what is in force or true now: decisions/ and reference/
-tools/           docs-check.ts, release.ts, changelog-links.ts (Bun)
 .claude/skills/  room/: the Claude room skill, part of the product
 ```
+
+| Doc | Role | Path |
+| --- | --- | --- |
+| README | For people: build, open a room, the TUI, the CLI | `README.md` |
+| Agents | This file: folder tree, docs, commands, rules, git | `AGENTS.md` |
+| Changelog | Every release, Keep a Changelog, newest first | `CHANGELOG.md` |
+| Ideas | New features not committed, one file per idea | `plan/ideas/` |
+| Debt | Problems in what exists, one file per problem | `plan/debt/` |
+| Chores | Kevin's own acts and live checks, one file each | `plan/chores/` |
+| Roadmap | Committed milestones not started, no order | `plan/roadmap/` |
+| Milestones | Started, not finished: `milestone.md` plus one file per task | `plan/milestones/` |
+| Decisions in force | The rules in force, plus "Awaiting Kevin" | `docs/decisions/index.md` |
+| Decision history | Superseded, rejected and deprecated records | `docs/decisions/history.md` |
+| Design | Purpose, scope, public API, architecture, what is built | `docs/reference/design.md` |
+| Glossary | The domain terms, and the words not to use | `docs/reference/glossary.md` |
+| Operations | Install, connect agents, run and check a room | `docs/reference/operations.md` |
+| Room skill | How a Claude agent uses the room (copied into other repos) | `.claude/skills/room/SKILL.md` |
+| Owner | Accepts proposed records | Kevin |
 
 ## Commands
 
@@ -51,15 +47,16 @@ The full check (needs no keys, model calls, outside services or live sessions):
 npm ci
 npm run typecheck
 npm test
-bun tools/docs-check.ts
+bun X:\Development\scripts\docs-check.ts
 ```
 
 `npm test` cleans, builds with `tsc` and runs `node --test` on `dist/**/*.test.js`. Run the room with
 `node dist/cli/main.js <command>` (or `room <command>` after `npm link`); `npm run tui` opens this repo's room.
 
-Release: `bun tools/release.ts --version-file package.json --task <id> --agent <harness>/<label>` (options in its
-header; `--dry-run` first). It runs the full check on the trunk, reads the bump from `[Unreleased]`, writes the
-CHANGELOG heading, `package.json` and the link references, commits and tags. It never pushes.
+Release, only on Kevin's word: `bun X:\Development\scripts\release.ts --version-file package.json --agent
+<harness>/<label>` (options in its header; `--dry-run` first). It runs the full check on the trunk, reads the bump
+from `[Unreleased]`, writes the CHANGELOG heading, `package.json` and the link references, commits and tags. It
+never pushes.
 
 Live checks (opt-in, throwaway fixture sessions only, never a working agent's session; each run is an Evidence row in
 its task):
@@ -140,13 +137,15 @@ keep theirs too): never edit, move or commit them by hand; the room's own comman
 - **Blocked on another agent:** say so in the room, then work on another of your ready tasks; never idle-wait.
 - Never edit another agent's worktree, and never delete another agent's records, task files or debt files; on a doc
   conflict, keep both sides.
-- Ambiguity: make the most reasonable call, write it as a `proposed` decision record, and continue.
+- Ambiguity: make the most reasonable call, say so in the task's Notes or the commit message, and continue. If the
+  call looks like a pillar, suggest a decision record to Kevin; write one only on his instruction.
 
 ### Review
 
 The review is lean (ADR-0007): two focused reviewers (correctness and invariants; contracts, Done-when and
-conventions), each capped at about six findings, plus one batched adversarial verifier that scores every finding
-(skipped when there are none): at most three agents. A failed or empty reviewer is not a clean review. A Codex agent
+conventions), each capped at about six findings, plus one batched adversarial verifier that tries to refute
+every finding and returns confirmed, unconfirmed or refuted (skipped when there are none): at most three agents.
+The `task-review` skill has the rest. A failed or empty reviewer is not a clean review. A Codex agent
 runs the same shape with two `codex exec` reviewers and one batched verifier. A cross-review of another agent's work
 uses one reviewer. Reviewers read the invariants above.
 
@@ -161,16 +160,16 @@ Known false positives (reviewers skip them; discard any that slip through):
 
 - Read at session start: this file and `ls plan/milestones/`, then catch up in the room (`room_inbox`). To start a
   task: its `milestone.md`, the task file down to Notes, and `docs/decisions/index.md`. Open everything else by id or
-  path. The global skills are planning, task-loop, task-bootstrap, grooming and review.
+  path. The global skills are planning, task-loop, task-bootstrap, grooming and task-review.
 - One file per discrete thing; finished things leave the tree. No file holds a count or a status another file
   derives.
 - Links point from temporary things to permanent ones: decision records and CHANGELOG never cite plan/.
-- An agent's decision is a new record with `status: proposed`. Records are superseded, never amended.
-- Versions: semver, tagged `vX.Y.Z`; before 1.0.0 every merged task is a release, bumped from its changelog
-  section by `tools/release.ts`. Cut over on 2026-11-03: the old tags (`v0.0.1`–`v0.0.23` per sprint, then
-  `v0.1.0`–`v0.9.0`) stay, and the next release is `v0.10.0` (ADR-0018, proposed, replacing ADR-0003): cut it with
-  `--bump minor`, since `[Unreleased]` alone reads as a patch.
-- Run `bun tools/docs-check.ts` before every commit that touches docs; `--write` regenerates the decision index.
+- Decision records are written on Kevin's instruction; an agent may suggest one. `proposed` means on trial. An
+  accepted record is superseded, never amended.
+- Every change that lands on `main` writes its CHANGELOG lines under `[Unreleased]`; only the release command writes
+  a version heading.
+- Run `bun X:\Development\scripts\docs-check.ts` before every commit that touches docs; `--write` regenerates the
+  decision index.
 
 ## The room (for any Codex agent in a repo using the-room)
 
@@ -226,15 +225,20 @@ only as an argv array.
 - Never work directly on `main`, except for the merge step.
 - Integration: local `git merge --no-ff`; never squash, never rebase a shared branch. **Only one merge into `main`
   may be in flight at a time:** announce "MERGE-REQUEST <id>" in the room and wait until no other merge is in
-  flight, merge, run `npm test` on `main` after the merge and before tagging, then announce
-  "MERGE-DONE <id> <version> <sha>".
+  flight, merge, run `npm test` on `main` after the merge, then announce "MERGE-DONE <id> <sha>". The merge
+  commit's body carries the review.
 - Commits: a Conventional Commits subject (`feat:`, `fix:`, `docs:`, `chore:` …) and these trailers, plus your
-  harness's co-author line; the merge subject carries the task id and version. Older commits are not rewritten.
+  harness's co-author line; the merge subject carries the task id. Older commits are not rewritten.
 
   ```
   Task: <NNN.NN>
   Agent: <harness>/<label>
   ```
 - Standing permission recorded in the old CLAUDE.md (2026-09-28): push `main` only after a merge and its tests, and
-  push tags with their releases; never push task branches by default. Otherwise never push, tag a release by hand or
-  delete a branch without Kevin's word.
+  push tags with their releases; never push task branches by default. Otherwise never push, release, tag or delete a
+  branch without Kevin's word.
+- Versions: semver, tagged `vX.Y.Z`. 0.x: still being built, by its tags (latest `v0.9.0`), although other repos
+  already run their rooms on it; moving to 1.0.0 is Kevin's call, recorded as a decision. A release, its version and
+  its tag are cut only on Kevin's word, by the release command. Cut over on 2026-11-03: the old tags
+  (`v0.0.1`–`v0.0.23` per sprint, then `v0.1.0`–`v0.9.0`) stay, and the next release is `v0.10.0` (ADR-0018,
+  proposed, replacing ADR-0003): cut it with `--bump minor`, since `[Unreleased]` alone reads as a patch.
