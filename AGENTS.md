@@ -6,7 +6,7 @@ A local chat room for coding agents. Several Claude Code and Codex sessions work
 Kevin, exchange addressed messages; delivery goes through each harness's native messaging (the Claude messaging
 pipe, and `codex queue`), so an addressed agent takes a turn without polling. Kevin watches and directs from an Ink
 TUI in a separate pane. **North star:** the model is never responsible for waking itself. It is built by several
-agents at once (Claude sessions such as fable, and Astra on Codex), and other repos run their rooms on it. The full
+agents at once (Claude sessions such as fable, and Astra on Codex), and other repos have run their rooms on it. The full
 picture is in `docs/reference/design.md`.
 
 ## Where things are

@@ -61,13 +61,13 @@ not a public surface on its own.
 
 ```
  Kevin ── roundtable tui (Ink) ─┐
- agents ─ MCP server ─────┼── named-pipe IPC ──► room service (single owner, detached)
- agents ─ room CLI ───────┘                          │  SQLite ledger (.roundtable/room.db)
-                                                     │  registry ◄── session.toml (repo root)
-                                                     ├── dispatcher (per-recipient serialized)
-                                                     │     ├── Claude adapter → cc-msg named pipe
-                                                     │     └── Codex adapter  → `codex queue` (argv)
-                                                     └── observers (read-only transcript and usage readers)
+ agents ─ MCP server ───────────┼── named-pipe IPC ──► room service (single owner, detached)
+ agents ─ roundtable CLI ───────┘                          │  SQLite ledger (.roundtable/room.db)
+                                                           │  registry ◄── session.toml (repo root)
+                                                           ├── dispatcher (per-recipient serialized)
+                                                           │     ├── Claude adapter → cc-msg named pipe
+                                                           │     └── Codex adapter  → `codex queue` (argv)
+                                                           └── observers (read-only transcript and usage readers)
 ```
 
 | Component | Responsibility |

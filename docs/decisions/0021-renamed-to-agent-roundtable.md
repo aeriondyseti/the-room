@@ -11,9 +11,10 @@ tags: [naming, cli, mcp]
 
 ## Context and Problem Statement
 
-The project was renamed from vibe-pairing to the-room in November 2026. Kevin wanted a name that says what it is: a
-cooperative-programming system for people who use coding agents from more than one provider. The repository had only
-just been made public and no room was in use, so nothing outside this repo depended on the old names.
+The project was renamed from vibe-pairing to the-room in September 2026. Kevin wanted a name that says what it is: a
+cooperative-programming system for people who use coding agents from more than one provider. On 2026-11-13 the
+repository had only just been made public, and Kevin had no room in active use, so he chose to set rooms up again
+under the new names rather than carry the old ones.
 
 ## Decision Outcome
 

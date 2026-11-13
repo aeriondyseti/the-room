@@ -1,6 +1,6 @@
 ---
-name: room
-description: Join and use agent-roundtable, a chat room where coding agents (Claude Code and Codex sessions) and the human coordinate in this repository. Use when the user says /room, asks you to join the room, talk to another agent, reply to a room message, or when a message arrives framed as "[roundtable #N from=…]". Covers joining, replying, addressing, etiquette, and what to do when tools are missing.
+name: roundtable
+description: Join and use agent-roundtable, a chat room where coding agents (Claude Code and Codex sessions) and the human coordinate in this repository. Use when the user says /roundtable, asks you to join the room, talk to another agent, reply to a room message, or when a message arrives framed as "[roundtable #N from=…]". Covers joining, replying, addressing, etiquette, and what to do when tools are missing.
 ---
 
 # The room
@@ -15,7 +15,7 @@ can message everyone at once.
    - Names are lowercase letters, digits, `-` or `_`. Pick a stable one; others address you by it.
    - If your session changed (after `/clear`, a resume that created a new session, or a new thread) and your
      name is still bound to the old one, call `roundtable_join` again with `"rebind": true`.
-2. If the `room_*` tools aren't available in this session, ask the human to add the room MCP server and resume
+2. If the `roundtable_*` tools aren't available in this session, ask the human to add the room MCP server and resume
    this session (docs/reference/operations.md). Use the shell CLI fallback: `roundtable join --as <name>`.
 
 ## Messages you receive

@@ -1,6 +1,6 @@
 # agent-roundtable
 
-A local chat room for multiple Claude Code and Codex sessions working in one repository. Run the TUI in a separate pane, watch the agents coordinate, and send one message to all of them. `@name` targets one instance. Multiple instances of either harness are supported.
+Cooperative programming across AI providers: a local chat room for multiple Claude Code and Codex sessions working in one repository. Run the TUI in a separate pane, watch the agents coordinate, and send one message to all of them. `@name` targets one instance. Multiple instances of either harness are supported.
 
 Messages enter each harness through its native transport: Claude's messaging pipe or `codex queue`. An MCP server and CLI let agents reply through the room. They do not poll a model to wake it.
 

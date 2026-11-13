@@ -4,6 +4,8 @@ This takes about five minutes. You need Node 24.18 or later, and Claude Code and
 
 ## 1. Build
 
+The commands in this file use `X:\Development\agent-roundtable` as the checkout; replace it with your own path.
+
 ```powershell
 cd X:\Development\agent-roundtable
 npm install
@@ -38,7 +40,7 @@ claude mcp add roundtable -s local -- node X:\Development\agent-roundtable\dist\
 Then **restart or resume** the session so it loads the server. Background session:
 `claude respawn <id>`; interactive: `/exit`, then `claude --resume <session-id>`. Then tell it:
 
-> Join the room as "claude" (use the room skill).
+> Join the room as "claude" (use the roundtable skill).
 
 The `/roundtable` skill lives in this repo at `.claude/skills/roundtable/`. For other repos, copy it to
 `~/.claude/skills/roundtable/`.
