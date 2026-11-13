@@ -18,7 +18,7 @@ npm run build
 node dist/cli/main.js --help
 ```
 
-No global install is required. Clone [aeriondyseti/agent-roundtable](https://github.com/aeriondyseti/agent-roundtable), then build it. The examples below use `X:\Development\the-room` as the build location; replace it with your own checkout path. `npm link` is optional if you want the short `room` command used throughout the detailed documentation.
+No global install is required. Clone [aeriondyseti/agent-roundtable](https://github.com/aeriondyseti/agent-roundtable), then build it. The examples below use `X:\Development\agent-roundtable` as the build location; replace it with your own checkout path. `npm link` is optional if you want the short `roundtable` command used throughout the detailed documentation.
 
 ## Open your room
 
@@ -26,20 +26,20 @@ Open a separate terminal pane in the repository where your agents are working:
 
 ```powershell
 cd X:\Your\Project
-node X:\Development\the-room\dist\cli\main.js tui
+node X:\Development\agent-roundtable\dist\cli\main.js tui
 ```
 
 The first client starts the local service automatically. Each Git repository has one room, shared by its linked worktrees. To preview the interface without a service, run the same command with `tui --demo`. Add `--no-color` (or set `NO_COLOR=1`) for monochrome output.
 
-When the agents are working in this repository itself, `npm run tui` is a shortcut from the checkout (and `npm run tui:demo` for the sample room). npm runs it from the package root, so it opens *this* repository's room by default (`ROOM_ROOT` can override that explicitly). Pass flags after `--`, e.g. `npm run tui -- --no-color`.
+When the agents are working in this repository itself, `npm run tui` is a shortcut from the checkout (and `npm run tui:demo` for the sample room). npm runs it from the package root, so it opens *this* repository's room by default (`ROUNDTABLE_ROOT` can override that explicitly). Pass flags after `--`, e.g. `npm run tui -- --no-color`.
 
 Register the room MCP server in each harness, then resume the existing session to load it. The exact commands and permission setup are in [onboarding](docs/ONBOARDING.md). Tell each agent:
 
 > Join this repository's room as "astra". Use a unique name for this session, reply through the room tools, and address replies to their sender.
 
-Use different names for additional instances, such as `claude-ui`, `claude-tests`, or `codex-core`. The agent calls `room_join`; its native session identity is detected. Existing sessions can also use the CLI without restarting: `room join --as <name>`.
+Use different names for additional instances, such as `claude-ui`, `claude-tests`, or `codex-core`. The agent calls `roundtable_join`; its native session identity is detected. Existing sessions can also use the CLI without restarting: `roundtable join --as <name>`.
 
-For unattended operation, approve the room tools through the harness's permission controls. **An approval policy of `never` does not itself grant permission to `room_send`.** A fixture was observed to wake successfully but fail to reply because the tool required approval. A refused tool call must remain visible as a qualification failure.
+For unattended operation, approve the room tools through the harness's permission controls. **An approval policy of `never` does not itself grant permission to `roundtable_send`.** A fixture was observed to wake successfully but fail to reply because the tool required approval. A refused tool call must remain visible as a qualification failure.
 
 ## Use the TUI
 
@@ -48,7 +48,7 @@ For unattended operation, approve the room tools through the harness's permissio
 | Ordinary text | Broadcast to all registered agents |
 | `@claude-ui text` | Deliver only to that named instance |
 | Tab | Complete a participant name |
-| Ctrl+Enter in Windows Terminal, Alt+Enter elsewhere, or a trailing backslash | Add a line to the message; the composer grows (up to `ROOM_TUI_COMPOSER_MAX_ROWS`, 12) and then scrolls |
+| Ctrl+Enter in Windows Terminal, Alt+Enter elsewhere, or a trailing backslash | Add a line to the message; the composer grows (up to `ROUNDTABLE_TUI_COMPOSER_MAX_ROWS`, 12) and then scrolls |
 | Ctrl+Backspace, Ctrl+W | Delete the previous word |
 | Ctrl+← / Ctrl+→ | Move by word |
 | `/who` | Show participants, observed status and usage freshness |
@@ -80,7 +80,7 @@ The top bar has two labelled sections: **AGENTS**, one aligned row per agent (st
      [ccstatusline](https://github.com/sirmalloc/ccstatusline), it already fetches plan usage (5h, weekly and
      model-specific limits such as Fable) and caches the numbers in `~/.cache/ccstatusline/usage.json`. The room just
      reads that file. When no Claude session is rendering a statusline, the file ages and is shown `(stale)`.
-  2. **Usage endpoint (opt-in):** set `ROOM_CLAUDE_USAGE_API=on`.
+  2. **Usage endpoint (opt-in):** set `ROUNDTABLE_CLAUDE_USAGE_API=on`.
      - The room service reads your Claude Code login token from `<claude config>/.credentials.json` per request,
        holds it only in memory, sends it only to `api.anthropic.com/api/oauth/usage`, and never stores, logs or
        refreshes it.
@@ -89,27 +89,27 @@ The top bar has two labelled sections: **AGENTS**, one aligned row per agent (st
        it backs off for Retry-After (else 5 minutes).
      - It's an undocumented endpoint, so it may change.
   3. **Statusline tap (no credentials):** wrap any statusline command, e.g.
-     `"command": "node <the-room-checkout>/dist/cli/main.js statusline-tap -- npx ccstatusline"`. It stores only each
+     `"command": "node <agent-roundtable-checkout>/dist/cli/main.js statusline-tap -- npx ccstatusline"`. It stores only each
      limit's percentage and reset time, and has no model-specific limits.
 
 ## CLI and diagnostics
 
-Use `node <build-location>\dist\cli\main.js` wherever these examples say `room`:
+Use `node <build-location>\dist\cli\main.js` wherever these examples say `roundtable`:
 
 ```powershell
-room who                          # also auto-starts the room service
-room doctor                       # read-only setup check; explains failures
-room send --to claude-ui --file message.txt
-room reply <message-id> --file reply.txt
-room read --after 0 --limit 20
-room read <message-id> --json
+roundtable who                          # also auto-starts the room service
+roundtable doctor                       # read-only setup check; explains failures
+roundtable send --to claude-ui --file message.txt
+roundtable reply <message-id> --file reply.txt
+roundtable read --after 0 --limit 20
+roundtable read <message-id> --json
 ```
 
 Agents must choose a recipient for new messages. Replies default to the original sender; an explicit `--to` overrides that. Files or `--stdin` avoid shell quoting problems. `--json` returns the complete structured result. Every send prints a `client_message_id` before dispatch: reuse that key with the same message when recovering from a lost response.
 
-`submitted` means the native transport accepted a message. `replied` means a matching room reply was recorded. `uncertain` means it might already have been delivered; inspect the evidence and reconcile before asking for a retry. The human can use `room retry <message-id> <recipient> --confirm-uncertain` when appropriate. There is no automatic retry of ambiguous submissions.
+`submitted` means the native transport accepted a message. `replied` means a matching room reply was recorded. `uncertain` means it might already have been delivered; inspect the evidence and reconcile before asking for a retry. The human can use `roundtable retry <message-id> <recipient> --confirm-uncertain` when appropriate. There is no automatic retry of ambiguous submissions.
 
-If a session changes identity after a new conversation or fork, rejoin with `room join --as <name> --rebind`. This affects future messages only. Old deliveries keep their original target and are never silently redirected.
+If a session changes identity after a new conversation or fork, rejoin with `roundtable join --as <name> --rebind`. This affects future messages only. Old deliveries keep their original target and are never silently redirected.
 
 ## Storage and configuration
 
@@ -121,23 +121,23 @@ harness = "codex"
 session_id = "<native-thread-uuid>"
 ```
 
-The CLI derives process, pipe and executable details. `.room/` holds the SQLite ledger, runtime snapshots and service diagnostics. Both paths are ignored by Git in this repository. When using the tool in another repository, add them to that repository's ignore rules as well. Treat the directory as local conversation history.
+The CLI derives process, pipe and executable details. `.roundtable/` holds the SQLite ledger, runtime snapshots and service diagnostics. Both paths are ignored by Git in this repository. When using the tool in another repository, add them to that repository's ignore rules as well. Treat the directory as local conversation history.
 
 | Environment variable | Purpose |
 | --- | --- |
-| `ROOM_HUMAN_NAME` | Human display name in the TUI (default: Kevin) |
-| `ROOM_ROOT` | Explicit shared room root, useful for nonstandard checkouts |
-| `ROOM_CODEX_EXECUTABLE` | Native Codex executable when PATH lookup is unsuitable; no shell wrapper |
-| `ROOM_CODEX_HOME` | Non-default Codex home used by the service |
-| `ROOM_CLAUDE_CONFIG_DIR` | Non-default Claude configuration directory |
-| `ROOM_TUI_LAYOUT` | Starting layout, `top` (default) or `left`; a choice made with `/layout` (saved in `.room/tui.json`) or `room tui --layout` wins |
+| `ROUNDTABLE_HUMAN_NAME` | Human display name in the TUI (default: Kevin) |
+| `ROUNDTABLE_ROOT` | Explicit shared room root, useful for nonstandard checkouts |
+| `ROUNDTABLE_CODEX_EXECUTABLE` | Native Codex executable when PATH lookup is unsuitable; no shell wrapper |
+| `ROUNDTABLE_CODEX_HOME` | Non-default Codex home used by the service |
+| `ROUNDTABLE_CLAUDE_CONFIG_DIR` | Non-default Claude configuration directory |
+| `ROUNDTABLE_TUI_LAYOUT` | Starting layout, `top` (default) or `left`; a choice made with `/layout` (saved in `.roundtable/tui.json`) or `roundtable tui --layout` wins |
 
 Human-only controls are a **trusted-local workflow guardrail**, not authentication against hostile
 processes running as your OS user. The CLI detects agent session environment/ancestry, MCP clients
 cannot invoke human controls, and the TUI represents you. Custom same-user IPC clients can spoof those
 claims; this design does not provide user isolation or protect the service from that OS user's tools.
 
-`ROOM_TUI_*` controls layout, history and reconnect behavior. Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. After updating code, relaunch the TUI to load its changes, then use `/restart` to reload the service. From a human terminal, `room shutdown` stops that room's service; a later client starts it again. `room migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
+`ROUNDTABLE_TUI_*` controls layout, history and reconnect behavior. Other tunables are documented in [configuration source](src/core/config.ts). Service settings take effect when the service starts. After updating code, relaunch the TUI to load its changes, then use `/restart` to reload the service. From a human terminal, `roundtable shutdown` stops that room's service; a later client starts it again. `roundtable migrate` backs up and converts the project's known legacy registry format without changing its two session identities.
 
 ## Development
 

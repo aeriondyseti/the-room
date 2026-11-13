@@ -4,22 +4,22 @@ import type { ErrorInfo } from './domain.js';
 
 export const ERROR_HINTS = {
   bad_request: 'Check the request parameters against the tool or command help.',
-  unknown_recipient: 'Run `room who` (or room_who) to list participant names.',
+  unknown_recipient: 'Run `roundtable who` (or roundtable_who) to list participant names.',
   no_recipients: 'Address at least one participant, e.g. to="astra", or use "all".',
-  identity_unresolved: 'Register this session with `room join --as <name>` (or room_join), or pass --as <name>.',
-  identity_mismatch: "The detected session doesn't match that name. Re-run `room join --as <name>` from the right session.",
-  not_registered: 'Register first with `room join --as <name>` (or room_join).',
+  identity_unresolved: 'Register this session with `roundtable join --as <name>` (or roundtable_join), or pass --as <name>.',
+  identity_mismatch: "The detected session doesn't match that name. Re-run `roundtable join --as <name>` from the right session.",
+  not_registered: 'Register first with `roundtable join --as <name>` (or roundtable_join).',
   duplicate_name: 'That name is taken by another session; choose a different name.',
   duplicate_binding: 'This session is already registered under another name; use that name.',
   rebind_conflict:
-    'That name is bound to a different session. To move it to this session, repeat the join passing the current binding (shown by `room who`) as expectedPrevious.',
+    'That name is bound to a different session. To move it to this session, repeat the join passing the current binding (shown by `roundtable who`) as expectedPrevious.',
   dedup_conflict: 'That client_message_id was already used with a different message; use a new id.',
   message_too_large: 'Shorten the message, or split it into parts that each make sense on their own.',
-  not_found: 'Check the id; `room read` lists recent message ids.',
-  invalid_state: 'The requested action does not apply in the current state; refresh with `room who`.',
-  service_unavailable: 'Start the room service with any `room` command, or run `room doctor`.',
+  not_found: 'Check the id; `roundtable read` lists recent message ids.',
+  invalid_state: 'The requested action does not apply in the current state; refresh with `roundtable who`.',
+  service_unavailable: 'Start the room service with any `roundtable` command, or run `roundtable doctor`.',
   unsupported_version: 'Upgrade the older of client and service so their protocol versions match.',
-  internal: 'Unexpected error; see the service log under .room/ and run `room doctor`.',
+  internal: 'Unexpected error; see the service log under .roundtable/ and run `roundtable doctor`.',
 } as const satisfies Record<string, string>;
 
 export type ErrorCode = keyof typeof ERROR_HINTS;

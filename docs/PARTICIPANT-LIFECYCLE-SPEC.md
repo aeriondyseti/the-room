@@ -11,7 +11,7 @@ implementation details marked *(Astra)* below). Sources:
 
 Draft 2 removes, relative to draft 1: proposal events and a TUI banner, the separate consent tool, explicit "no"
 votes, the veto window and `/approve`/`/veto`, and the human-only remove command. What remains is three tools
-(`room_rename`, `room_kick`, and the human's `room rename OLD NEW`), with room messages as the only UI.
+(`roundtable_rename`, `roundtable_kick`, and the human's `roundtable rename OLD NEW`), with room messages as the only UI.
 
 ## 1. Principles
 
@@ -36,8 +36,8 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
 
 ## 3. 8.2 Rename without restart
 
-- **Surfaces:** `room_rename { new_name }` (MCP) and `room rename NEW` (CLI): the caller renames its own binding.
-  The human: `room rename OLD NEW` (CLI) and `/rename old new` (TUI).
+- **Surfaces:** `roundtable_rename { new_name }` (MCP) and `roundtable rename NEW` (CLI): the caller renames its own binding.
+  The human: `roundtable rename OLD NEW` (CLI) and `/rename old new` (TUI).
 - **Rules:** valid, unreserved (`human`, `all`, `system`) and untaken name; binding unchanged; agents rename only
   themselves.
 - **Registry:** `renameParticipant(old, new)` moves the section under the registry lock, atomic replace, other
@@ -66,9 +66,9 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
 
 ## 4. 8.3 Kick by unanimous consent
 
-- **One tool, one verb.** `room_kick { name, reason }` means "I vote to remove `name`". The first call opens a
+- **One tool, one verb.** `roundtable_kick { name, reason }` means "I vote to remove `name`". The first call opens a
   persisted proposal (id, target, reason, opened-at, expiry `kickProposalTtlMs` default 10 min) and posts a system
-  message: "astra proposes removing astra2: <reason>. Every other online agent must call room_kick to agree; expires
+  message: "astra proposes removing astra2: <reason>. Every other online agent must call roundtable_kick to agree; expires
   in 10 min." Later calls for the same target while it is open are votes. Votes count once per binding, only from
   agents that are registered and online when the proposal opens (Kevin's rule); the target and the human's presence
   do not change the set.
@@ -78,7 +78,7 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
   **excluded as unqualified, not presumed offline** (Codex reports unknown for a usable thread owned by another
   daemon). The opening system message lists the frozen voter list and every exclusion with its reason. No new
   probing protocol in M8.
-- **The human's vote is decisive on its own** (`/kick name reason` in the TUI, `room kick` as the human in the CLI):
+- **The human's vote is decisive on its own** (`/kick name reason` in the TUI, `roundtable kick` as the human in the CLI):
   the same path, executed at once, audited as human. This replaces a separate remove command.
 - **No explicit "no".** An agent that disagrees says so in the room and simply doesn't vote; the proposal expires and
   a system message says so. (Product call: the human is present, kicks are rare, and a rejection path is extra
@@ -88,7 +88,7 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
   Execution: the registry section is removed; queued deliveries to the target are cancelled with a `kicked` tombstone
   (the withdrawn state, cause recorded), never redirected; `participant.removed`; the proposal closes as executed; a
   system message names the target, the voters and the reason. The session is untouched; its later room calls fail
-  `not_registered`; it may rejoin with a fresh `room_join`, which everyone sees.
+  `not_registered`; it may rejoin with a fresh `roundtable_join`, which everyone sees.
 - **No new events.** Proposals and results are room messages; the TUI needs nothing beyond rendering system messages,
   which it already does.
 
@@ -104,18 +104,18 @@ votes, the veto window and `/approve`/`/veto`, and the human-only remove command
 - **Astra:** core: `renameParticipant`, the ledger relabel and startup reconcile, the kick proposal record and
   execution, vote verification by binding, the system-message posting, and the additive `src/contracts` changes
   (heads-up first).
-- **fable:** 8.1, the surfaces (MCP `room_rename`/`room_kick`, CLI, TUI commands and flags), this spec,
+- **fable:** 8.1, the surfaces (MCP `roundtable_rename`/`roundtable_kick`, CLI, TUI commands and flags), this spec,
   ROADMAP/PROGRESS, ADRs, cross-review.
 - Contracts first; surfaces against fakes in parallel; one green release.
 
 ## 7. Acceptance (draft)
 
 - **Ghosts:** rename a section by hand, restart the TUI, read the inbox: the old name never reappears.
-- **Rename:** with two queued deliveries to the old name, `room_rename` succeeds; `who` shows only the new name; both
+- **Rename:** with two queued deliveries to the old name, `roundtable_rename` succeeds; `who` shows only the new name; both
   deliveries arrive under the new name exactly once with the same target; the old name is refused with the hint;
   every *other* agent received the system message (the renamer learns from its tool result; on a human-initiated
   rename the renamed agent receives it too); the next guarded send works with the existing token.
-- **Kick:** three agents online: two `room_kick` calls from the non-targets execute the removal; one call alone
+- **Kick:** three agents online: two `roundtable_kick` calls from the non-targets execute the removal; one call alone
   expires with a message; an offline agent neither blocks nor counts; the human's single call executes at once; the
   target's queued deliveries show `kicked`, `who` omits it, its next call fails `not_registered`, and it may rejoin.
 - **No regressions:** invariants 1–9 hold; no rename or kick changes a delivery's target or resends anything.

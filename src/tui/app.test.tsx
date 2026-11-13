@@ -28,7 +28,7 @@ test('renders the conversation, participants and connection from the room snapsh
   const ui = render(<App source={src} humanName="Kevin" width={100} height={20} />);
   await tick();
   const frame = plain(ui.lastFrame());
-  assert.match(frame, /the-room/);
+  assert.match(frame, /agent-roundtable/);
   assert.match(frame, /● connected/);
   assert.match(frame, /● astra +idle/, 'participants in the top bar (6.10: aligned AGENTS rows)');
   assert.match(frame, /● claude +busy/);

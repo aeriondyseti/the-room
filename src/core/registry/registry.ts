@@ -44,14 +44,14 @@ async function locked<T>(root: string, options: RegistryOptions, operation: () =
   const timeout = options.lockTimeoutMs ?? config.registryLockTimeoutMs;
   const poll = options.lockPollMs ?? config.registryLockPollMs;
   if (!Number.isFinite(timeout) || timeout < 0 || !Number.isFinite(poll) || poll <= 0) throw new RoomError('bad_request', 'Invalid registry lock timing configuration.');
-  const dir = path.join(root, '.room'); await mkdir(dir, { recursive: true });
+  const dir = path.join(root, '.roundtable'); await mkdir(dir, { recursive: true });
   const lock = path.join(dir, 'registry.lock'); const start = Date.now();
   let handle;
   for (;;) {
     try { handle = await open(lock, 'wx'); break; }
     catch (e) {
       if (code(e) !== 'EEXIST') throw e;
-      if (Date.now() - start >= timeout) throw new RoomError('invalid_state', 'Registry is locked; retry, or verify the lock owner has exited before removing .room/registry.lock.');
+      if (Date.now() - start >= timeout) throw new RoomError('invalid_state', 'Registry is locked; retry, or verify the lock owner has exited before removing .roundtable/registry.lock.');
       await new Promise(resolve => setTimeout(resolve, poll));
     }
   }
@@ -64,7 +64,7 @@ async function locked<T>(root: string, options: RegistryOptions, operation: () =
     else throw new RoomError('invalid_state', 'Registry lock ownership changed; inspect the lock before retrying.');
   } catch (error) { cleanupError ??= error; }
   if (operationError !== undefined) throw operationError;
-  if (cleanupError !== undefined) throw new RoomError('invalid_state', 'Registry operation completed but lock cleanup failed; reread registry and inspect .room/registry.lock before retrying.');
+  if (cleanupError !== undefined) throw new RoomError('invalid_state', 'Registry operation completed but lock cleanup failed; reread registry and inspect .roundtable/registry.lock before retrying.');
   return result as T;
 }
 async function writeRegistry(root: string, registry: Registry): Promise<void> {
@@ -100,8 +100,8 @@ export async function renameParticipant(root: string, oldName: string, newName: 
   return locked(root, options, async () => {
     const registry = await readRegistry(root);
     const current = registry[oldName];
-    if (!current) throw new RoomError('not_registered', 'The old participant name is no longer registered; refresh room who.');
-    if (!equal(current, normalized)) throw new RoomError('rebind_conflict', 'The participant binding changed; refresh room who before renaming.');
+    if (!current) throw new RoomError('not_registered', 'The old participant name is no longer registered; refresh roundtable who.');
+    if (!equal(current, normalized)) throw new RoomError('rebind_conflict', 'The participant binding changed; refresh roundtable who before renaming.');
     if (oldName === newName) return registry;
     if (Object.hasOwn(registry, newName)) throw new RoomError('duplicate_name', 'The new participant name is already taken.');
     delete registry[oldName];
@@ -117,7 +117,7 @@ export async function removeRegistryParticipant(root: string, name: string, expe
   return locked(root, options, async () => {
     const registry = await readRegistry(root);
     const current = registry[name];
-    if (!current) throw new RoomError('not_registered', 'The target participant is no longer registered; refresh room who.');
+    if (!current) throw new RoomError('not_registered', 'The target participant is no longer registered; refresh roundtable who.');
     if (!equal(current, normalized)) throw new RoomError('rebind_conflict', 'The target binding changed; the kick must be proposed again.');
     delete registry[name];
     await writeRegistry(root, registry);
@@ -137,7 +137,7 @@ export async function migrateLegacyRegistry(root: string, options: RegistryOptio
       claude: { harness: 'claude', session_id: doc.session.session_id },
       astra: { harness: 'codex', session_id: doc.codex.thread_id },
     } }));
-    await copyFile(file, path.join(root, '.room', `registry-backup-${randomUUID()}.toml`), constants.COPYFILE_EXCL);
+    await copyFile(file, path.join(root, '.roundtable', `registry-backup-${randomUUID()}.toml`), constants.COPYFILE_EXCL);
     await writeRegistry(root, registry); return registry;
   });
 }

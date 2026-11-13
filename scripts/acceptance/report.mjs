@@ -14,7 +14,7 @@ export function report(r) {
   out.push(`- Started ${c.startedAt} · finished ${c.finishedAt ?? '(incomplete)'}`);
   out.push(`- **Throwaway fixture sessions only** (\`claude --bg --model haiku\`${c.codex ? ' and Codex fixture threads' : ''}), in a scratch room (${c.root}); not Kevin's TUI panes and not our work sessions.`);
   out.push(`- Fixtures: ${r.fixtures.map((f) => `${f.name} (${f.harness}, ${f.sessionId.slice(0, 8)})`).join(', ') || 'none'}`);
-  out.push(`- Latencies are measured from the room message's \`createdAt\`: **enqueue** = native submit finished (Claude pipe write / \`codex queue\`), **turn start** = first assistant record after the message entered the transcript, **reply** = the fixture's \`room_send\` reply (\`reply_to\` = the message) was created. Stats are p50 / p90 / max.`, '');
+  out.push(`- Latencies are measured from the room message's \`createdAt\`: **enqueue** = native submit finished (Claude pipe write / \`codex queue\`), **turn start** = first assistant record after the message entered the transcript, **reply** = the fixture's \`roundtable_send\` reply (\`reply_to\` = the message) was created. Stats are p50 / p90 / max.`, '');
 
   if (r.trials.length) {
     out.push('## Idle-wake trials', '', '| Harness | Trials | OK | Timeouts / failures | Enqueue (submit done) | Received (transcript) | Turn start | Reply |', '|---|---|---|---|---|---|---|---|');

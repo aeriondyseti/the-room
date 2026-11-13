@@ -3,8 +3,8 @@
 import type { KickOutcome, KickProposal, RenameOutcome } from '../contracts/lifecycle.js';
 
 export type Surface = 'mcp' | 'cli';
-const KICK = { mcp: 'room_kick', cli: 'room kick' } as const;
-const JOIN = { mcp: 'room_join', cli: 'room join --as NAME' } as const;
+const KICK = { mcp: 'roundtable_kick', cli: 'room kick' } as const;
+const JOIN = { mcp: 'roundtable_join', cli: 'roundtable join --as NAME' } as const;
 
 /** The service short-circuits a rename to the same name: nothing was applied, and the text must say so. */
 export function renameNoop(outcome: RenameOutcome): boolean {
@@ -68,7 +68,7 @@ export function kickText(outcome: KickOutcome, surface: Surface = 'mcp'): string
         ? 'No queued deliveries had to be cancelled.'
         : `${outcome.cancelled} queued deliver${outcome.cancelled === 1 ? 'y' : 'ies'} to it cancelled, shown as withdrawn (kicked); nothing redirected.`,
     );
-    lines.push(`Its session was not touched; it can rejoin with ${JOIN[surface]}, and its return appears in room who and the TUI.${outcome.noticeId === null ? ' No room notice was posted.' : ' A room notice was posted.'}`);
+    lines.push(`Its session was not touched; it can rejoin with ${JOIN[surface]}, and its return appears in roundtable who and the TUI.${outcome.noticeId === null ? ' No room notice was posted.' : ' A room notice was posted.'}`);
     return lines.join('\n');
   }
   const p = outcome.proposal;

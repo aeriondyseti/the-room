@@ -138,7 +138,7 @@ test('app: the full grid by default; /compact and Ctrl+T switch density and it i
   frame = plain(ui.lastFrame());
   assert.match(frame, /BUDGETS/);
   assert.deepEqual(saved, ['compact', 'full']);
-  const path = join(dir, '.room', 'tui.json');
+  const path = join(dir, '.roundtable', 'tui.json');
   assert.equal(await saveTopBar(path, 'compact'), true);
   assert.equal(await readSavedTopBar(path), 'compact');
 });

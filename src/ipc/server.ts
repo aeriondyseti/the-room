@@ -16,8 +16,8 @@ import { endpointFor } from './endpoint.js';
 
 export interface RunningServer { service:RoomService; pid:number; close():Promise<void> }
 export async function startServer(root:string, options:{beforeReady?:()=>Promise<void>;/** Runs once the service has closed (ledger closed, lock and endpoint released), with the lock-cleanup error if any. */onClosed?:(cleanupError?:unknown)=>void;adapters?:DeliveryAdapter[];monitor?:{observer:MonitorDeps['observer'];intervalMs:number;workspace?:MonitorDeps['workspace'];stopGraceMs?:number};activity?:{reader:ActivityReader;intervalMs:number};accounts?:{providers:AccountUsageProvider[];intervalMs:number;staleAfterMs:number;stopGraceMs?:number}} = {}):Promise<RunningServer> {
-  await mkdir(path.join(root,'.room'),{recursive:true});
-  const endpoint=endpointFor(root);const nonce=randomUUID();const lock=path.join(root,'.room','service.lock');
+  await mkdir(path.join(root,'.roundtable'),{recursive:true});
+  const endpoint=endpointFor(root);const nonce=randomUUID();const lock=path.join(root,'.roundtable','service.lock');
   const sockets=new Set<Socket>();const active=new Set<Promise<unknown>>();const subscribed=new Set<Socket>();const replaying=new Map<Socket,RoomEvent[]>();let service:RoomService;let closing:Promise<void>|null=null;let stopping=false;let startupError:unknown;let signalReady!:()=>void;const ready=new Promise<void>(resolve=>{signalReady=resolve;});
   const send=(socket:Socket,frame:Frame)=>{
     if(socket.destroyed)return;

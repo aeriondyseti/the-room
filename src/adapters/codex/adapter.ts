@@ -56,7 +56,7 @@ export class CodexAdapter implements DeliveryAdapter {
  }
  async submit(request:SubmitRequest):Promise<SubmitResult>{
   if(request.target.harness!=='codex'||!uuidPattern.test(request.target.sessionId))return{status:'failed',error:{code:'bad_request',message:'Codex delivery requires an exact native thread UUID.'}};
-  if(!this.executable)return{status:'failed',error:{code:'service_unavailable',message:'Native Codex executable was not found.',hint:'Install Codex on PATH or set ROOM_CODEX_EXECUTABLE to the native executable, not a shell wrapper.'}};
+  if(!this.executable)return{status:'failed',error:{code:'service_unavailable',message:'Native Codex executable was not found.',hint:'Install Codex on PATH or set ROUNDTABLE_CODEX_EXECUTABLE to the native executable, not a shell wrapper.'}};
   if(request.envelope.includes('\0'))return{status:'failed',error:{code:'bad_request',message:'Native command arguments cannot contain NUL characters.'}};
   const args=[...(this.options.prefixArgs??[]),'queue','--thread',request.target.sessionId,'--message',request.envelope];
   if(request.envelope.length>this.maxEnvelopeChars||(process.platform==='win32'&&windowsCommandLineLength(this.executable,args)>Math.min(this.options.commandLineBudget,32767)))return{status:'failed',error:{code:'message_too_large',message:'Envelope exceeds the qualified Codex command-line budget.',hint:'Use the room reference fallback; keep the complete content in room storage.'}};
@@ -65,7 +65,7 @@ export class CodexAdapter implements DeliveryAdapter {
     const receipt=stdout.split(/\r?\n/).map(line=>acceptedPattern.exec(line.trim())).find(match=>match&&match[2]!.toLowerCase()===request.target.sessionId.toLowerCase());
     if(!error&&receipt)return resolve({status:'submitted',evidence:{kind:'codex-queue',nativeId:receipt[1]!}});
     const nativeCode=error?.code;
-    if(typeof nativeCode==='string'&&['ENOENT','EACCES','EPERM','ENOEXEC','EINVAL','E2BIG'].includes(nativeCode))return resolve({status:'failed',error:{code:'service_unavailable',message:`Codex could not be launched (${nativeCode}).`,hint:'Run room doctor and check the executable path and permissions.'}});
+    if(typeof nativeCode==='string'&&['ENOENT','EACCES','EPERM','ENOEXEC','EINVAL','E2BIG'].includes(nativeCode))return resolve({status:'failed',error:{code:'service_unavailable',message:`Codex could not be launched (${nativeCode}).`,hint:'Run roundtable doctor and check the executable path and permissions.'}});
     if(error&&!error.killed&&/thread[^\r\n]*(?:not found|deleted|archived)|(?:no|unknown)[^\r\n]*thread/i.test(stderr))return resolve({status:'unavailable',reason:'rebind_needed',detail:'Codex rejected the original thread identity as missing, deleted or archived. Verify its configured home and rebind explicitly.'});
     if(error&&!error.killed&&/(?:unexpected|unrecognized) argument|^Usage:/m.test(stderr))return resolve({status:'failed',error:{code:'unsupported_version',message:'Codex rejected the queue command arguments.',hint:'Run the harness compatibility probes and check codex queue --help.'}});
     resolve({status:'uncertain',error:{code:'service_unavailable',message:error?'Codex queue did not return a confirmed acceptance before failure.':'Codex exited without a matching queue receipt.',hint:'Reconcile the target queue or recipient before retrying; the message may already be queued.'}});

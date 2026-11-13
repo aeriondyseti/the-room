@@ -1,6 +1,6 @@
-// `room statusline-tap [-- <your statusline command>]` (6.6). Opt-in bridge for Claude plan usage: Claude Code passes
+// `roundtable statusline-tap [-- <your statusline command>]` (6.6). Opt-in bridge for Claude plan usage: Claude Code passes
 // its statusline command a JSON object on stdin that includes `rate_limits`. Wrap your statusline with this and it
-// saves ONLY the per-window used-percentage and reset time (nothing else from the input) for `room tui` to show,
+// saves ONLY the per-window used-percentage and reset time (nothing else from the input) for `roundtable tui` to show,
 // then runs your original statusline command with the same input and prints its output. It never breaks the status
 // line: any tap error is swallowed; the wrapped command's output and exit code pass through.
 import { spawn } from 'node:child_process';
@@ -8,12 +8,12 @@ import { claudeTapPath, tapRecordFrom, writeTapRecord } from '../adapters/claude
 import { resolveClaudeConfigDir } from '../adapters/claude/registry.js';
 import { loadConfig } from '../core/config.js';
 
-export const STATUSLINE_TAP_USAGE = `room statusline-tap [-- <your statusline command>]
+export const STATUSLINE_TAP_USAGE = `roundtable statusline-tap [-- <your statusline command>]
 
-Opt-in: lets \`room tui\` show Claude plan usage (5h / weekly limits). Claude Code only passes these to your
+Opt-in: lets \`roundtable tui\` show Claude plan usage (5h / weekly limits). Claude Code only passes these to your
 statusline command, so point your Claude Code statusLine setting at:
 
-  node <the-room-checkout>/dist/cli/main.js statusline-tap -- <your existing statusline command>
+  node <agent-roundtable-checkout>/dist/cli/main.js statusline-tap -- <your existing statusline command>
 
 It stores only each limit's used percentage and reset time (nothing else from the statusline input), then runs
 your command with the same input so your status line is unchanged. Without a command it prints nothing.`;

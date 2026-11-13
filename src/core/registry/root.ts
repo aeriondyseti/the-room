@@ -1,6 +1,6 @@
 import { RoomError } from '../../contracts/errors.js';
 import { execFile } from 'node:child_process';
-import { realpath, stat } from 'node:fs/promises';
+import { realpath, rename, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 const exec = promisify(execFile);
@@ -23,19 +23,40 @@ export function roomGitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /** Worktrees resolve to the checkout owning the common git directory. */
-export async function resolveRoomRoot(cwd = process.cwd(), override = process.env.ROOM_ROOT): Promise<string> {
+export async function resolveRoomRoot(cwd = process.cwd(), override = process.env.ROUNDTABLE_ROOT): Promise<string> {
   if (override !== undefined) {
-    if (!override.trim()) throw new RoomError('bad_request', 'ROOM_ROOT is empty; specify an existing room directory.');
+    if (!override.trim()) throw new RoomError('bad_request', 'ROUNDTABLE_ROOT is empty; specify an existing room directory.');
     const root = await realpath(path.resolve(cwd, override));
-    if (!(await stat(root)).isDirectory()) throw new RoomError('bad_request', 'ROOM_ROOT must be a directory.');
+    if (!(await stat(root)).isDirectory()) throw new RoomError('bad_request', 'ROUNDTABLE_ROOT must be a directory.');
     return root;
   }
   const env = roomGitEnvironment(process.env);
   const git = async (...args: string[]) => (await exec('git', ['-C', cwd, 'rev-parse', ...args], { windowsHide: true, env })).stdout.trim();
-  if (await git('--is-bare-repository') === 'true') throw new RoomError('bad_request', 'Bare repository has no room checkout; set ROOM_ROOT explicitly.');
+  if (await git('--is-bare-repository') === 'true') throw new RoomError('bad_request', 'Bare repository has no room checkout; set ROUNDTABLE_ROOT explicitly.');
   const common = await realpath(await git('--path-format=absolute', '--git-common-dir'));
   if (path.basename(common).toLowerCase() !== '.git') {
-    throw new RoomError('bad_request', 'Nonstandard common git directory; set ROOM_ROOT to the shared checkout explicitly.');
+    throw new RoomError('bad_request', 'Nonstandard common git directory; set ROUNDTABLE_ROOT to the shared checkout explicitly.');
   }
   return realpath(path.dirname(common));
+}
+
+/**
+ * The state directory was `.room/` before the project became agent-roundtable. Move it to `.roundtable/` once, before
+ * anything creates the new directory, so an existing room keeps its ledger, settings and preferences. A directory that
+ * a service started before the rename still holds open cannot be moved on Windows; that is reported, never worked around,
+ * because creating a second, empty state directory would orphan the room's history.
+ */
+export async function adoptLegacyStateDir(root: string): Promise<'adopted' | 'none'> {
+  const legacy = path.join(root, '.room'), current = path.join(root, '.roundtable');
+  const isDirectory = async (target: string): Promise<boolean> => {
+    try { return (await stat(target)).isDirectory(); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
+  };
+  if (await isDirectory(current) || !(await isDirectory(legacy))) return 'none';
+  try { await rename(legacy, current); }
+  catch (e) {
+    if (await isDirectory(current) && !(await isDirectory(legacy))) return 'adopted'; // another process moved it first
+    throw new RoomError('invalid_state', `Found earlier state in .room/ but could not move it to .roundtable/ (${(e as NodeJS.ErrnoException).code ?? 'unknown error'}). A service started before the rename is probably still running: run \`roundtable shutdown\`, then retry.`);
+  }
+  return 'adopted';
 }

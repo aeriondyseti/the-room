@@ -34,7 +34,7 @@ test('an open proposal shows the vote disposition, the frozen roster, exclusions
   assert.match(t, /Voters \(fixed when it opened\): fable, astra\./);
   assert.match(t, /Voted: fable\. Still needed: astra\./);
   assert.match(t, /Not voting \(not qualified when it opened\): opus \(status unknown, not presumed offline\)/);
-  assert.match(t, /executes when every remaining voter calls room_kick for "astra2"; otherwise it expires in about 9 minutes/);
+  assert.match(t, /executes when every remaining voter calls roundtable_kick for "astra2"; otherwise it expires in about 9 minutes/);
   assert.match(kickText({ status: 'open', proposal: proposal(), vote: 'recorded' }, 'cli'), /calls room kick for/);
 });
 
@@ -50,8 +50,8 @@ test('an executed removal states who, why, what was cancelled, and that the sess
   assert.match(t, /^Removed "astra2" from the room \(by unanimous consent\)\./);
   assert.match(t, /Reason: thread is gone\. Voters: fable, astra\./);
   assert.match(t, /6 queued deliveries to it cancelled, shown as withdrawn \(kicked\); nothing redirected/);
-  assert.match(t, /it can rejoin with room_join/);
-  assert.match(kickText(byConsent, 'cli'), /it can rejoin with room join --as NAME/);
+  assert.match(t, /it can rejoin with roundtable_join/);
+  assert.match(kickText(byConsent, 'cli'), /it can rejoin with roundtable join --as NAME/);
   const byHuman: KickOutcome = { status: 'executed', proposal: null, removed: reg('astra2'), cancelled: 0, noticeId: null, vote: 'human' };
   const h = kickText(byHuman);
   assert.match(h, /\(by the human\)/);

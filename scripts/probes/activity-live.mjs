@@ -20,7 +20,7 @@ try {
   let page;
   while (Date.now() < deadline) {
     page = await client.request('activity', { participant: 'fxv', limit: 50 });
-    if (page.items.some((i) => i.kind === 'tool_result' && i.tool === undefined) && page.items.filter((i) => i.tool === 'room.room_send').length) break;
+    if (page.items.some((i) => i.kind === 'tool_result' && i.tool === undefined) && page.items.filter((i) => i.tool === 'roundtable.roundtable_send').length) break;
     await new Promise((r) => setTimeout(r, 1000));
   }
   console.log(JSON.stringify({ coverage: page.coverage, reason: page.reason ?? null, olderEvicted: page.olderEvicted, backlog: page.backlog, stream: page.stream,

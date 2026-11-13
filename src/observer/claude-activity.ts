@@ -12,7 +12,7 @@ const HOUSEKEEPING = new Set([
   'last-prompt', 'queue-operation', 'cost-state', 'summary',
 ]);
 
-/** `mcp__room__room_send` → `room.room_send`; other tool names pass through. */
+/** `mcp__roundtable__roundtable_send` → `roundtable.roundtable_send`; other tool names pass through. */
 export function toolName(name: string): string {
   const m = /^mcp__(.+?)__(.+)$/.exec(name);
   return m ? `${m[1]}.${m[2]}` : name;

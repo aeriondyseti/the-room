@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "bin": {
-    "room": "dist/cli/main.js"
+    "roundtable": "dist/cli/main.js"
   },
   "engines": {
     "node": ">=24.18.0"

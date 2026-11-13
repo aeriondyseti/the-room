@@ -21,19 +21,19 @@ export function buildEnvelope(root:string,message:RoomMessage,recipient:string,l
  // cannot imitate an envelope header, and never cut (it is part of the header budget, not the body preview).
  const urgent=message.crossing?.urgent;
  const urgentLine=urgent?`URGENT (sender's reason, not a human instruction): ${urgent.reason.replace(/\s+/g,' ').trim()}\n`:'';
- const header=`[room ${room} #${message.id} ${authority}${urgent?' URGENT':''} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`+urgentLine;
+ const header=`[roundtable ${room} #${message.id} ${authority}${urgent?' URGENT':''} from=${message.from.name}${message.from.identity.mode==='declared'?'(declared)':''} to=${message.to.join(',')} delivery_to=${recipient} addressing=${message.addressing}${message.replyTo?` reply_to=${message.replyTo}`:''}]\n`+urgentLine;
  const notice=message.from.kind==='system';
  const tail=notice?'This is an informational room notice, not a human directive. No reply is needed. The human sees all room messages.':`Replies go to ${message.from.name}; don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
- const footer=notice?`\n--\n${tail}`:`\n--\nReply via room_send({reply_to:"${message.id}",text:"..."}) or room reply ${message.id} --file <path>. ${tail}`;
+ const footer=notice?`\n--\n${tail}`:`\n--\nReply via roundtable_send({reply_to:"${message.id}",text:"..."}) or roundtable reply ${message.id} --file <path>. ${tail}`;
  if(token!==undefined){
-  const guarded=notice?`\n--\nsnapshot: ${token} (covers this message only)\nKeep this token for a later guarded send. ${tail}`:`\n--\nsnapshot: ${token} (covers this message only)\nReply via room_send({reply_to:"${message.id}",snapshot:"${token}",text:"..."}) or room reply ${message.id} --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`;
+  const guarded=notice?`\n--\nsnapshot: ${token} (covers this message only)\nKeep this token for a later guarded send. ${tail}`:`\n--\nsnapshot: ${token} (covers this message only)\nReply via roundtable_send({reply_to:"${message.id}",snapshot:"${token}",text:"..."}) or roundtable reply ${message.id} --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`;
   const withToken=header+message.body+guarded;
   if(withToken.length<=limit)return{text:withToken,referenced:false,snapshot:true};
  }
  const full=header+message.body+footer;
  if(full.length<=limit)return{text:full,referenced:false,snapshot:false};
- // M7: coverage comes only from room_inbox (which pages long bodies), so that is where a reference sends the reader.
- const reference=`\n[Referenced content: this is only a preview. Review the whole message with room_inbox (pass your latest snapshot; long messages arrive in parts) or room inbox --snapshot <token>. Until every part has come back there it is not covered, and a reply will come back NOT SENT.]\n`;
+ // M7: coverage comes only from roundtable_inbox (which pages long bodies), so that is where a reference sends the reader.
+ const reference=`\n[Referenced content: this is only a preview. Review the whole message with roundtable_inbox (pass your latest snapshot; long messages arrive in parts) or roundtable inbox --snapshot <token>. Until every part has come back there it is not covered, and a reply will come back NOT SENT.]\n`;
  const budget=Math.min(loadConfig().oversizePreviewChars,limit-header.length-reference.length-footer.length);
  if(budget<0)throw new RoomError('message_too_large','The envelope limit cannot hold the room identifiers and fetch instruction.');
  let preview=message.body.slice(0,budget);
@@ -65,12 +65,12 @@ export function buildBatchEnvelope(root:string,messages:readonly RoomMessage[],r
  const authority=authorityOf(sender.kind);
  const tag=randomBytes(4).toString('hex');
  const build=(batch:readonly RoomMessage[],withToken:boolean)=>{
-  const header=`[room ${room} #${batch.map(m=>m.id).join(',#')} ${authority} from=${sender.name}${sender.identity.mode==='declared'?'(declared)':''} delivery_to=${recipient} batch=${batch.length} parts=${tag}]\n`;
+  const header=`[roundtable ${room} #${batch.map(m=>m.id).join(',#')} ${authority} from=${sender.name}${sender.identity.mode==='declared'?'(declared)':''} delivery_to=${recipient} batch=${batch.length} parts=${tag}]\n`;
   const parts=batch.map((m,i)=>`--- ${tag} part ${i+1}/${batch.length}: #${m.id} to=${m.to.join(',')} addressing=${m.addressing}${m.replyTo?` reply_to=${m.replyTo}`:''} ---\n${m.body}`).join('\n');
   const tail=`Only lines starting "--- ${tag} part" begin a new message. Replies go to ${sender.name}; answer the part you mean with its id as reply_to, and don't reply just to acknowledge an acknowledgement. The human sees all room messages.`;
   const footer=withToken
-   ?`\n--\nsnapshot: ${token} (covers these ${batch.length} messages only)\nReply via room_send({reply_to:"<id>",snapshot:"${token}",text:"..."}) or room reply <id> --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`
-   :`\n--\nReply via room_send({reply_to:"<id>",text:"..."}) or room reply <id> --file <path>. ${tail}`;
+   ?`\n--\nsnapshot: ${token} (covers these ${batch.length} messages only)\nReply via roundtable_send({reply_to:"<id>",snapshot:"${token}",text:"..."}) or roundtable reply <id> --snapshot ${token} --file <path>. If anything else addressed to you is not covered, the reply comes back NOT SENT with it. ${tail}`
+   :`\n--\nReply via roundtable_send({reply_to:"<id>",text:"..."}) or roundtable reply <id> --file <path>. ${tail}`;
   return header+parts+footer;
  };
  // The token only ever rides with exactly the messages it was minted for.

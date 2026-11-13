@@ -113,7 +113,7 @@ test('/detail wraps long errors instead of cutting them', async () => {
   const src = new FakeRoomSource({ participants: [agent('astra')] });
   const m = src.post(HUMAN, ['astra'], 'x', { states: { astra: 'failed' } });
   src.setDelivery(m.message.id, 'astra', {
-    attempts: [{ n: 1, startedAt: m.message.createdAt, finishedAt: null, outcome: 'failed', evidence: null, error: { code: 'internal', message: 'the Codex queue command failed because the executable could not be found on PATH or at the room override location', hint: 'set ROOM_CODEX_EXECUTABLE or install Codex' } }],
+    attempts: [{ n: 1, startedAt: m.message.createdAt, finishedAt: null, outcome: 'failed', evidence: null, error: { code: 'internal', message: 'the Codex queue command failed because the executable could not be found on PATH or at the room override location', hint: 'set ROUNDTABLE_CODEX_EXECUTABLE or install Codex' } }],
   });
   const ui = render(<App source={src} humanName="Kevin" width={60} height={30} />);
   await waitFor(() => plain(ui.lastFrame()), /Kevin → astra/);
@@ -122,7 +122,7 @@ test('/detail wraps long errors instead of cutting them', async () => {
   ui.stdin.write('\r');
   const frame = await waitFor(() => plain(ui.lastFrame()), /override location/);
   assert.match(frame, /could not be found on PATH/, 'the whole error is visible, wrapped over lines');
-  assert.match(frame, /→ set ROOM_CODEX_EXECUTABLE or install Codex/);
+  assert.match(frame, /→ set ROUNDTABLE_CODEX_EXECUTABLE or install Codex/);
 });
 
 test('/detail with no argument opens the latest message; an unknown number is an inline error', async () => {

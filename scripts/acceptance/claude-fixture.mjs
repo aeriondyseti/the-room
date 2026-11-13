@@ -1,6 +1,6 @@
 // Throwaway Claude Code fixture for the 4.1 acceptance run (NOT Kevin's sessions).
 // Starts `claude --bg -n vpfix-<name>` in a scratch room, restricted to the room MCP tools, instructed to answer
-// every room message with a one-word room_send reply. Stop removes the background session.
+// every room message with a one-word roundtable_send reply. Stop removes the background session.
 import { execFile } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -12,11 +12,11 @@ const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
 export const FIXTURE_PREFIX = 'vpfix-';
 
 const RULES = (name) => `You are "${name}", a throwaway acceptance-test fixture in a chat room. Rules:
-- First, call room_join with name "${name}". Then end your turn.
-- Handle EVERY room message you see, one room_send per message — including messages that arrive while you are already working (they may appear as queued or attached messages in the same turn). Then end your turn.
-- If a room message's body starts with the uppercase word "RELAY" followed by a name, call room_send: to = [that name], text = "ping" (no reply_to).
+- First, call roundtable_join with name "${name}". Then end your turn.
+- Handle EVERY room message you see, one roundtable_send per message — including messages that arrive while you are already working (they may appear as queued or attached messages in the same turn). Then end your turn.
+- If a room message's body starts with the uppercase word "RELAY" followed by a name, call roundtable_send: to = [that name], text = "ping" (no reply_to).
 - If a room message's body is just an acknowledgement ("ack" / "ACK"), do nothing for it (no reply loops).
-- For every other room message, call room_send: to = [the sender's name], reply_to = the message id shown after '#' in its header, text = the single word "ack".
+- For every other room message, call roundtable_send: to = [the sender's name], reply_to = the message id shown after '#' in its header, text = the single word "ack".
 - Never call any other tool, never write files, never explain.`;
 
 async function sleep(ms) { await new Promise((r) => setTimeout(r, ms)); }
@@ -82,13 +82,13 @@ export async function gitInit(root) { await run('git', ['init', '-q', root]); }
 export async function start({ name, root, dist, model = 'haiku', joinTimeoutMs = 120_000, whoIs }) {
   if (!name.startsWith('fx')) throw new Error('fixture names must start with "fx" (safety: never a real participant)');
   const mcpPath = join(root, `.mcp-${name}.json`);
-  // ROOM_ROOT pins the scratch room: the root is a plain (non-git) directory, because `claude --bg` requires a
+  // ROUNDTABLE_ROOT pins the scratch room: the root is a plain (non-git) directory, because `claude --bg` requires a
   // trusted workspace inside git repos and we never edit Kevin's trust settings.
-  writeFileSync(mcpPath, JSON.stringify({ mcpServers: { room: { command: process.execPath, args: [dist, 'mcp'], env: { ROOM_ROOT: root } } } }));
+  writeFileSync(mcpPath, JSON.stringify({ mcpServers: { roundtable: { command: process.execPath, args: [dist, 'mcp'], env: { ROUNDTABLE_ROOT: root } } } }));
   const display = `${FIXTURE_PREFIX}${name}-${Date.now().toString(36)}`; // unique: a leftover fixture never matches
   const args = ['--bg', '-n', display, '--model', model, '--strict-mcp-config', '--mcp-config', mcpPath,
     '--setting-sources', 'project', '--permission-mode', 'dontAsk', '--append-system-prompt', RULES(name),
-    '--allowedTools', 'mcp__room__room_join', 'mcp__room__room_send', 'mcp__room__room_read', 'mcp__room__room_who',
+    '--allowedTools', 'mcp__roundtable__roundtable_join', 'mcp__roundtable__roundtable_send', 'mcp__roundtable__roundtable_read', 'mcp__roundtable__roundtable_who',
     '--name', display, // a flag after --allowedTools so its variadic list does not swallow the prompt
     `Join the room now as "${name}".`];
   const started = Date.now();
@@ -116,7 +116,7 @@ export async function start({ name, root, dist, model = 'haiku', joinTimeoutMs =
     throw new Error(`fixture ${name}: no registry record within ${joinTimeoutMs}ms (display ${display}; claude said: ${stdout.trim()})`);
   }
   const id = record.sessionId.slice(0, 8);
-  // Wait until the room lists it (the fixture calls room_join itself, verified by MCP identity). Any failure here
+  // Wait until the room lists it (the fixture calls roundtable_join itself, verified by MCP identity). Any failure here
   // stops the fixture before rethrowing, so a half-started session never outlives the run.
   try {
     let joined = false;

@@ -124,7 +124,7 @@ raw evidence with secrets redacted and compare against the last qualified baseli
 suite should finish quickly; an explicit extended mode can repeat trials and exercise crash/recovery.
 A changed assumption should identify the adapter/invariant affected and the next diagnostic step,
 without silently changing config, permissions or delivery paths. Run on demand initially; detecting a
-new harness version can later offer the suite through `room doctor`.
+new harness version can later offer the suite through `roundtable doctor`.
 
 **Done-when if promoted:** both harnesses can be requalified from one documented command, a deliberately
 broken fixture is detected, ambiguous results cannot pass, reports compare versions, and all created
@@ -134,7 +134,7 @@ sessions/processes are accounted for in cleanup.
 
 *Raised 2026-09-28 by Kevin, after repeated crossed replies between Claude and Astra. Status: parked.*
 
-**Idea:** before an agent's `room_send` is queued, the room checks whether messages addressed to that agent are
+**Idea:** before an agent's `roundtable_send` is queued, the room checks whether messages addressed to that agent are
 still in flight: delivered natively but not yet seen by the agent, or queued behind its current turn. If they are,
 the send is held (or refused with a hint) until the agent's inbox is drained, so replies don't cross.
 
@@ -149,7 +149,7 @@ the send is held (or refused with a hint) until the agent's inbox is drained, so
   - a way to override for urgent sends.
 - It must not deadlock two agents waiting on each other: a bounded wait or a per-send override.
 - Human messages would probably always bypass it.
-- A cheaper first step: include "N newer messages for you are in flight" in the `room_send` result/envelope, so
+- A cheaper first step: include "N newer messages for you are in flight" in the `roundtable_send` result/envelope, so
   the agent can choose to re-read before replying.
 
 ## Compaction notice: tell the room when an agent is compacting
@@ -164,7 +164,7 @@ away with the rest of the context before the agent really reads it.
 - **Make it room state, not a chat message.** The hook reports "compacting" to the room, as participant activity
   (`compacting`, with a started-at time and an expected end), rather than sending a message that asks peers to hold
   off. Then:
-  - the TUI and `room who` show it;
+  - the TUI and `roundtable who` show it;
   - the dispatcher holds deliveries to that agent until compaction ends (plus a small grace period), instead of every
     sender having to remember to wait (north star: nobody polls or re-arms);
   - senders' results say "held: recipient is compacting".

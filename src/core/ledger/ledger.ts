@@ -40,8 +40,8 @@ export class Ledger {
   readonly file: string;
   private transactionDepth = 0;
   constructor(root: string) {
-    mkdirSync(path.join(root, '.room'), { recursive: true });
-    this.file = path.join(root, '.room', 'room.db');
+    mkdirSync(path.join(root, '.roundtable'), { recursive: true });
+    this.file = path.join(root, '.roundtable', 'room.db');
     this.db = new DatabaseSync(this.file);
     try {
       const waitMs = loadConfig().sqliteBusyTimeoutMs;

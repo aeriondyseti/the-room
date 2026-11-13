@@ -10,7 +10,7 @@ const targetOf=(harness:TargetSnapshot['harness'],sessionId:string):TargetSnapsh
 /** Freeze the qualified electorate at opening; unknown is excluded, never called offline. */
 export function openKickProposal(registry:Registry,observed:readonly ParticipantState[],targetName:string,proposer:TargetSnapshot,reason:string,now:Date,refreshMs:number,ttlMs:number):KickProposal {
   const target=registry[targetName];
-  if(!target)throw new RoomError('unknown_recipient','The target is not registered; refresh room who.');
+  if(!target)throw new RoomError('unknown_recipient','The target is not registered; refresh roundtable who.');
   if(!reason.trim()||reason.length>500)throw new RoomError('bad_request','Kick reason must be 1–500 characters.');
   if(!Number.isSafeInteger(refreshMs)||refreshMs<1||!Number.isSafeInteger(ttlMs)||ttlMs<1)throw new RoomError('bad_request','Invalid kick timing configuration.');
   const targetBinding=targetOf(target.harness,target.session_id);

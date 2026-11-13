@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { RoomClient } from '../ipc/client.js';
-import { resolveRoomRoot } from '../core/registry/root.js';
+import { adoptLegacyStateDir, resolveRoomRoot } from '../core/registry/root.js';
 import { readRegistry, migrateLegacyRegistry } from '../core/registry/registry.js';
 import { loadConfig } from '../core/config.js';
 import { defaultRegistryDeps, resolveClaudeConfigDir } from '../adapters/claude/registry.js';
@@ -16,29 +16,29 @@ import {guardedSendText, inboxPageText, withdrawText} from '../presentation/cros
 import {kickText, renameNoop, renameText} from '../presentation/lifecycle.js';
 
 export const COMMANDS = ['send','reply','read','inbox','withdraw','rename','kick','who','join','doctor','pause','resume','retry','shutdown','migrate'];
-export const COMMAND_HELP = `room send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
+export const COMMAND_HELP = `roundtable send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
           [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--client-message-id KEY] [--file PATH | --stdin | TEXT...]
-room reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
+roundtable reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--file PATH | --stdin | TEXT...]
-room read [ID|#N] [--after N] [--limit N]
-room inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
-room withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
+roundtable read [ID|#N] [--after N] [--limit N]
+roundtable inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
+roundtable withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
 room rename NEW [--as NAME]            (an agent renames itself)   |  room rename OLD NEW   (the human renames anyone)
 room kick NAME [--reason TEXT] [--as NAME]   (an agent's call is its vote; the human's call removes at once;
                                               --reason is required to open a proposal or for the human's kick,
                                               optional when agreeing to an open proposal)
-room who
-room join --as NAME [--rebind]
-room doctor
-room pause [--resend-stop] | resume | shutdown
-room retry ID|#N RECIPIENT [--confirm-uncertain]
-room migrate
+roundtable who
+roundtable join --as NAME [--rebind]
+roundtable doctor
+roundtable pause [--resend-stop] | resume | shutdown
+roundtable retry ID|#N RECIPIENT [--confirm-uncertain]
+roundtable migrate
 
 All commands accept --json. Exit: 0 success, 2 input/identity error, 3 unavailable/uncertain service,
 4 agent send not sent by the crossing guard (nothing queued; the output shows what to read first),
 or a withdraw that cancelled nothing.
-Agent sends need --snapshot from room inbox or the delivery being answered. --urgent (with --reason)
+Agent sends need --snapshot from roundtable inbox or the delivery being answered. --urgent (with --reason)
 skips that check and goes ahead of ordinary messages still waiting in the room (never ones a session already
 has); it is audited. The human is never guarded.
 withdraw cancels only deliveries not yet handed to a recipient's session; after that it is too late.
@@ -113,6 +113,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
     if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'||command==='rename'?2:command==='read'||command==='withdraw'||command==='kick'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
     const cwd=deps.cwd??process.cwd(), config=loadConfig(deps.env??process.env);
     const root=await resolveRoomRoot(cwd,config.roomRoot??undefined);
+    if(command!=='shutdown')await adoptLegacyStateDir(root); // shutdown must still reach a service that holds the old directory open
     const identify=deps.identify??(name=>cliCaller(name,{
       env:deps.env??process.env,ownParentPid:process.ppid,processInfo:windowsProcessInfo(config.claudeProcStartTimeoutMs),
       claudeRegistry:defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir,deps.env??process.env),config.claudeProcStartTimeoutMs),
@@ -129,10 +130,10 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       try{
         const registry=await readRegistry(root);checks.registry=registry;
         if(Object.values(registry).some(p=>p.harness==='codex')&&!checks.codexExecutable){
-          healthy=false;checks.codexError={code:'service_unavailable',message:'Registered Codex participants cannot receive messages: native executable missing.',hint:'Install Codex on PATH or set ROOM_CODEX_EXECUTABLE to the native codex.exe (not a shell wrapper).'};
+          healthy=false;checks.codexError={code:'service_unavailable',message:'Registered Codex participants cannot receive messages: native executable missing.',hint:'Install Codex on PATH or set ROUNDTABLE_CODEX_EXECUTABLE to the native codex.exe (not a shell wrapper).'};
         }
-      }catch(e){const info=toErrorInfo(e);checks.registry={...info,hint:info.code==='invalid_state'?'From a human terminal, run room migrate for the known legacy schema; preserve and repair unknown schemas manually.':info.hint};healthy=false;}
-      try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run room who or room tui to auto-start the service. If that fails, inspect .room/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
+      }catch(e){const info=toErrorInfo(e);checks.registry={...info,hint:info.code==='invalid_state'?'From a human terminal, run roundtable migrate for the known legacy schema; preserve and repair unknown schemas manually.':info.hint};healthy=false;}
+      try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run roundtable who or roundtable tui to auto-start the service. If that fails, inspect .roundtable/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
       print(checks);return healthy?0:3;
     }
     link=await connect(root,true);

@@ -23,7 +23,7 @@ export const httpsUsageFetch: UsageFetch = (token, timeoutMs) =>
   new Promise((resolve, reject) => {
     const req = request(
       { host: CLAUDE_USAGE_HOST, path: CLAUDE_USAGE_PATH, method: 'GET', timeout: timeoutMs,
-        headers: { Authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'the-room', Accept: 'application/json' } },
+        headers: { Authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'agent-roundtable', Accept: 'application/json' } },
       (res) => {
         let size = 0;
         const chunks: Buffer[] = [];

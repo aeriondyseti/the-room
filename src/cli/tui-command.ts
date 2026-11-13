@@ -1,9 +1,9 @@
-// `room tui [--demo] [--no-color]`. Kept separate from main.ts so the CLI (2.3) and TUI (3.x) evolve independently.
+// `roundtable tui [--demo] [--no-color]`. Kept separate from main.ts so the CLI (2.3) and TUI (3.x) evolve independently.
 import { backoffSchedule, loadConfig } from '../core/config.js';
-import { resolveRoomRoot } from '../core/registry/root.js';
+import { adoptLegacyStateDir, resolveRoomRoot } from '../core/registry/root.js';
 import { toErrorInfo } from '../contracts/errors.js';
 
-export const TUI_USAGE = `room tui [--demo] [--no-color] [--layout top|left]
+export const TUI_USAGE = `roundtable tui [--demo] [--no-color] [--layout top|left]
 
 Open this repository's room in the current terminal pane: watch the conversation and delivery
 states, see who's connected, and message every agent at once (or @name one).
@@ -12,7 +12,7 @@ Options:
   --demo       Show a sample room (no service needed) — useful for trying the interface
   --no-color   Monochrome display (also: NO_COLOR=1, or TERM=dumb)
   --layout     top (top bar) or left (side panel). Inside the TUI, /layout or Ctrl+B switches, and
-               the choice is remembered for this room (.room/tui.json). Default: ROOM_TUI_LAYOUT, else top.`;
+               the choice is remembered for this room (.roundtable/tui.json). Default: ROUNDTABLE_TUI_LAYOUT, else top.`;
 
 /** The value of `--layout <v>` / `--layout=<v>`; undefined when absent, null when given without a value. */
 export function layoutFlag(argv: readonly string[]): string | null | undefined {
@@ -35,11 +35,11 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
   // Invalid layout settings fail loudly (never silently ignored).
   const flag = layoutFlag(argv);
   if (flag !== undefined && !isTuiLayout(flag)) {
-    err(`room tui: --layout must be "top" or "left"${flag ? `, got "${flag}"` : ''}`);
+    err(`roundtable tui: --layout must be "top" or "left"${flag ? `, got "${flag}"` : ''}`);
     return 2;
   }
   if (!isTuiLayout(config.tuiLayout)) {
-    err(`room tui: ROOM_TUI_LAYOUT must be "top" or "left", got "${config.tuiLayout}"`);
+    err(`roundtable tui: ROUNDTABLE_TUI_LAYOUT must be "top" or "left", got "${config.tuiLayout}"`);
     return 2;
   }
   const display = {
@@ -59,9 +59,10 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
   let root: string;
   try {
     root = await resolveRoomRoot(process.cwd(), config.roomRoot ?? undefined);
+    await adoptLegacyStateDir(root);
   } catch (e) {
     const info = toErrorInfo(e);
-    err(`room tui: ${info.message}${info.hint ? `\n  ${info.hint}` : ''}`);
+    err(`roundtable tui: ${info.message}${info.hint ? `\n  ${info.hint}` : ''}`);
     return 2;
   }
   const { ClientRoomSource } = await import('../tui/client-source.js');

@@ -65,7 +65,7 @@ shared visual-line model for both layout and rendering.
 
 - Measure grapheme display columns (including wide CJK and emoji), the prompt/continuation gutter and cursor cell;
   preserve hard newlines and calculate soft wraps explicitly. Ink must not independently create additional rows.
-- Grow from one visual row to a configurable ceiling, proposed `ROOM_TUI_COMPOSER_MAX_ROWS=12`. The actual ceiling
+- Grow from one visual row to a configurable ceiling, proposed `ROUNDTABLE_TUI_COMPOSER_MAX_ROWS=12`. The actual ceiling
   also respects available terminal height after all other chrome and at least three conversation rows when space
   permits. On a typical 30-row pane, a draft with six to eight lines must be usable without covering the footer.
 - Reserve bottom status/routing, separator, actual wrapped feedback and suggestion rows BEFORE assigning composer
