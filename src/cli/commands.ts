@@ -136,7 +136,13 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run roundtable who or roundtable tui to auto-start the service. If that fails, inspect .roundtable/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
       print(checks);return healthy?0:3;
     }
-    link=await connect(root,command!=='shutdown'); // shutdown never starts a service: one started here would create the state directory before an earlier one is adopted
+    // shutdown never starts a service: one started here would create the state directory before an earlier one is adopted.
+    try{link=await connect(root,command!=='shutdown');}
+    catch(e){
+      const code=(e as NodeJS.ErrnoException).code;
+      if(command==='shutdown'&&(code==='ENOENT'||code==='ECONNREFUSED')){print({shutdown:false,reason:'No service is running for this room.'});return 0;}
+      throw e;
+    }
     if(command==='read'){print(await link.request('read',{...(p[0]?{messageId:await ref(link,p[0])}:{}),afterSeq:integer(o.after,'after'),limit:integer(o.limit,'limit'),includeDeliveries:true}));return 0;}
     if(command==='who'){print(await link.request('who',{}));return 0;}
     const caller=await identify(text('as')??null);

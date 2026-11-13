@@ -28,7 +28,7 @@ export function formatResult(command:string,value:unknown):string {
   text+=r.stopRequest?`\nStop request #${r.stopRequest.message.seq}: ${r.stopRequest.deliveries.map(state).join('; ')}`:'\nNo duplicate stop request was sent.';
  }else if(command==='resume')text=`Room resumed; ${(value as Result<'resume'>).released} held deliveries released. Rebind-needed targets remain held.`;
  else if(command==='retry')text=`Explicit retry recorded. ${state((value as Result<'retry'>).delivery)}`;
- else if(command==='shutdown')text='Room service is stopping; agents themselves are unchanged.';
+ else if(command==='shutdown')text=(value as {shutdown?:boolean}).shutdown===false?'No service is running for this room; nothing to stop.':'Room service is stopping; agents themselves are unchanged.';
  else text=JSON.stringify(value,null,2);
  return sanitize(text);
 }
