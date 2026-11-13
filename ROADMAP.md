@@ -16,19 +16,19 @@ Milestone 6+ only after the v0.1.0 tag.
 
 - [x] **0.1 Repo skeleton and contracts** *(Claude)* *(§3, §4.7)*
   - **Scope:**
-    - `package.json` (`room` bin), `tsconfig` (strict, ESM, JSX for Ink), the `src/` layout from DESIGN
+    - `package.json` (`roundtable` bin), `tsconfig` (strict, ESM, JSX for Ink), the `src/` layout from DESIGN
       §3, and build/test/typecheck scripts;
     - shared **contract types**: domain types (Message, Delivery, DeliveryState, Participant,
       ParticipantState, UsageSnapshot), IPC request/response/event types with error codes, and the
       `Adapter` interface;
-    - a stub `room --version`.
+    - a stub `roundtable --version`.
   - **Done-when:** `npm install && npm test` passes with at least one unit test per contract module;
     `node dist/cli/main.js --version` prints the package version; the contract types are exported from
     `src/contracts/`; typecheck is clean.
 
 - [x] **0.2 Room root and minimal registry** *(Astra)* *(§4.5, proposal "Registry")*
   - **Scope:**
-    - canonical room root via `git rev-parse --git-common-dir`, plus a `ROOM_ROOT` override;
+    - canonical room root via `git rev-parse --git-common-dir`, plus a `ROUNDTABLE_ROOT` override;
     - read/write `session.toml` `[participants.<name>]` {harness, session_id} with a lock and atomic
       replace;
     - reject duplicate names or bindings;
@@ -49,7 +49,7 @@ Milestone 6+ only after the v0.1.0 tag.
     - per-recipient ordering queries.
   - **Done-when:** unit tests for the atomic insert (a failure inserts nothing), dedup (identical,
     conflicting), attempt history kept across retries, ordering; the database lives at
-    `<room>/.room/room.db`.
+    `<room>/.roundtable/room.db`.
 
 - [x] **1.2 Service process and IPC** *(Astra)* *(§3, proposal "Architecture")*
   - **Scope:**
@@ -103,12 +103,12 @@ Milestone 6+ only after the v0.1.0 tag.
 
 - [x] **2.3 CLI** *(Astra)*
   - **Scope:**
-    - `room send` (text from args, stdin, or a file), `read`, `who`, `join`, `doctor`, `pause`,
+    - `roundtable send` (text from args, stdin, or a file), `read`, `who`, `join`, `doctor`, `pause`,
       `resume`, `shutdown`;
     - CLI caller identity (`CODEX_THREAD_ID`, Claude process-tree walk, `--as` checked against it);
     - useful exit codes and messages.
   - **Done-when:** integration tests run the CLI against a service with fake adapters for each command;
-    identity detection, mismatch refusal, and the declared fallback are labelled; `room join` writes
+    identity detection, mismatch refusal, and the declared fallback are labelled; `roundtable join` writes
     only harness and session_id.
 
 - [x] **2.3b Human desktop ancestry** *(Astra)* — treat Explorer as the Windows desktop ancestry
@@ -117,8 +117,8 @@ Milestone 6+ only after the v0.1.0 tag.
   broken below the desktop still rejected; regression tests and independent review complete.
 
 - [x] **2.4 MCP front end** *(Claude)*
-  - **Scope:** official MCP SDK stdio server exposing `room_send`, `room_read` (paginated, with message
-    fetch), `room_who`, and `room_join`; per-call identity; `client_message_id`; clear tool descriptions.
+  - **Scope:** official MCP SDK stdio server exposing `roundtable_send`, `roundtable_read` (paginated, with message
+    fetch), `roundtable_who`, and `roundtable_join`; per-call identity; `client_message_id`; clear tool descriptions.
   - **Identity rules:**
     - Codex: `_meta.threadId`, cross-checked.
     - Claude: fresh parent-registry lookup plus an environment cross-check.
@@ -133,10 +133,10 @@ Milestone 6+ only after the v0.1.0 tag.
   **Done-when:** fixture-based tests cover both formats, partial trailing lines, restart from cursors,
   and a missing file yielding `unavailable` (never zero).
 
-- [x] **2.6 Onboarding** *(Claude)* — a Claude `/room` skill, a Codex `AGENTS.md` room section, an
+- [x] **2.6 Onboarding** *(Claude)* — a Claude `/roundtable` skill, a Codex `AGENTS.md` room section, an
   install recipe (`claude mcp add` / `codex mcp add`), and migration from pair-poc.
   **Done-when:** the documents exist, and following the recipe on the live Claude and Astra sessions
-  results in both registered and able to call `room_who`.
+  results in both registered and able to call `roundtable_who`.
 
 ## Milestone 3 — TUI (UI/UX priority)
 
@@ -176,7 +176,7 @@ Milestone 6+ only after the v0.1.0 tag.
   - **Done-when:** a documented live run under `probes/` shows:
     - a TUI broadcast reaching all four;
     - `@name` reaching only the selected instance;
-    - same-harness and cross-harness replies via `room_send` appearing in the TUI with delivery states;
+    - same-harness and cross-harness replies via `roundtable_send` appearing in the TUI with delivery states;
     - an offline or busy instance not blocking the others;
     - CLI fallback verified.
   - **Evidence gates (required before v0.1.0):**
@@ -209,12 +209,12 @@ Milestone 6+ only after the v0.1.0 tag.
   **Done-when:** a documented UX pass with before/after notes; snapshot tests updated; no regressions.
 
 - [x] **5.2 Agent ergonomics** *(Astra)* — tool and CLI error messages that say what to do next, reply
-  shortcuts (`reply_to` defaults), `room doctor` remediation hints, and envelope readability.
+  shortcuts (`reply_to` defaults), `roundtable doctor` remediation hints, and envelope readability.
   **Done-when:** each agent-facing error has a remediation hint covered by tests; envelope format
   reviewed by both agents.
 
 - [x] **5.3 Human ergonomics and release** *(Claude, with Astra)* — a one-command setup check
-  (`room doctor`), README quickstart, `room tui` startup experience; coordinated merge and tag
+  (`roundtable doctor`), README quickstart, `roundtable tui` startup experience; coordinated merge and tag
   **v0.1.0**.
   **Done-when:** README quickstart works from a clean clone; the v0.1.0 tag is on `main`.
 
@@ -237,10 +237,10 @@ Provisional; owners and Done-when lines are refined at the v0.1.0 checkpoint bef
 
 - [x] **6.3a Root discovery and human-control debt** *(Astra)* — TD-0010 / TD-0005.
   **Done-when:** inherited Git repository variables cannot redirect discovery into another repo;
-  linked worktrees remain shared; bare repositories require explicit ROOM_ROOT; existing human-only
+  linked worktrees remain shared; bare repositories require explicit ROUNDTABLE_ROOT; existing human-only
   service/CLI/MCP guard tests remain green and trusted-local limitations are documented.
 
-- [x] **6.3c MCP text-field remediation** *(Astra)* — missing, non-string and empty room_send text
+- [x] **6.3c MCP text-field remediation** *(Astra)* — missing, non-string and empty roundtable_send text
   identifies the required field; canonical schema and delivery behavior unchanged; SDK regression
   proves invalid requests never dispatch.
 
@@ -253,7 +253,7 @@ requirements: withdraw a message that hasn't been received yet; send urgently wi
 ergonomics first. Ownership agreed at the milestone boundary.
 
 - [x] **7.1 Inbox snapshots and guarded send (core)** *(Astra)*
-  **Done-when:** per-binding inbox revisions and opaque snapshot tokens bound to the content they cover. `room_send`
+  **Done-when:** per-binding inbox revisions and opaque snapshot tokens bound to the content they cover. `roundtable_send`
   commits only when every message addressed to the sender is covered by its snapshot (atomically with persist-before-ack). A missing or stale token
   is "not sent", with the delta, a fresh token and an attempt id. Blocked attempts are audited, not sent. Human
   messages count as new; human sends bypass the guard.
@@ -266,7 +266,7 @@ ergonomics first. Ownership agreed at the milestone boundary.
     under /pause), with a reason required and audited;
   - the ADR for the lane's exception to per-recipient order is logged.
 - [x] **7.3 Tools and CLI** *(Claude)*
-  **Done-when:** `room_inbox`; `snapshot`, `urgent` + `reason` and `revisesAttemptId` on `room_send`; `room_withdraw`; CLI
+  **Done-when:** `roundtable_inbox`; `snapshot`, `urgent` + `reason` and `revisesAttemptId` on `roundtable_send`; `roundtable_withdraw`; CLI
   equivalents; envelopes carry a token covering their own content. Tool descriptions teach models to revise on
   "not sent" and to use the envelope token. Built against 7.1/7.2 contracts, with fakes first.
 - [x] **7.4 TUI** *(Claude)*
@@ -280,7 +280,7 @@ ergonomics first. Ownership agreed at the milestone boundary.
   Kevin, 2026-09-28: a half-second hold before delivery, configurable in settings, letting queued messages
   (especially his) go as one message.
   **Done-when:**
-  - `.room/settings.json` holds room settings (`deliveryHoldMs` 500, `batchHeld` true, `batchMaxHoldMs` 2000), read
+  - `.roundtable/settings.json` holds room settings (`deliveryHoldMs` 500, `batchHeld` true, `batchMaxHoldMs` 2000), read
     live by the service (ROOM_* env still overrides), and editable from the TUI's `/settings`. Edits apply to newly
     committed messages;
   - an ordinary delivery isn't claimable until its hold expires. Hold deadlines are persisted and survive a restart
@@ -304,14 +304,14 @@ online agents; renames relabel in-flight deliveries. Ownership per the spec §6 
   deliveries whose recipient left the registry but whose binding is registered under another name; rename,
   restart, inbox and withdraw regressions pass.
 - [x] **8.2 Rename without restart** *(Astra core; fable surfaces)*
-  **Done-when:** `room_rename` / `room rename` (self only, binding-resolved) and the human's `room rename OLD NEW` /
+  **Done-when:** `roundtable_rename` / `roundtable rename` (self only, binding-resolved) and the human's `roundtable rename OLD NEW` /
   `/rename`; registry moved atomically under the lock; the ledger row and every QUEUED delivery (held, waiting and burst members
   included; never submitted, uncertain or in-flight attempts) to the old name relabelled in one transaction with
   targets unchanged; tokens unaffected; a system message announces the new name to the other agents on a self-rename
   (the renamer learns from its tool result) and to every agent on a human rename; the old name is refused with a
   "renamed to" hint.
 - [x] **8.3 Kick by unanimous consent** *(Astra core; fable surfaces)*
-  **Done-when:** `room_kick { name, reason }` is one verb meaning "I vote to remove": the first call opens a persisted
+  **Done-when:** `roundtable_kick { name, reason }` is one verb meaning "I vote to remove": the first call opens a persisted
   proposal (TTL, default 10 min) announced as a system message; votes count once per binding from the agents
   registered and online at open, excluding the target; unanimity executes immediately (product call); the human's
   own kick executes alone; expiry closes it with a message. Execution removes the registration, cancels queued

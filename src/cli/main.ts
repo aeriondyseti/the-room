@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-// `room` entry point. Sprint 0.1 provides only --version/--help; commands arrive in 2.3 (CLI) and 3.x (TUI).
+// `roundtable` entry point. Sprint 0.1 provides only --version/--help; commands arrive in 2.3 (CLI) and 3.x (TUI).
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { VERSION } from '../version.js';
 
-const USAGE = `room ${VERSION} — local chat room for coding agents
+const USAGE = `roundtable ${VERSION} — local chat room for coding agents
 
-Usage: room <command> [options]
+Usage: roundtable <command> [options]
 
 Commands: tui, mcp, send, reply, read, inbox, withdraw, who, join, doctor, pause, resume, retry, shutdown, migrate
-Run room <command> --help for usage.
+Run roundtable <command> --help for usage.
 
 Options:
   --version   Print the version
@@ -26,7 +26,7 @@ export function run(argv: string[], out: (s: string) => void = console.log, err:
     out(USAGE);
     return 0;
   }
-  err(`room: unknown or not-yet-implemented command "${first}". Run \`room --help\`.`);
+  err(`roundtable: unknown or not-yet-implemented command "${first}". Run \`roundtable --help\`.`);
   return 2;
 }
 

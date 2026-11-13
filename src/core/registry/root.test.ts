@@ -24,7 +24,7 @@ test('real Git discovery ignores inherited foreign repo/config and still shares 
   git(repo, 'worktree', 'add', '-b', 'linked', linked);
   const polluted: NodeJS.ProcessEnv = { ...env, GIT_DIR: path.join(foreign, '.git'), GIT_COMMON_DIR: path.join(foreign, '.git'),
     GIT_WORK_TREE: foreign, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.bare', GIT_CONFIG_VALUE_0: 'true' };
-  delete polluted.ROOM_ROOT;
+  delete polluted.ROUNDTABLE_ROOT;
   const script = `import {resolveRoomRoot} from ${JSON.stringify(new URL('./root.js', import.meta.url).href)}; console.log(await resolveRoomRoot(process.argv[1]));`;
   for (const dir of [repo, linked]) {
     const actual = execFileSync(process.execPath, ['--input-type=module', '-e', script, dir], { env: polluted, windowsHide: true, encoding: 'utf8' }).trim();

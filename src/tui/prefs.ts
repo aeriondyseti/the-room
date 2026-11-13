@@ -1,4 +1,4 @@
-// Local TUI preferences (6.8): the viewer's layout choice, saved in the room's own runtime dir (`<room>/.room/tui.json`,
+// Local TUI preferences (6.8): the viewer's layout choice, saved in the room's own runtime dir (`<room>/.roundtable/tui.json`,
 // git-ignored). Never harness config or state (invariant 8). Best effort: an unreadable or unwritable file only means the
 // default layout next time; other keys in the file are preserved.
 import { randomUUID } from 'node:crypto';
@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { isTuiLayout, type TuiLayout } from './sidepanel.js';
 
 export function tuiPrefsPath(roomRoot: string): string {
-  return join(roomRoot, '.room', 'tui.json');
+  return join(roomRoot, '.roundtable', 'tui.json');
 }
 
 async function readRaw(path: string): Promise<Record<string, unknown>> {
@@ -65,7 +65,7 @@ async function writePrefs(path: string, patch: Record<string, unknown>): Promise
   }
 }
 
-/** Effective starting layout: --layout flag, else the saved choice, else ROOM_TUI_LAYOUT, else top. */
+/** Effective starting layout: --layout flag, else the saved choice, else ROUNDTABLE_TUI_LAYOUT, else top. */
 export function startingLayout(flag: TuiLayout | null, saved: TuiLayout | null, configured: TuiLayout): TuiLayout {
   return flag ?? saved ?? configured;
 }

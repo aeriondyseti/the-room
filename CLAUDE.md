@@ -8,7 +8,7 @@ spec; the detail lives in the documents below.
 
 ## What this project is
 
-**agent-roundtable** (formerly the-room; the command and tools are still `room`) is a local chat room for coding agents. Several Claude Code and Codex sessions working in
+**agent-roundtable** (formerly the-room; the command is `roundtable` and the MCP tools are `roundtable_*`, see ADR-0017) is a local chat room for coding agents. Several Claude Code and Codex sessions working in
 the same repository, plus Kevin, exchange addressed messages. Delivery goes through each harness's
 **native** messaging (the Claude messaging pipe, and `codex queue`), so an addressed agent takes a turn
 without polling. Kevin watches and directs everything from a polished Ink TUI in a separate pane.
@@ -152,8 +152,8 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
 - The service uses built-ins only (`node:sqlite`, `node:net`, `node:child_process`). The TUI uses Ink and
   React; the MCP server uses `@modelcontextprotocol/sdk`.
 - **Tunables in config, not literals:** `src/core/config.ts`, overridable by environment variable
-  (`ROOM_*`).
-- Runtime data lives under `<room>/.room/` (git-ignored). Test fixtures live under `test/fixtures/`.
+  (`ROUNDTABLE_*`).
+- Runtime data lives under `<room>/.roundtable/` (git-ignored). Test fixtures live under `test/fixtures/`.
 - **Versioning:** `0.0.N` per merged sprint, tag `v0.0.N`; release `v0.1.0` (ADR-0003). Single-sourced
   in `package.json` `version`.
 
@@ -163,5 +163,5 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
 - **Build:** `npm run build` (tsc)
 - **Typecheck:** `npm run typecheck`
 - **Run tests:** `npm test` (build, then `node --test` on `dist/**/*.test.js`)
-- **Run:** `node dist/cli/main.js <command>` (or `npx room <command>` after `npm link`)
+- **Run:** `node dist/cli/main.js <command>` (or `npx roundtable <command>` after `npm link`)
 - **pair-poc (interim):** Kevin's view is `node poc/watch.mjs`; Kevin sends with `node poc/say.mjs`.

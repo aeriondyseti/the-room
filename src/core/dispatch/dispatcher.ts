@@ -47,7 +47,7 @@ export class Dispatcher {
      const inFlight=pending.attempts.at(-1)?.outcome==='in_flight';
      this.change(pending,value=>{
       value.state=inFlight?'uncertain':'failed';
-      const error={code:'internal',message:inFlight?'Dispatcher failed during submission; reconcile before retry.':'Dispatcher could not resolve this delivery; run room doctor and retry after correcting the configuration.'};
+      const error={code:'internal',message:inFlight?'Dispatcher failed during submission; reconcile before retry.':'Dispatcher could not resolve this delivery; run roundtable doctor and retry after correcting the configuration.'};
       if(inFlight){const a=value.attempts.at(-1)!;a.outcome='uncertain';a.finishedAt=new Date().toISOString();a.error=error;}
       else value.attempts.push({n:value.attempts.length+1,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),outcome:'failed',evidence:null,error});
      });

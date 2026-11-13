@@ -39,7 +39,7 @@ test('an empty inbox page still hands out a snapshot', () => {
 test('an incomplete page gives the exact continuation and never implies coverage', () => {
   const t = inboxPageText(page({ hasMore: true, nextCursor: 'cur-2', remaining: 3 }));
   assert.match(t, /Incomplete: 3 more not covered yet/);
-  assert.match(t, /room_inbox cursor=cur-2 snapshot=snap-1/);
+  assert.match(t, /roundtable_inbox cursor=cur-2 snapshot=snap-1/);
 });
 
 test('an ordinary or human send adds no guard text', () => {
@@ -72,7 +72,7 @@ test('not sent: each reason has its own headline; blank guidance is omitted', ()
 
 test('not sent with an incomplete inbox asks to finish reading before resending', () => {
   const t = guardedSendText({ status: 'not_sent', reason: 'snapshot_required', attemptId: 'att-5', inbox: page({ hasMore: true, nextCursor: 'c', remaining: 9 }), guidance: '' });
-  assert.match(t, /finish reading with room_inbox/);
+  assert.match(t, /finish reading with roundtable_inbox/);
   assert.match(t, /revises_attempt_id=att-5/);
   assert.doesNotMatch(t, /send again with snapshot=/);
 });
@@ -81,9 +81,9 @@ test('CLI surface: every hint names a shell command, never an MCP call', () => {
   const t = guardedSendText({ status: 'not_sent', reason: 'snapshot_stale', attemptId: 'att-6', inbox: page({ snapshot: 's2' }), guidance: '' }, 'cli');
   assert.match(t, /send again with --snapshot s2 --revises att-6/);
   const more = inboxPageText(page({ hasMore: true, nextCursor: 'c9', remaining: 1 }), 'cli');
-  assert.match(more, /room inbox --cursor c9 --snapshot snap-1/);
+  assert.match(more, /roundtable inbox --cursor c9 --snapshot snap-1/);
   const urgent = guardedSendText(sent({ guard: 'urgent', newSinceSnapshot: 1 }), 'cli');
-  for (const text of [t, more, urgent]) assert.doesNotMatch(text, /room_inbox|revises_attempt_id|cursor=/);
+  for (const text of [t, more, urgent]) assert.doesNotMatch(text, /roundtable_inbox|revises_attempt_id|cursor=/);
 });
 
 test('withdraw: a full withdraw says so', () => {

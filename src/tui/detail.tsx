@@ -76,7 +76,7 @@ function deliveryBlock(
   if (d.held) out.push(...wrapped('held while the room is paused', '    ', { color: 'yellow' }));
   if (d.waiting === 'offline') out.push(...wrapped("waiting — the agent's session isn't running", '    ', { color: 'yellow' }));
   if (d.waiting === 'rebind_needed') out.push(...wrapped('waiting — the agent needs to re-join (its session changed)', '    ', { color: 'yellow' }));
-  if (d.referenced) out.push(...wrapped('sent as a preview + `room read` reference (too long for this harness)', '    ', { dim: true }));
+  if (d.referenced) out.push(...wrapped('sent as a preview + `roundtable read` reference (too long for this harness)', '    ', { dim: true }));
   if (d.attempts.length === 0) out.push([{ text: '    no attempts yet', dim: true }]);
   for (const a of d.attempts) out.push(...attemptLines(a, wrapped));
   return out;

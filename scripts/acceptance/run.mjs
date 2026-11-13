@@ -2,9 +2,9 @@
 //
 //   node scripts/acceptance/run.mjs [--claude 2] [--codex 0] [--trials 20] [--scenarios] [--soak-minutes 0] [--label x]
 //
-// Starts fixtures in a scratch room (non-git dir + ROOM_ROOT, see claude-fixture.mjs), acts as the human (client
+// Starts fixtures in a scratch room (non-git dir + ROUNDTABLE_ROOT, see claude-fixture.mjs), acts as the human (client
 // 'tui'), and records per-message evidence: enqueue (createdAt → pipe/queue submit), turn start (transcript), reply
-// (fixture's room_send with reply_to). Writes probes/acceptance/<stamp>-<label>.{json,md}. Always stops fixtures.
+// (fixture's roundtable_send with reply_to). Writes probes/acceptance/<stamp>-<label>.{json,md}. Always stops fixtures.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -157,7 +157,7 @@ try {
       await sleep(15_000); const late = (await allAfter(m.seq)).filter((i) => i.message.replyTo === m.id).map((i) => i.message.from.name);
       record('@name reaches only the target', deliveries.length === 1 && !!replies[target] && late.every((n) => n === target), { messageId: m.id, deliveries: deliveries.map((d) => d.recipient), repliedBy: late }); }
 
-    // 3/4. Agent-to-agent via room_send: same-harness and cross-harness replies.
+    // 3/4. Agent-to-agent via roundtable_send: same-harness and cross-harness replies.
     const relay = async (label, from, to) => {
       if (!from || !to) { record(label, false, { skipped: 'fixture missing' }); return; }
       for (const fx of fixtures) await waitIdle(fx);
@@ -214,7 +214,7 @@ try {
   results.errors.push(`fatal: ${err.stack ?? err.message}`); log('fatal', err.message);
 } finally {
   for (const fx of fixtures) if (!fx.stopped) { try { await fx.stop(); } catch (e) { results.errors.push(`stop ${fx.name}: ${e.message}`); } }
-  try { await client.request('shutdown', { caller: human }); } catch (e) { results.errors.push(`scratch room shutdown: ${e.message}`); }
+  try { await client.request('shutdown', { caller: human }); } catch (e) { results.errors.push(`scratch roundtable shutdown: ${e.message}`); }
   client.close();
   results.config.finishedAt = new Date().toISOString();
   const dir = resolve('probes/acceptance'); mkdirSync(dir, { recursive: true });

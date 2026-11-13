@@ -27,16 +27,16 @@ pause the room.
 **In (MVP, v0.1.0 = MVP plus an ergonomics polish pass):**
 - **Harnesses:** Claude Code and Codex, including several instances of each (four-agent acceptance
   fixture). Agents attach from sessions that are already running.
-- **Registration:** agents self-register with `room join` (CLI) or `room_join` (MCP) into the repo-root
+- **Registration:** agents self-register with `roundtable join` (CLI) or `roundtable_join` (MCP) into the repo-root
   `session.toml`. Each `[participants.<name>]` holds **only** `harness` and `session_id`.
 - **One room service per repo:** SQLite ledger, local named-pipe IPC, single owner, auto-started
   detached by any client.
 - **Native delivery:**
   - Claude: write to the session's messaging pipe.
   - Codex: `codex queue` with an argument array.
-  - Full message envelope; oversized messages get a bounded preview plus a `room read <id>` reference.
-- **Agent access:** MCP tools `room_send`, `room_read`, `room_who`, `room_join` (preferred), and a CLI
-  fallback (`room send/read/who/join/doctor/pause/resume`). Per-call caller identity.
+  - Full message envelope; oversized messages get a bounded preview plus a `roundtable read <id>` reference.
+- **Agent access:** MCP tools `roundtable_send`, `roundtable_read`, `roundtable_who`, `roundtable_join` (preferred), and a CLI
+  fallback (`roundtable send/read/who/join/doctor/pause/resume`). Per-call caller identity.
 - **Ink TUI in its own pane:**
   - room messages only (no harness output in the MVP);
   - broadcast by default, `@name` to target;
@@ -45,7 +45,7 @@ pause the room.
   - `/pause` (hold deliveries plus a stop request to all agents) and `/resume`.
   - UI/UX polish is a priority.
 - **Minimal read-only usage observer:** Claude JSONL `usage`, Codex `token_count`.
-- **Onboarding:** a `/room` skill for Claude and `AGENTS.md` instructions for Codex, plus an install
+- **Onboarding:** a `/roundtable` skill for Claude and `AGENTS.md` instructions for Codex, plus an install
   recipe.
 
 **Out (later):**
@@ -57,14 +57,14 @@ pause the room.
 ## 3. Architecture overview
 
 ```
- Kevin ── room tui (Ink) ─┐
- agents ─ MCP server ─────┼── named-pipe IPC ──► room service (single owner, detached)
- agents ─ room CLI ───────┘                          │  SQLite ledger (.room/room.db)
-                                                     │  registry ◄── session.toml (repo root)
-                                                     ├── dispatcher (per-recipient serialized)
-                                                     │     ├── Claude adapter → cc-msg named pipe
-                                                     │     └── Codex adapter  → `codex queue` (argv)
-                                                     └── usage observer (read-only transcript readers)
+ Kevin ── roundtable tui (Ink) ─┐
+ agents ─ MCP server ───────────┼── named-pipe IPC ──► room service (single owner, detached)
+ agents ─ roundtable CLI ───────┘                          │  SQLite ledger (.roundtable/room.db)
+                                                           │  registry ◄── session.toml (repo root)
+                                                           ├── dispatcher (per-recipient serialized)
+                                                           │     ├── Claude adapter → cc-msg named pipe
+                                                           │     └── Codex adapter  → `codex queue` (argv)
+                                                           └── usage observer (read-only transcript readers)
 ```
 
 | Component | Responsibility |
@@ -74,7 +74,7 @@ pause the room.
 | `adapters/claude`, `adapters/codex` | Native submission only. Version-sensitive details are isolated here |
 | `ipc/` | Protocol types plus the named-pipe client/server. The TUI, CLI and MCP server are thin clients |
 | `mcp/` | Official MCP SDK server; resolves caller identity per call, forwards to the service |
-| `cli/` | The `room` command |
+| `cli/` | The `roundtable` command |
 | `tui/` | Ink app; presentation only |
 | `observer/` | Usage readers with cursors and freshness labels |
 

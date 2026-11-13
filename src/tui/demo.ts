@@ -1,4 +1,4 @@
-// Seed data for `room tui --demo`: a believable conversation so the TUI can be seen without a live room.
+// Seed data for `roundtable tui --demo`: a believable conversation so the TUI can be seen without a live room.
 import { HUMAN, type ParticipantState } from '../contracts/domain.js';
 import { FakeRoomSource } from './fake-source.js';
 

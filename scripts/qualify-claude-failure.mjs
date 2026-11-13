@@ -10,13 +10,13 @@ const evidence={at:new Date().toISOString(),sessionId,checks:{}};
 const until=async check=>{const end=Date.now()+60000;for(;;){const result=await check();if(result)return result;if(Date.now()>end)throw Error('Live Claude qualification timeout');await new Promise(r=>setTimeout(r,100));}};
 try{
  await client.request('shutdown',{caller:{kind:'human'}});client.close();
- await until(async()=>{try{await fs.stat(path.join(root,'.room/service.lock'));return false;}catch(e){if(e.code==='ENOENT')return true;throw e;}});
- process.env.ROOM_CLAUDE_MAX_ENVELOPE_CHARS='1200';
+ await until(async()=>{try{await fs.stat(path.join(root,'.roundtable/service.lock'));return false;}catch(e){if(e.code==='ENOENT')return true;throw e;}});
+ process.env.ROUNDTABLE_CLAUDE_MAX_ENVELOPE_CHARS='1200';
  running=await startServer(root,{adapters:defaultAdapters(root)});client=await RoomClient.connect(root,{client:'tui',autoStart:false});
- const paused=await client.request('pause',{caller:{kind:'human'},stopRequestBody:'TEST HARNESS: pause acceptance check on this disposable session. Acknowledge this stop request through room_send; no additional work is requested.'});
+ const paused=await client.request('pause',{caller:{kind:'human'},stopRequestBody:'TEST HARNESS: pause acceptance check on this disposable session. Acknowledge this stop request through roundtable_send; no additional work is requested.'});
  evidence.checks.stopReply=await until(async()=> (await client.request('read',{afterSeq:paused.stopRequest.message.seq})).items.find(i=>i.message.replyTo===paused.stopRequest.message.id));
  evidence.checks.stopDelivery=(await client.request('deliveries',{messageId:paused.stopRequest.message.id})).deliveries[0];
- const body='TEST HARNESS: reference check. Read the full message with room_read using the id in the envelope before sending your ACK.\n'+'padding " ✓\n'.repeat(500)+'REFERENCE-FULL-BODY';
+ const body='TEST HARNESS: reference check. Read the full message with roundtable_read using the id in the envelope before sending your ACK.\n'+'padding " ✓\n'.repeat(500)+'REFERENCE-FULL-BODY';
  const held=await client.request('send',{caller:{kind:'human'},to:['fxh'],body});assert.ok(held.deliveries[0].held);assert.equal(held.deliveries[0].attempts.length,0);evidence.checks.held=true;
  client.close();await running.close();running=await startServer(root,{adapters:defaultAdapters(root)});client=await RoomClient.connect(root,{client:'tui',autoStart:false});
  assert.equal((await client.request('who',{})).room.paused,true);evidence.checks.pauseSurvivesRestart=true;

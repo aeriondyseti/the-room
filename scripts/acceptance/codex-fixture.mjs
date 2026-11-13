@@ -19,7 +19,7 @@ export async function start({name,root,dist}) {
   const home=process.env.CODEX_HOME||path.join(homedir(),'.codex');
   const {resolveCodexExecutable}=await import(pathToFileURL(path.resolve(path.dirname(dist),'../adapters/codex/adapter.js')).href);
   const {RoomClient}=await import(pathToFileURL(path.resolve(path.dirname(dist),'../ipc/client.js')).href);
-  const executable=resolveCodexExecutable(process.env.ROOM_CODEX_EXECUTABLE??null,root);
+  const executable=resolveCodexExecutable(process.env.ROUNDTABLE_CODEX_EXECUTABLE??null,root);
   if(!executable)throw Error('Native Codex executable unavailable.');
   const evidence=path.join(root,`${name}-codex-events.jsonl`);
   const log=(kind,data)=>appendFileSync(evidence,JSON.stringify({at:Date.now(),kind,...data})+'\n');
@@ -51,18 +51,18 @@ export async function start({name,root,dist}) {
     for(const server of Object.keys(user.mcp_servers??{}))config[`mcp_servers.${server}.enabled`]=false;
     // Kevin explicitly approved these four room tools in newly created disposable fixtures only.
     // This is a thread/start override: no user config writes, no approval changes for shell or other tools.
-    const roomTools=['room_send','room_read','room_who','room_join'];
-    config['mcp_servers.room']={command:process.execPath,args:[dist,'mcp'],env:{ROOM_ROOT:root},enabled:true,
+    const roomTools=['roundtable_send','roundtable_read','roundtable_who','roundtable_join'];
+    config['mcp_servers.room']={command:process.execPath,args:[dist,'mcp'],env:{ROUNDTABLE_ROOT:root},enabled:true,
       enabled_tools:roomTools,default_tools_approval_mode:'prompt',
       tools:Object.fromEntries(roomTools.map(tool=>[tool,{approval_mode:'approve'}]))};
     const created=await client.rpc('thread/start',{
-      cwd:root,model:process.env.ROOM_ACCEPTANCE_CODEX_MODEL??'gpt-6-luna',sandbox:'read-only',approvalPolicy:'never',config,
-      developerInstructions:`You are disposable room qualification participant ${name}. Use only the room MCP tools. Never use shell/file/network tools, access other repositories, modify global configuration or spawn agents. First call room_join with name ${name}. If an incoming room message body starts with the uppercase word "RELAY" followed by a name, call room_send once with to equal that name and text "ping" (no reply_to) instead of replying to the sender; any other body (including "ping") is a trial message. For each other incoming room trial message, call room_send with to equal its sender, reply_to equal its message id and text ACK. If it is already an ACK, do not reply (avoid loops). For oversized referenced content, room_read the referenced id first. Do not poll or wait for messages. Native queue starts later turns. Finish each turn after the required MCP call.`,
+      cwd:root,model:process.env.ROUNDTABLE_ACCEPTANCE_CODEX_MODEL??'gpt-6-luna',sandbox:'read-only',approvalPolicy:'never',config,
+      developerInstructions:`You are disposable room qualification participant ${name}. Use only the room MCP tools. Never use shell/file/network tools, access other repositories, modify global configuration or spawn agents. First call roundtable_join with name ${name}. If an incoming room message body starts with the uppercase word "RELAY" followed by a name, call roundtable_send once with to equal that name and text "ping" (no reply_to) instead of replying to the sender; any other body (including "ping") is a trial message. For each other incoming room trial message, call roundtable_send with to equal its sender, reply_to equal its message id and text ACK. If it is already an ACK, do not reply (avoid loops). For oversized referenced content, roundtable_read the referenced id first. Do not poll or wait for messages. Native queue starts later turns. Finish each turn after the required MCP call.`,
     });
     sessionId=created.thread.id;rollout=created.thread.path;client.owned.add(sessionId);
     await fs.writeFile(path.join(root,`${name}-codex-manifest.json`),JSON.stringify({sessionId,rollout,model:created.model,configuration:'daemon-hosted/read-only/MCP-only'},null,2));
     const since=Date.now();
-    await client.rpc('turn/start',{threadId:sessionId,input:[{type:'text',text:`Join this fixture room as ${name} using room_join now. Do not send a greeting.`}]});
+    await client.rpc('turn/start',{threadId:sessionId,input:[{type:'text',text:`Join this fixture room as ${name} using roundtable_join now. Do not send a greeting.`}]});
     room=await RoomClient.connect(root,{client:'cli'});
     const deadline=Date.now()+90000;
     for(;;){

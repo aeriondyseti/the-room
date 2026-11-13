@@ -8,10 +8,10 @@ import { RoomSettings } from './settings.js';
 test('a startup file that conflicts with a valid env falls back, while an invalid env fails startup',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
  t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
- const dir=path.join(root,'.room');await mkdir(dir);
+ const dir=path.join(root,'.roundtable');await mkdir(dir);
  const file=path.join(dir,'settings.json');
  await writeFile(file,JSON.stringify({version:1,batchMaxHoldMs:1000}));
- const settings=new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'1500'});
+ const settings=new RoomSettings(root,{ROUNDTABLE_DELIVERY_HOLD_MS:'1500'});
  const fallback=await settings.get();
  assert.equal(fallback.problem?.fallback,'defaults');
  assert.equal(fallback.effective.deliveryHoldMs,1500);
@@ -21,14 +21,14 @@ test('a startup file that conflicts with a valid env falls back, while an invali
  assert.equal(repaired.problem,undefined);
  assert.equal(repaired.configured.batchMaxHoldMs,2000);
  assert.equal(JSON.parse(await readFile(file,'utf8')).batchMaxHoldMs,2000);
- assert.throws(()=>new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'3000'}));
+ assert.throws(()=>new RoomSettings(root,{ROUNDTABLE_DELIVERY_HOLD_MS:'3000'}));
 });
 
 test('bad runtime file retains good values, cold fallback uses defaults, repair backs up raw bytes',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
  t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
  const settings=new RoomSettings(root,{});await settings.update({deliveryHoldMs:700});
- const dir=path.join(root,'.room'),file=path.join(dir,'settings.json');
+ const dir=path.join(root,'.roundtable'),file=path.join(dir,'settings.json');
  await writeFile(file,'broken-json');
  const fallback=await settings.get();assert.equal(fallback.effective.deliveryHoldMs,700);assert.equal(fallback.problem?.fallback,'last_good');
  const cold=new RoomSettings(root,{});assert.equal((await cold.get()).problem?.fallback,'defaults');
@@ -44,9 +44,9 @@ test('bad runtime file retains good values, cold fallback uses defaults, repair 
 test('deleted companion policy can be repaired and oversized startup files do not seed fallback',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
  t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
- const dir=path.join(root,'.room');await mkdir(dir);
+ const dir=path.join(root,'.roundtable');await mkdir(dir);
  const file=path.join(dir,'settings.json');await writeFile(file,JSON.stringify({version:1,batchMaxHoldMs:5000}));
- const settings=new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'3000'});
+ const settings=new RoomSettings(root,{ROUNDTABLE_DELIVERY_HOLD_MS:'3000'});
  await rm(file);assert.equal((await settings.get()).effective.deliveryHoldMs,3000);
  assert.equal((await settings.update({})).effective.batchMaxHoldMs,5000);
  await writeFile(file,JSON.stringify({version:1,deliveryHoldMs:1500,extra:'x'.repeat(1024*1024)}));
@@ -57,10 +57,10 @@ test('deleted companion policy can be repaired and oversized startup files do no
 test('live settings preserve unknown keys, reset saved values, and retain environment precedence',async t=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'room-settings-'));
   t.after(()=>rm(root,{recursive:true,force:true,maxRetries:5}));
-  const settings=new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'700'});
+  const settings=new RoomSettings(root,{ROUNDTABLE_DELIVERY_HOLD_MS:'700'});
   assert.equal((await settings.get()).effective.deliveryHoldMs,700);
-  await mkdir(path.join(root,'.room'));
-  const file=path.join(root,'.room','settings.json');
+  await mkdir(path.join(root,'.roundtable'));
+  const file=path.join(root,'.roundtable','settings.json');
   await writeFile(file,JSON.stringify({version:1,anotherFeature:{enabled:true}}));
   const changed=await settings.update({deliveryHoldMs:900});
   assert.equal(changed.configured.deliveryHoldMs,900);
@@ -86,5 +86,5 @@ test('concurrent patches merge and invalid policies never replace the saved file
   await assert.rejects(a.update({deliveryHoldMs:Infinity}));
   await assert.rejects(a.update({surprise:true}));
   assert.equal((await a.get()).configured.batchMaxHoldMs,2000);
-  assert.throws(()=>new RoomSettings(root,{ROOM_DELIVERY_HOLD_MS:'2500'}));
+  assert.throws(()=>new RoomSettings(root,{ROUNDTABLE_DELIVERY_HOLD_MS:'2500'}));
 });

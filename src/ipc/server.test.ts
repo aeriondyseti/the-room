@@ -52,12 +52,12 @@ test('subscribe replays stored messages in order, and reconnect can refresh held
  assert.equal((await subscriber.request('read',{messageId:first.message.id})).items[0]!.deliveries[0]!.held,true);
 });
 test('OS lock refuses a second writer; stale owner metadata is replaced only after exclusive bind',async t=>{
- const root=await fixture(t);await mkdir(path.join(root,'.room'));await writeFile(path.join(root,'.room/service.lock'),JSON.stringify({pid:999999999,nonce:'stale'}));
+ const root=await fixture(t);await mkdir(path.join(root,'.roundtable'));await writeFile(path.join(root,'.roundtable/service.lock'),JSON.stringify({pid:999999999,nonce:'stale'}));
  const server=await startServer(root);t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});});
- const owner=JSON.parse(await readFile(path.join(root,'.room/service.lock'),'utf8')) as {pid:number;nonce:string};
+ const owner=JSON.parse(await readFile(path.join(root,'.roundtable/service.lock'),'utf8')) as {pid:number;nonce:string};
  assert.equal(owner.pid,process.pid);assert.notEqual(owner.nonce,'stale');
  await assert.rejects(startServer(root),{code:'EADDRINUSE'});
- assert.equal(JSON.parse(await readFile(path.join(root,'.room/service.lock'),'utf8')).nonce,owner.nonce);
+ assert.equal(JSON.parse(await readFile(path.join(root,'.roundtable/service.lock'),'utf8')).nonce,owner.nonce);
 });
 test('two independent auto-starting clients find one detached service and shutdown cleans ownership',async t=>{
  const root=await fixture(t);await joinParticipant(root,'astra',{harness:'codex',session_id:id});
@@ -69,7 +69,7 @@ test('two independent auto-starting clients find one detached service and shutdo
  const outputs=await clientPromise;assert.ok(outputs.every(output=>JSON.parse(output).participants[0].name==='astra'));
  const client=await RoomClient.connect(root,{client:'cli',autoStart:false});await client.request('shutdown',{caller:{kind:'human'}});client.close();
  const deadline=Date.now()+3000;
- while(Date.now()<deadline){try{await readFile(path.join(root,'.room/service.lock'));await new Promise(r=>setTimeout(r,20));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return;throw error;}}
+ while(Date.now()<deadline){try{await readFile(path.join(root,'.roundtable/service.lock'));await new Promise(r=>setTimeout(r,20));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return;throw error;}}
  assert.fail('service owner metadata remained after shutdown');
 });
 

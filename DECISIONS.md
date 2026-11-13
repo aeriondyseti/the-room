@@ -243,3 +243,15 @@ on each new delivery. No promise of immediate model processing or automatic inte
 - **Alternatives rejected:** proposal events plus a TUI banner; a separate consent tool and explicit "no" votes; a veto
   window with approve/veto commands; a human-only remove command; refusing renames while deliveries are queued;
   cross-sender batching of notices. All added machinery for little value while the human sees every message.
+## ADR-0017 — Project renamed to agent-roundtable; every user-facing name follows (2026-11-13)
+
+- **Decision (Kevin):** the project is **agent-roundtable**, and the names people and agents type follow it: the CLI is
+  `roundtable`, the MCP server and its tools are `roundtable` and `roundtable_*`, configuration is `ROUNDTABLE_*`, the
+  state directory is `.roundtable/` and the envelope header opens with `[roundtable …]`. No old name is kept as an alias.
+- **No migration (Kevin):** nothing moves an earlier `.room/` directory and nothing reads the old names. No room was in
+  use and the repository had only just been published, so backward compatibility would be code with no user.
+- **Left as they were:** "room" stays the word for the shared space, so internal names (`RoomService`, `room.db`, the
+  `room_state` table, `room.updated` events, the pipe name) are unchanged, as are the earlier `vibe-pairing` salts and
+  the `~/.vibe-pairing` cache. Records written before this one (ADRs, PROGRESS, reviews, probes) keep the old names.
+- **Consequence:** an MCP registration, permission entry (`mcp__room__room_*`) or `ROOM_*` setting made before the
+  rename does nothing; set them up again as docs/ONBOARDING.md describes.

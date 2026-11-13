@@ -11,7 +11,7 @@ const manifest=JSON.parse(await fs.readFile(path.join(root,'manifest.json'),'utf
 assert.equal(manifest.purpose,'room-failure-qualification');
 assert.equal(manifest.threads.length,1);
 const target=manifest.threads[0].id;
-process.env.ROOM_CODEX_MAX_ENVELOPE_CHARS='1200';
+process.env.ROUNDTABLE_CODEX_MAX_ENVELOPE_CHARS='1200';
 await joinParticipant(root,'fixture',{harness:'codex',session_id:target});
 let running=await startServer(root,{adapters:defaultAdapters(root)});
 let client=await RoomClient.connect(root,{client:'cli',autoStart:false});

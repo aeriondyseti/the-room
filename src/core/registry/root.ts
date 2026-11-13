@@ -23,19 +23,19 @@ export function roomGitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /** Worktrees resolve to the checkout owning the common git directory. */
-export async function resolveRoomRoot(cwd = process.cwd(), override = process.env.ROOM_ROOT): Promise<string> {
+export async function resolveRoomRoot(cwd = process.cwd(), override = process.env.ROUNDTABLE_ROOT): Promise<string> {
   if (override !== undefined) {
-    if (!override.trim()) throw new RoomError('bad_request', 'ROOM_ROOT is empty; specify an existing room directory.');
+    if (!override.trim()) throw new RoomError('bad_request', 'ROUNDTABLE_ROOT is empty; specify an existing room directory.');
     const root = await realpath(path.resolve(cwd, override));
-    if (!(await stat(root)).isDirectory()) throw new RoomError('bad_request', 'ROOM_ROOT must be a directory.');
+    if (!(await stat(root)).isDirectory()) throw new RoomError('bad_request', 'ROUNDTABLE_ROOT must be a directory.');
     return root;
   }
   const env = roomGitEnvironment(process.env);
   const git = async (...args: string[]) => (await exec('git', ['-C', cwd, 'rev-parse', ...args], { windowsHide: true, env })).stdout.trim();
-  if (await git('--is-bare-repository') === 'true') throw new RoomError('bad_request', 'Bare repository has no room checkout; set ROOM_ROOT explicitly.');
+  if (await git('--is-bare-repository') === 'true') throw new RoomError('bad_request', 'Bare repository has no room checkout; set ROUNDTABLE_ROOT explicitly.');
   const common = await realpath(await git('--path-format=absolute', '--git-common-dir'));
   if (path.basename(common).toLowerCase() !== '.git') {
-    throw new RoomError('bad_request', 'Nonstandard common git directory; set ROOM_ROOT to the shared checkout explicitly.');
+    throw new RoomError('bad_request', 'Nonstandard common git directory; set ROUNDTABLE_ROOT to the shared checkout explicitly.');
   }
   return realpath(path.dirname(common));
 }

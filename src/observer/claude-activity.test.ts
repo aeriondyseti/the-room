@@ -8,13 +8,13 @@ const T = '2026-09-28T10:00:00.000Z';
 test('tool_use becomes a tool_call with callId and an MCP-friendly name; thinking is never exposed', () => {
   const r = parse({ type: 'assistant', timestamp: T, message: { content: [
     { type: 'thinking', thinking: 'secret plan' },
-    { type: 'tool_use', id: 'toolu_1', name: 'mcp__room__room_send', input: { to: ['astra'], text: 'hi' } },
+    { type: 'tool_use', id: 'toolu_1', name: 'mcp__roundtable__roundtable_send', input: { to: ['astra'], text: 'hi' } },
   ] } });
   assert.equal(r.kind, 'items');
   if (r.kind !== 'items') return;
   assert.equal(r.items.length, 1, 'thinking produced nothing');
   const [call] = r.items;
-  assert.deepEqual({ kind: call!.kind, tool: call!.tool, callId: call!.callId, at: call!.at }, { kind: 'tool_call', tool: 'room.room_send', callId: 'toolu_1', at: T });
+  assert.deepEqual({ kind: call!.kind, tool: call!.tool, callId: call!.callId, at: call!.at }, { kind: 'tool_call', tool: 'roundtable.roundtable_send', callId: 'toolu_1', at: T });
   assert.doesNotMatch(JSON.stringify(r), /secret plan/);
   assert.equal(toolName('Bash'), 'Bash');
 });

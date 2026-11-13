@@ -89,7 +89,7 @@ const request = (sessionId = 'sess-1', envelope = 'hello "room" `x` $HOME ✓\nl
 });
 
 const adapter = (deps: ClaudeRegistryDeps, over: Partial<{ settleMs: number; max: number }> = {}) =>
-  new ClaudeAdapter({ registry: deps, maxEnvelopeChars: over.max ?? 1000, timeoutMs: 3000, settleMs: over.settleMs ?? 150, from: 'the-room' });
+  new ClaudeAdapter({ registry: deps, maxEnvelopeChars: over.max ?? 1000, timeoutMs: 3000, settleMs: over.settleMs ?? 150, from: 'agent-roundtable' });
 
 const results: SubmitResult[] = [];
 async function submit(a: ClaudeAdapter, r: SubmitRequest): Promise<SubmitResult> {
@@ -110,7 +110,7 @@ test('delivers the exact auth and user frames and reports pipe-write evidence', 
   assert.deepEqual(user['message'], { content: request().envelope });
   assert.equal(user['type'], 'user');
   assert.equal(user['priority'], 'next');
-  assert.equal(user['from'], 'the-room');
+  assert.equal(user['from'], 'agent-roundtable');
   assert.match(String(user['msg_id']), /^[0-9a-f-]{36}$/);
 });
 

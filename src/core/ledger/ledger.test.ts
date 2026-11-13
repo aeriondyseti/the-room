@@ -46,7 +46,7 @@ test('intervening sender, changed policy and urgency prevent extending or joinin
 });
 test('message and deliveries persist atomically with full body and snapshot', async t => {
   const { root, ledger } = await setup(t);
-  assert.equal(ledger.file, path.join(root, '.room', 'room.db'));
+  assert.equal(ledger.file, path.join(root, '.roundtable', 'room.db'));
   const saved = ledger.enqueue(input({ recipients: [{ name: 'astra', target }, { name: 'claude', target: other }] }));
   assert.equal(saved.message.seq, 1); assert.equal(saved.deliveries.length, 2);
   assert.equal(saved.message.body, input().body);
@@ -141,7 +141,7 @@ test('bounded SQLite busy timeout tolerates another process briefly owning the w
   const { ledger, root } = await setup(t);
   const { spawn } = await import('node:child_process');
   const code = `import {DatabaseSync} from 'node:sqlite'; const db=new DatabaseSync(process.argv[1]); db.exec('BEGIN IMMEDIATE'); process.stdout.write('ready\\n'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200); db.exec('ROLLBACK'); db.close();`;
-  const child = spawn(process.execPath,['--input-type=module','-e',code,path.join(root,'.room','room.db')],{windowsHide:true});
+  const child = spawn(process.execPath,['--input-type=module','-e',code,path.join(root,'.roundtable','room.db')],{windowsHide:true});
   t.after(()=>{child.kill();});
   const exited = new Promise<void>((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error(`writer exited ${code}`)));});
   await new Promise<void>((resolve,reject)=>{child.stdout.once('data',()=>resolve());child.once('error',reject);child.once('exit',code=>{if(code!==0)reject(Error('writer failed before readiness'));});});

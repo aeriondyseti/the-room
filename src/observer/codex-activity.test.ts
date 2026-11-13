@@ -24,7 +24,7 @@ test('Codex call/result transcript fixtures pair by native call id, including st
 
 test('native MCP, command and file-change fixtures emit paired call/result and observed failures', () => {
   const cases = [
-    { type: 'McpToolCall', id: 'mcp', server: 'room', tool: 'room_send', arguments: { text: 'hello' }, status: 'completed', result: { content: [{ type: 'text', text: '{"api_key":"plain-hidden","ok":true}' }] } },
+    { type: 'McpToolCall', id: 'mcp', server: 'roundtable', tool: 'roundtable_send', arguments: { text: 'hello' }, status: 'completed', result: { content: [{ type: 'text', text: '{"api_key":"plain-hidden","ok":true}' }] } },
     { type: 'CommandExecution', id: 'cmd', command: ['pwsh', '-Command', 'echo bad'], cwd: 'X:/fixture', status: 'completed', exit_code: 1, formatted_output: 'bad' },
     { type: 'FileChange', id: 'patch', changes: { 'fixture.txt': { type: 'add', content: 'new' } }, status: 'completed', stdout: 'Done', stderr: '' },
   ];

@@ -52,7 +52,7 @@ test('agent send goes through guarded_send with snapshot, urgent reason and revi
   assert.equal(p['revisesAttemptId'], 'a0');
   assert.equal(p['body'], 'hello');
   assert.match(r.out, /Recorded #21/);
-  assert.match(r.out, /URGENT over 2 message\(s\).*room inbox\)/);
+  assert.match(r.out, /URGENT over 2 message\(s\).*roundtable inbox\)/);
 });
 
 test('a guard refusal exits 4, queues nothing, and shows the delta with shell-syntax next steps', async (t) => {
@@ -114,7 +114,7 @@ test('inbox forwards snapshot, cursor and limit and prints the continuation in s
   assert.equal(p['snapshot'], 'snap-1');
   assert.equal(p['cursor'], 'cur-2');
   assert.equal(p['limit'], 5);
-  assert.match(r.out, /room inbox --cursor cur-3 --snapshot snap-9/);
+  assert.match(r.out, /roundtable inbox --cursor cur-3 --snapshot snap-9/);
 });
 
 test('inbox is refused for the human', async (t) => {
@@ -168,7 +168,7 @@ test('withdraw --recipients all means every original recipient, and a real cance
   assert.equal('recipients' in requests[0]!.params, false);
 });
 
-test('an over-long urgent reason is refused before sending (ROOM_URGENT_REASON_MAX_CHARS)', async (t) => {
+test('an over-long urgent reason is refused before sending (ROUNDTABLE_URGENT_REASON_MAX_CHARS)', async (t) => {
   const { run, requests } = await setup(t, {});
   const r = await run('send', ['--to', 'astra', '--urgent', '--reason', 'x'.repeat(501), 'hi']);
   assert.equal(r.code, 2);
@@ -203,7 +203,7 @@ test('kick: the call is a vote; exit 4 when it changed nothing', async (t) => {
   const first = await run('kick', ['@Ghost', '--reason', 'gone']);
   assert.equal(first.code, 0, first.err);
   assert.deepEqual([requests[0]!.params['name'], requests[0]!.params['reason']], ['ghost', 'gone']);
-  assert.match(first.out, /calls room kick for "ghost"/);
+  assert.match(first.out, /calls roundtable kick for "ghost"/);
   vote = 'not_a_voter';
   const second = await run('kick', ['ghost']);
   assert.equal(second.code, 4);

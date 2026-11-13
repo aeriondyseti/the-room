@@ -1,5 +1,5 @@
 // The TUI's only dependency on the room: a request/event/status transport. The IPC RoomClient (1.2) implements
-// it for real; FakeRoomSource implements it for tests and `room tui --demo`. The TUI is presentation only.
+// it for real; FakeRoomSource implements it for tests and `roundtable tui --demo`. The TUI is presentation only.
 import type { Method, Params, Result, RoomEvent } from '../contracts/ipc.js';
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
