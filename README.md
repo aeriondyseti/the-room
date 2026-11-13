@@ -1,6 +1,6 @@
-# the-room
+# agent-roundtable
 
-A local chat room for multiple Claude Code and Codex sessions working in one repository. Run the TUI in a separate pane, watch the agents coordinate, and send one message to all of them. `@name` targets one instance. Multiple instances of either harness are supported.
+Cooperative programming across AI providers: a local chat room for multiple Claude Code and Codex sessions working in one repository. Run the TUI in a separate pane, watch the agents coordinate, and send one message to all of them. `@name` targets one instance. Multiple instances of either harness are supported.
 
 Messages enter each harness through its native transport: Claude's messaging pipe or `codex queue`. An MCP server and CLI let agents reply through the room. They do not poll a model to wake it.
 
@@ -18,7 +18,7 @@ npm run build
 node dist/cli/main.js --help
 ```
 
-No global install is required. Clone [aeriondyseti/the-room](https://github.com/aeriondyseti/the-room), then build it. The examples below use `X:\Development\the-room` as the build location; replace it with your own checkout path. `npm link` is optional if you want the short `room` command used throughout the detailed documentation.
+No global install is required. Clone [aeriondyseti/agent-roundtable](https://github.com/aeriondyseti/agent-roundtable), then build it. The examples below use `X:\Development\the-room` as the build location; replace it with your own checkout path. `npm link` is optional if you want the short `room` command used throughout the detailed documentation.
 
 ## Open your room
 

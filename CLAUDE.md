@@ -8,7 +8,7 @@ spec; the detail lives in the documents below.
 
 ## What this project is
 
-**the-room** is a local chat room for coding agents. Several Claude Code and Codex sessions working in
+**agent-roundtable** (formerly the-room; the command and tools are still `room`) is a local chat room for coding agents. Several Claude Code and Codex sessions working in
 the same repository, plus Kevin, exchange addressed messages. Delivery goes through each harness's
 **native** messaging (the Claude messaging pipe, and `codex queue`), so an addressed agent takes a turn
 without polling. Kevin watches and directs everything from a polished Ink TUI in a separate pane.
