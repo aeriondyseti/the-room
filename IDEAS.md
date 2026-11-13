@@ -180,3 +180,24 @@ away with the rest of the context before the agent really reads it.
 - **Interplay with M7:**
   - the 7.6 delivery hold and batching would naturally extend to "hold while compacting, then deliver as one batch";
   - the crossing guard already stops a stale post-compaction reply, since the refused send returns what was missed.
+
+## Rename the shared space from "room" to "table"
+
+*Raised 2026-11-13 by Kevin. Status: parked, for later.*
+
+**Idea:** the project is agent-roundtable, and ADR-0017 renamed everything people and agents type (`roundtable`,
+`roundtable_*`, `ROUNDTABLE_*`, `.roundtable/`, the `[roundtable …]` header). The shared space itself is still called
+a "room". Make the domain term "table", so the words match the name.
+
+- **What it covers:**
+  - prose in the README, docs, skill and AGENTS.md ("join the room", "room messages", "the room is paused");
+  - text agents and the human read: envelope footers, notices (`ROOM NOTICE`), errors and hints, CLI and TUI output;
+  - identifiers: `RoomService`, `RoomError`, `RoomMessage`, `RoomState`, `resolveRoomRoot`, `roomRoot`;
+  - protocol and storage names: `room.updated` events, the `room` field in IPC results, `room.db`, the `room_state`
+    table, the `vibe-room-` pipe name.
+- **Open questions:**
+  - whether storage and protocol names change at all. Renaming `room.db` or `room_state` needs a migration, and
+    renaming the pipe or event names breaks a client and a service built on different sides of the change.
+  - whether the `vibe-pairing` salts and the `~/.vibe-pairing` cache are tidied in the same pass. Changing a salt
+    changes derived ids, so deduplication across the change needs thought.
+  - "table" already means a database table in this codebase; the wording has to keep the two apart.
