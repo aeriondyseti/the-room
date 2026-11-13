@@ -55,4 +55,9 @@ test('earlier .room state is moved to .roundtable once, and never over existing 
   await writeFile(path.join(both, '.room', 'settings.json'), 'old');
   assert.equal(await adoptLegacyStateDir(both), 'none');
   assert.equal(await readFile(path.join(both, '.room', 'settings.json'), 'utf8'), 'old');
+
+  // An earlier ledger beside new state is reported, never silently ignored and never moved over the new state.
+  await writeFile(path.join(both, '.room', 'room.db'), 'ledger');
+  await assert.rejects(adoptLegacyStateDir(both), { code: 'invalid_state' });
+  assert.equal(await readFile(path.join(both, '.room', 'room.db'), 'utf8'), 'ledger');
 });

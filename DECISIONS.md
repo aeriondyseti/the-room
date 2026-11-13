@@ -251,8 +251,11 @@ on each new delivery. No promise of immediate model processing or automatic inte
 - **Existing rooms:** the first command run in a room moves `.room/` to `.roundtable/` (`adoptLegacyStateDir`). It never
   moves over an existing `.roundtable/`, and when the move fails (a service started before the rename still holds the
   directory) it stops with an error; `roundtable shutdown` skips the move so that service can be stopped.
+  The service adopts too before it creates anything, because a client built before the rename can start it.
+  `roundtable shutdown` never starts a service. When both directories exist and `.room/` holds a ledger, every command
+  but shutdown stops and says so: which one to keep is the human's choice.
 - **Left as they were:** "room" stays the word for the shared space, so internal names (`RoomService`, `room.db`, the
   `room_state` table, `room.updated` events, the pipe name) are unchanged, as are the earlier `vibe-pairing` salts and
   the `~/.vibe-pairing` cache. Records written before this one (ADRs, PROGRESS, reviews, probes) keep the old names.
 - **Consequence:** every MCP registration, permission allow-list entry (`mcp__room__room_*`) and `ROOM_*` setting made
-  before the rename must be re-made under the new names; see docs/ONBOARDING.md.
+  before the rename must be re-made under the new names; see "Upgrading from the-room" in docs/ONBOARDING.md.

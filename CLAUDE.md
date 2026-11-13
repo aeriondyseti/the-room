@@ -8,7 +8,7 @@ spec; the detail lives in the documents below.
 
 ## What this project is
 
-**agent-roundtable** (formerly agent-roundtable; the command and tools are still `roundtable`) is a local chat room for coding agents. Several Claude Code and Codex sessions working in
+**agent-roundtable** (formerly the-room; the command is `roundtable` and the MCP tools are `roundtable_*`, see ADR-0017) is a local chat room for coding agents. Several Claude Code and Codex sessions working in
 the same repository, plus Kevin, exchange addressed messages. Delivery goes through each harness's
 **native** messaging (the Claude messaging pipe, and `codex queue`), so an addressed agent takes a turn
 without polling. Kevin watches and directs everything from a polished Ink TUI in a separate pane.
@@ -152,7 +152,7 @@ A feature is **✅ only when all five are done**. Use 🟡 for in progress.
 - The service uses built-ins only (`node:sqlite`, `node:net`, `node:child_process`). The TUI uses Ink and
   React; the MCP server uses `@modelcontextprotocol/sdk`.
 - **Tunables in config, not literals:** `src/core/config.ts`, overridable by environment variable
-  (`ROOM_*`).
+  (`ROUNDTABLE_*`).
 - Runtime data lives under `<room>/.roundtable/` (git-ignored). Test fixtures live under `test/fixtures/`.
 - **Versioning:** `0.0.N` per merged sprint, tag `v0.0.N`; release `v0.1.0` (ADR-0003). Single-sourced
   in `package.json` `version`.

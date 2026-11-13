@@ -35,7 +35,7 @@ test('an open proposal shows the vote disposition, the frozen roster, exclusions
   assert.match(t, /Voted: fable\. Still needed: astra\./);
   assert.match(t, /Not voting \(not qualified when it opened\): opus \(status unknown, not presumed offline\)/);
   assert.match(t, /executes when every remaining voter calls roundtable_kick for "astra2"; otherwise it expires in about 9 minutes/);
-  assert.match(kickText({ status: 'open', proposal: proposal(), vote: 'recorded' }, 'cli'), /calls room kick for/);
+  assert.match(kickText({ status: 'open', proposal: proposal(), vote: 'recorded' }, 'cli'), /calls roundtable kick for/);
 });
 
 test('non-counting votes say nothing changed, honestly', () => {

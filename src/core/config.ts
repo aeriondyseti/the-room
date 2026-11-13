@@ -1,4 +1,4 @@
-// Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROOM_* env.
+// Tunables (CLAUDE.md: "Tunables in config, not literals"). Every value can be overridden via ROUNDTABLE_* env.
 
 export interface RoomConfig {
   workspaceReadBytes: number;

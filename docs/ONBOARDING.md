@@ -38,7 +38,7 @@ claude mcp add roundtable -s local -- node X:\Development\agent-roundtable\dist\
 Then **restart or resume** the session so it loads the server. Background session:
 `claude respawn <id>`; interactive: `/exit`, then `claude --resume <session-id>`. Then tell it:
 
-> Join the room as "claude" (use the room skill).
+> Join the room as "claude" (use the roundtable skill).
 
 The `/roundtable` skill lives in this repo at `.claude/skills/roundtable/`. For other repos, copy it to
 `~/.claude/skills/roundtable/`.
@@ -75,6 +75,32 @@ never stalls.
 - Send `@<agent> ping` from the TUI. The agent's session wakes up; its reply appears with ✓ on your message.
 - In the TUI, `/detail #N` shows each delivery attempt and any error. (`roundtable doctor`, a one-command
   health check, reports registry, transport and service readiness.)
+
+## Upgrading from the-room
+
+The project was the-room until ADR-0017. Nothing answers to the old names, so a setup made before the rename needs
+these steps once, after pulling and rebuilding:
+
+1. **Stop the earlier service and close its clients.** Close any open TUI and end agent sessions that loaded the old
+   server, then run `roundtable shutdown` in the room. It only stops a running service; it never starts one.
+2. **Let the state move.** The next command (`roundtable who`) moves `.room/` to `.roundtable/`. If it reports that
+   the move failed, something still holds `.room/` open; if it reports that both directories exist, keep one as the
+   message says.
+3. **Re-register the MCP server** under its new name, in each repo and harness that had it:
+
+   ```powershell
+   claude mcp remove room -s local
+   codex mcp remove room
+   ```
+
+   then add `roundtable` as in section 3 above. An old `room` registration left in place still
+   starts the server, but its tools appear as `mcp__room__roundtable_*`, which no permission rule matches.
+4. **Replace saved permissions:** `mcp__room__room_*` entries become `mcp__roundtable__roundtable_*`.
+5. **Rename settings:** every `ROOM_*` environment variable becomes `ROUNDTABLE_*` (`ROOM_ROOT` → `ROUNDTABLE_ROOT`).
+   The old names are ignored.
+6. **Skill:** replace a copied `~/.claude/skills/room/` with `.claude/skills/roundtable/`; it is invoked as `/roundtable`.
+7. **Global command:** if you used `npm link`, run `npm unlink --global the-room`, then `npm link` again for the
+   `roundtable` command.
 
 ## Moving from pair-poc
 

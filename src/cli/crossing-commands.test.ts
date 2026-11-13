@@ -203,7 +203,7 @@ test('kick: the call is a vote; exit 4 when it changed nothing', async (t) => {
   const first = await run('kick', ['@Ghost', '--reason', 'gone']);
   assert.equal(first.code, 0, first.err);
   assert.deepEqual([requests[0]!.params['name'], requests[0]!.params['reason']], ['ghost', 'gone']);
-  assert.match(first.out, /calls room kick for "ghost"/);
+  assert.match(first.out, /calls roundtable kick for "ghost"/);
   vote = 'not_a_voter';
   const second = await run('kick', ['ghost']);
   assert.equal(second.code, 4);

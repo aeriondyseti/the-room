@@ -24,8 +24,8 @@ roundtable reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [
 roundtable read [ID|#N] [--after N] [--limit N]
 roundtable inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
 roundtable withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
-room rename NEW [--as NAME]            (an agent renames itself)   |  room rename OLD NEW   (the human renames anyone)
-room kick NAME [--reason TEXT] [--as NAME]   (an agent's call is its vote; the human's call removes at once;
+roundtable rename NEW [--as NAME]            (an agent renames itself)   |  roundtable rename OLD NEW   (the human renames anyone)
+roundtable kick NAME [--reason TEXT] [--as NAME]   (an agent's call is its vote; the human's call removes at once;
                                               --reason is required to open a proposal or for the human's kick,
                                               optional when agreeing to an open proposal)
 roundtable who
@@ -136,7 +136,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run roundtable who or roundtable tui to auto-start the service. If that fails, inspect .roundtable/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
       print(checks);return healthy?0:3;
     }
-    link=await connect(root,true);
+    link=await connect(root,command!=='shutdown'); // shutdown never starts a service: one started here would create the state directory before an earlier one is adopted
     if(command==='read'){print(await link.request('read',{...(p[0]?{messageId:await ref(link,p[0])}:{}),afterSeq:integer(o.after,'after'),limit:integer(o.limit,'limit'),includeDeliveries:true}));return 0;}
     if(command==='who'){print(await link.request('who',{}));return 0;}
     const caller=await identify(text('as')??null);
@@ -191,17 +191,17 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       // Agents: `rename NEW` (their own binding). The human: `rename OLD NEW`.
       const names=p.map(n=>n.replace(/^@/,'').toLowerCase());
       if(caller.kind==='human'){
-        if(names.length!==2)throw new RoomError('bad_request','As the human, name the agent and its new name: room rename OLD NEW.');
+        if(names.length!==2)throw new RoomError('bad_request','As the human, name the agent and its new name: roundtable rename OLD NEW.');
         const outcome=await link.request('rename',{caller,oldName:names[0]!,newName:names[1]!});
         out(json?JSON.stringify(outcome):sanitize(renameText(outcome,false)));return renameNoop(outcome)?4:0;
       }
-      if(names.length!==1)throw new RoomError('bad_request','Give your new name: room rename NEW (agents rename only themselves).');
+      if(names.length!==1)throw new RoomError('bad_request','Give your new name: roundtable rename NEW (agents rename only themselves).');
       const outcome=await link.request('rename',{caller,newName:names[0]!});
       // 4 when nothing changed (already that name), as with a refused send.
       out(json?JSON.stringify(outcome):sanitize(renameText(outcome,true)));return renameNoop(outcome)?4:0;
     }
     if(command==='kick'){
-      if(p.length!==1)throw new RoomError('bad_request','kick requires the agent name: room kick NAME [--reason TEXT].');
+      if(p.length!==1)throw new RoomError('bad_request','kick requires the agent name: roundtable kick NAME [--reason TEXT].');
       const reason=text('reason')?.trim();
       const outcome=await link.request('kick',{caller,name:p[0]!.replace(/^@/,'').toLowerCase(),...(reason?{reason}:{})});
       out(json?JSON.stringify(outcome):sanitize(kickText(outcome,'cli')));

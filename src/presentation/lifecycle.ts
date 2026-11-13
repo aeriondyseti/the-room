@@ -3,7 +3,7 @@
 import type { KickOutcome, KickProposal, RenameOutcome } from '../contracts/lifecycle.js';
 
 export type Surface = 'mcp' | 'cli';
-const KICK = { mcp: 'roundtable_kick', cli: 'room kick' } as const;
+const KICK = { mcp: 'roundtable_kick', cli: 'roundtable kick' } as const;
 const JOIN = { mcp: 'roundtable_join', cli: 'roundtable join --as NAME' } as const;
 
 /** The service short-circuits a rename to the same name: nothing was applied, and the text must say so. */
