@@ -12,6 +12,8 @@ scheme is semver; versions follow semver from the next release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-13
+
 ### Added
 
 - `scripts/rename-local-checkout.ps1`: a guarded migration of a local checkout from the old `vibe-pairing` folder,
@@ -515,7 +517,8 @@ Task 0.1.
 
 - The repository skeleton, the shared contract types and `room --version`.
 
-[Unreleased]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/aeriondyseti/agent-roundtable/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.9.0...v1.0.0
 [0.9.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.6...v0.8.0
