@@ -58,7 +58,7 @@ pause the room.
 
 ```
  Kevin ── roundtable tui (Ink) ─┐
- agents ─ MCP server ─────┼── named-pipe IPC ──► room service (single owner, detached)
+ agents ─ MCP server ───────────┼── named-pipe IPC ──► room service (single owner, detached)
  agents ─ roundtable CLI ───────┘                          │  SQLite ledger (.roundtable/room.db)
                                                            │  registry ◄── session.toml (repo root)
                                                            ├── dispatcher (per-recipient serialized)
