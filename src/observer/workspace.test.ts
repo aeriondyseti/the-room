@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,realpath,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -43,7 +43,10 @@ test('git integration: clean/unborn, changes, cache, linked worktree and detache
   info=await reader.sample(dir);assert.equal(info.staged,1);assert.equal(info.modified,1);assert.equal(info.untracked,1);assert.equal(info.dirty,2);
   const wt=path.join(dir,'linked worktree');git('worktree','add','--detach',wt,'HEAD');clock+=11;
   info=await reader.sample(wt);assert.equal(info.status,'ok');assert.equal(info.detached,true);assert.equal(info.branch,null);assert.equal(path.resolve(info.worktree!),path.resolve(wt));
-  assert.equal((await reader.sample(await mkdtemp(path.join(tmpdir(),'vpfix-nongit-')))).status,'not_a_repo');
+  // The temp directory can itself sit inside a repository (a home directory under git): stop discovery at it.
+  const ceiling=process.env.GIT_CEILING_DIRECTORIES;process.env.GIT_CEILING_DIRECTORIES=await realpath(tmpdir());
+  try{assert.equal((await reader.sample(await mkdtemp(path.join(await realpath(tmpdir()),'vpfix-nongit-')))).status,'not_a_repo');}
+  finally{if(ceiling===undefined)delete process.env.GIT_CEILING_DIRECTORIES;else process.env.GIT_CEILING_DIRECTORIES=ceiling;}
   assert.equal((await reader.sample(path.join(dir,'missing'))).status,'unavailable');
 });
 test('provider reads bounded recent records, replaces files and never throws for absent sources',async()=>{
