@@ -2,8 +2,6 @@
 session.toml
 # Room runtime data
 .roundtable/
-# State directory name before the rename to agent-roundtable
-.room/
 # Agent worktrees
 .claude/worktrees/
 # pair-poc message log

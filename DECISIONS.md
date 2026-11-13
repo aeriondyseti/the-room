@@ -248,15 +248,10 @@ on each new delivery. No promise of immediate model processing or automatic inte
 - **Decision (Kevin):** the project is **agent-roundtable**, and the names people and agents type follow it: the CLI is
   `roundtable`, the MCP server and its tools are `roundtable` and `roundtable_*`, configuration is `ROUNDTABLE_*`, the
   state directory is `.roundtable/` and the envelope header opens with `[roundtable …]`. No old name is kept as an alias.
-- **Existing rooms:** the first command run in a room moves `.room/` to `.roundtable/` (`adoptLegacyStateDir`). It never
-  moves over an existing `.roundtable/`, and when the move fails (a service started before the rename still holds the
-  directory) it stops with an error; `roundtable shutdown` skips the move so that service can be stopped.
-  The service adopts too before it creates anything, because a client built before the rename can start it.
-  `roundtable shutdown` never starts a service. When both directories exist and `.room/` holds a ledger, every command
-  but shutdown stops and says so: which one to keep is the human's choice. `roundtable doctor` stays read-only: it
-  reports earlier state and moves nothing.
+- **No migration (Kevin):** nothing moves an earlier `.room/` directory and nothing reads the old names. No room was in
+  use and the repository had only just been published, so backward compatibility would be code with no user.
 - **Left as they were:** "room" stays the word for the shared space, so internal names (`RoomService`, `room.db`, the
   `room_state` table, `room.updated` events, the pipe name) are unchanged, as are the earlier `vibe-pairing` salts and
   the `~/.vibe-pairing` cache. Records written before this one (ADRs, PROGRESS, reviews, probes) keep the old names.
-- **Consequence:** every MCP registration, permission allow-list entry (`mcp__room__room_*`) and `ROOM_*` setting made
-  before the rename must be re-made under the new names; see "Upgrading from the-room" in docs/ONBOARDING.md.
+- **Consequence:** an MCP registration, permission entry (`mcp__room__room_*`) or `ROOM_*` setting made before the
+  rename does nothing; set them up again as docs/ONBOARDING.md describes.

@@ -1,6 +1,5 @@
 import { defaultAdapters } from './default-adapters.js';
 import { realpath } from 'node:fs/promises';
-import { adoptLegacyStateDir } from '../registry/root.js';
 import { startServer } from '../../ipc/server.js';
 import { loadConfig } from '../config.js';
 import { UsageObserver, usageObserverOptionsFrom } from '../../observer/index.js';
@@ -32,7 +31,6 @@ const claudeProvider=(claudeConfigDir:string,usageApi:string,timeoutMs:number,fr
 if(!root)throw new Error('Room service requires a canonical root argument.');
 try {
   const canonical=await realpath(root);
-  await adoptLegacyStateDir(canonical); // a client built before the rename can start this service without adopting first
   const config=loadConfig();
   const usage=usageObserverOptionsFrom(config);
   const activity=new ActivityReader({claudeProjectsDir:usage.claudeProjectsDir,codexSessionsDir:usage.codexSessionsDir,parsers:[claudeActivityParser,codexActivityParser],

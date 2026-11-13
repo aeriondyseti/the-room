@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { adoptLegacyStateDir, resolveRoomRoot, roomGitEnvironment } from './root.js';
+import { resolveRoomRoot, roomGitEnvironment } from './root.js';
 
 test('discovery strips repository-local Git variables without mutating parent environment', () => {
   const env = { PATH: 'path', GIT_CONFIG_GLOBAL: 'global', GIT_CONFIG_SYSTEM: 'system', GIT_DIR: 'foreign',
@@ -33,31 +33,4 @@ test('real Git discovery ignores inherited foreign repo/config and still shares 
   const bare = path.join(base, 'bare'); await mkdir(bare); git(bare, 'init', '--bare');
   await assert.rejects(resolveRoomRoot(bare), { code: 'bad_request' });
   assert.equal(await resolveRoomRoot(bare, repo), await realpath(repo));
-});
-
-test('earlier .room state is moved to .roundtable once, and never over existing state', async t => {
-  const base = await mkdtemp(path.join(tmpdir(), 'roundtable adopt '));
-  t.after(() => rm(base, { recursive: true, force: true }));
-  const fresh = path.join(base, 'fresh'), legacy = path.join(base, 'legacy'), both = path.join(base, 'both');
-  await mkdir(fresh);
-  assert.equal(await adoptLegacyStateDir(fresh), 'none');
-  await assert.rejects(stat(path.join(fresh, '.roundtable')), { code: 'ENOENT' });
-
-  await mkdir(path.join(legacy, '.room'), { recursive: true });
-  await writeFile(path.join(legacy, '.room', 'settings.json'), '{"version":1}');
-  assert.equal(await adoptLegacyStateDir(legacy), 'adopted');
-  assert.equal(await readFile(path.join(legacy, '.roundtable', 'settings.json'), 'utf8'), '{"version":1}');
-  await assert.rejects(stat(path.join(legacy, '.room')), { code: 'ENOENT' });
-  assert.equal(await adoptLegacyStateDir(legacy), 'none');
-
-  await mkdir(path.join(both, '.room'), { recursive: true });
-  await mkdir(path.join(both, '.roundtable'), { recursive: true });
-  await writeFile(path.join(both, '.room', 'settings.json'), 'old');
-  assert.equal(await adoptLegacyStateDir(both), 'none');
-  assert.equal(await readFile(path.join(both, '.room', 'settings.json'), 'utf8'), 'old');
-
-  // An earlier ledger beside new state is reported, never silently ignored and never moved over the new state.
-  await writeFile(path.join(both, '.room', 'room.db'), 'ledger');
-  await assert.rejects(adoptLegacyStateDir(both), { code: 'invalid_state' });
-  assert.equal(await readFile(path.join(both, '.room', 'room.db'), 'utf8'), 'ledger');
 });

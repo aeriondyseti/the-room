@@ -1,6 +1,6 @@
 // `roundtable tui [--demo] [--no-color]`. Kept separate from main.ts so the CLI (2.3) and TUI (3.x) evolve independently.
 import { backoffSchedule, loadConfig } from '../core/config.js';
-import { adoptLegacyStateDir, resolveRoomRoot } from '../core/registry/root.js';
+import { resolveRoomRoot } from '../core/registry/root.js';
 import { toErrorInfo } from '../contracts/errors.js';
 
 export const TUI_USAGE = `roundtable tui [--demo] [--no-color] [--layout top|left]
@@ -59,7 +59,6 @@ export async function runTuiCommand(argv: string[], err: (s: string) => void = c
   let root: string;
   try {
     root = await resolveRoomRoot(process.cwd(), config.roomRoot ?? undefined);
-    await adoptLegacyStateDir(root);
   } catch (e) {
     const info = toErrorInfo(e);
     err(`roundtable tui: ${info.message}${info.hint ? `\n  ${info.hint}` : ''}`);

@@ -1,6 +1,6 @@
 import { RoomError } from '../../contracts/errors.js';
 import { execFile } from 'node:child_process';
-import { realpath, rename, stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 const exec = promisify(execFile);
@@ -38,45 +38,4 @@ export async function resolveRoomRoot(cwd = process.cwd(), override = process.en
     throw new RoomError('bad_request', 'Nonstandard common git directory; set ROUNDTABLE_ROOT to the shared checkout explicitly.');
   }
   return realpath(path.dirname(common));
-}
-
-/**
- * The state directory was `.room/` before the project became agent-roundtable. Move it to `.roundtable/` once, before
- * anything creates the new directory, so an existing room keeps its ledger, settings and preferences. A directory that
- * a service started before the rename still holds open cannot be moved on Windows; that is reported, never worked around,
- * because creating a second, empty state directory would orphan the room's history. When both directories exist and the
- * old one holds a ledger, that is reported too: the choice of which to keep is the human's.
- */
-export async function adoptLegacyStateDir(root: string): Promise<'adopted' | 'none'> {
-  const legacy = path.join(root, '.room'), current = path.join(root, '.roundtable');
-  const exists = async (target: string): Promise<boolean> => {
-    try { await stat(target); return true; }
-    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
-  };
-  const isDirectory = async (target: string): Promise<boolean> => {
-    try { return (await stat(target)).isDirectory(); }
-    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
-  };
-  if (!(await isDirectory(legacy))) return 'none';
-  if (await isDirectory(current)) {
-    // Both exist. Never move over state, and never carry on as if the earlier history were not there.
-    if (!(await exists(path.join(legacy, 'room.db')))) return 'none';
-    throw new RoomError('invalid_state', 'Both .room/ (earlier history) and .roundtable/ exist in this room, so the earlier history is not in use. Run `roundtable shutdown`, then keep one: delete .roundtable/ to adopt the earlier history on the next command, or delete .room/ to discard it.');
-  }
-  try { await rename(legacy, current); }
-  catch (e) {
-    if (await isDirectory(current) && !(await isDirectory(legacy))) return 'adopted'; // another process moved it first
-    throw new RoomError('invalid_state', `Found earlier state in .room/ but could not move it to .roundtable/ (${(e as NodeJS.ErrnoException).code ?? 'unknown error'}). A service started before the rename is probably still running: run \`roundtable shutdown\`, then retry.`);
-  }
-  return 'adopted';
-}
-
-/** True while earlier state waits in `.room/`: not yet moved, or left beside a `.roundtable/` with its ledger. Reads only. */
-export async function legacyStatePending(root: string): Promise<boolean> {
-  const present = async (target: string): Promise<boolean> => {
-    try { await stat(target); return true; }
-    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
-  };
-  if (!(await present(path.join(root, '.room')))) return false;
-  return !(await present(path.join(root, '.roundtable'))) || await present(path.join(root, '.room', 'room.db'));
 }

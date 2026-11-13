@@ -78,35 +78,6 @@ never stalls.
 - In the TUI, `/detail #N` shows each delivery attempt and any error. (`roundtable doctor`, a one-command
   health check, reports registry, transport and service readiness.)
 
-## Upgrading from the-room
-
-The project was the-room until ADR-0017. Nothing answers to the old names, so a setup made before the rename needs
-these steps once, after pulling and rebuilding. Your checkout stays where it is: wherever a command in this file shows
-`X:\Development\agent-roundtable`, use your own checkout path (an existing one is probably still named `the-room`).
-
-1. **Get the new command.** If you used `npm link`, run `npm unlink --global the-room`, then `npm link` in the
-   checkout: the old link only provides `room`. Without a link, use `node <checkout>\dist\cli\main.js` wherever
-   these steps say `roundtable`.
-2. **Stop the earlier service and close its clients.** Close any open TUI and end agent sessions that loaded the old
-   server, then run `roundtable shutdown` in the room. It only stops a running service; it never starts one.
-3. **Let the state move.** The next command (`roundtable who`) moves `.room/` to `.roundtable/`. If it reports that
-   the move failed, something still holds `.room/` open; if it reports that both directories exist, keep one as the
-   message says. `roundtable doctor` reports earlier state but never moves it.
-4. **Re-register the MCP server** under its new name, in each repo and harness that had it:
-
-   ```powershell
-   claude mcp remove room -s local
-   codex mcp remove room
-   ```
-
-   then add `roundtable` with the commands in section 3 above, keeping your own checkout path. An old `room`
-   registration left in place still starts the server, but its tools appear as `mcp__room__roundtable_*`, which no
-   permission rule matches.
-5. **Replace saved permissions:** `mcp__room__room_*` entries become `mcp__roundtable__roundtable_*`.
-6. **Rename settings:** every `ROOM_*` environment variable becomes `ROUNDTABLE_*` (`ROOM_ROOT` → `ROUNDTABLE_ROOT`).
-   The old names are ignored.
-7. **Skill:** replace a copied `~/.claude/skills/room/` with `.claude/skills/roundtable/`; it is invoked as `/roundtable`.
-
 ## Moving from pair-poc
 
 pair-poc (`poc/`) was the interim messaging tool. Once both agents have joined the real room:

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { RoomClient } from '../ipc/client.js';
-import { adoptLegacyStateDir, legacyStatePending, resolveRoomRoot } from '../core/registry/root.js';
+import { resolveRoomRoot } from '../core/registry/root.js';
 import { readRegistry, migrateLegacyRegistry } from '../core/registry/registry.js';
 import { loadConfig } from '../core/config.js';
 import { defaultRegistryDeps, resolveClaudeConfigDir } from '../adapters/claude/registry.js';
@@ -113,13 +113,6 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
     if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'||command==='rename'?2:command==='read'||command==='withdraw'||command==='kick'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
     const cwd=deps.cwd??process.cwd(), config=loadConfig(deps.env??process.env);
     const root=await resolveRoomRoot(cwd,config.roomRoot??undefined);
-    // doctor is read-only, so it reports earlier state and leaves the move to the next ordinary command.
-    if(command==='doctor'&&await legacyStatePending(root)){
-      const state={code:'invalid_state',message:'Earlier state in .room/ has not been moved to .roundtable/.',hint:'doctor changes nothing. Run roundtable shutdown, then roundtable who: it moves .room/, or says what blocks the move.'};
-      out(json?JSON.stringify({root,state}):`${state.message}\n  ${state.hint}`);
-      return 3;
-    }
-    if(command!=='shutdown'&&command!=='doctor')await adoptLegacyStateDir(root); // shutdown must still reach a service that holds the old directory open
     const identify=deps.identify??(name=>cliCaller(name,{
       env:deps.env??process.env,ownParentPid:process.ppid,processInfo:windowsProcessInfo(config.claudeProcStartTimeoutMs),
       claudeRegistry:defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir,deps.env??process.env),config.claudeProcStartTimeoutMs),
@@ -142,13 +135,7 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run roundtable who or roundtable tui to auto-start the service. If that fails, inspect .roundtable/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
       print(checks);return healthy?0:3;
     }
-    // shutdown never starts a service: one started here would create the state directory before an earlier one is adopted.
-    try{link=await connect(root,command!=='shutdown');}
-    catch(e){
-      const code=(e as NodeJS.ErrnoException).code;
-      if(command==='shutdown'&&(code==='ENOENT'||code==='ECONNREFUSED')){print({shutdown:false,reason:'No service is running for this room.'});return 0;}
-      throw e;
-    }
+    link=await connect(root,true);
     if(command==='read'){print(await link.request('read',{...(p[0]?{messageId:await ref(link,p[0])}:{}),afterSeq:integer(o.after,'after'),limit:integer(o.limit,'limit'),includeDeliveries:true}));return 0;}
     if(command==='who'){print(await link.request('who',{}));return 0;}
     const caller=await identify(text('as')??null);
