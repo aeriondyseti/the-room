@@ -1,4 +1,4 @@
-# the-room: design
+# agent-roundtable: design
 
 What is true now, edited in place. Invariants are rules: they live in `AGENTS.md`, not here. Decisions made during
 the build are records in `docs/decisions/`. The pre-build reasoning, section by section, is in the reconciled
@@ -20,18 +20,18 @@ agent at once, watches the conversation and delivery state in a polished TUI, an
 In:
 - **Harnesses:** Claude Code and Codex, including several instances of each. Agents attach from sessions that are
   already running.
-- **Registration:** agents self-register with `room join` (CLI) or `room_join` (MCP) into the repo-root
+- **Registration:** agents self-register with `roundtable join` (CLI) or `roundtable_join` (MCP) into the repo-root
   `session.toml`. Each `[participants.<name>]` holds **only** `harness` and `session_id`.
 - **One room service per repo:** SQLite ledger, local named-pipe IPC, single owner, auto-started detached by any
   client. Linked worktrees share their repository's room.
 - **Native delivery:** Claude through the session's messaging pipe; Codex through `codex queue` with an argument
-  array. A full message envelope; oversized messages get a bounded preview plus a `room read <id>` reference.
+  array. A full message envelope; oversized messages get a bounded preview plus a `roundtable read <id>` reference.
 - **Agent access:** MCP tools (preferred) and a CLI fallback, with per-call caller identity.
 - **Ink TUI in its own pane:** room messages, broadcast by default and `@name` to target; participant state, usage
   and workspace; per-recipient delivery detail; `/pause` and `/resume`; the activity view of each agent's tool calls.
 - **Read-only observers:** Claude JSONL `usage` and Codex `token_count`, subscription usage per account, workspace
   (model, cwd, git), transcripts for the activity view.
-- **Onboarding:** a `/room` skill for Claude (`.claude/skills/room/SKILL.md`) and the Room section of `AGENTS.md`
+- **Onboarding:** a `/roundtable` skill for Claude (`.claude/skills/roundtable/SKILL.md`) and the Room section of `AGENTS.md`
   for Codex, plus the install recipe in `operations.md`.
 
 Out:
@@ -46,12 +46,12 @@ The qualified platform is native Windows. Other platforms and harness versions n
 
 Versions (semver, see `AGENTS.md`) are measured against these surfaces; breaking any of them is a breaking change:
 
-- **The MCP tools** agents call: `room_join`, `room_send`, `room_read`, `room_who`, `room_inbox`, `room_withdraw`,
-  `room_rename` and `room_kick`, with their parameters and results (`src/mcp/server.ts`).
-- **The `room` CLI:** its commands, flags, `--json` output and exit codes (2 input error, 3 service error, 4 guard
+- **The MCP tools** agents call: `roundtable_join`, `roundtable_send`, `roundtable_read`, `roundtable_who`, `roundtable_inbox`, `roundtable_withdraw`,
+  `roundtable_rename` and `roundtable_kick`, with their parameters and results (`src/mcp/server.ts`).
+- **The `roundtable` CLI:** its commands, flags, `--json` output and exit codes (2 input error, 3 service error, 4 guard
   refused or nothing withdrawn, ADR-0014) (`src/cli/commands.ts`).
 - **The native envelope** an agent receives: the first-line room header and its fields (`src/core/dispatch/envelope.ts`).
-- **Stored data:** the `session.toml` registry format, and the room's `.room/` data (the SQLite ledger schema,
+- **Stored data:** the `session.toml` registry format, and the room's `.roundtable/` data (the SQLite ledger schema,
   `settings.json`, `tui.json`), which a newer service must open or migrate.
 
 The IPC protocol between the service and its own clients (`src/contracts/ipc.ts`) ships in the same package and is
@@ -60,9 +60,9 @@ not a public surface on its own.
 ## Architecture
 
 ```
- Kevin ── room tui (Ink) ─┐
+ Kevin ── roundtable tui (Ink) ─┐
  agents ─ MCP server ─────┼── named-pipe IPC ──► room service (single owner, detached)
- agents ─ room CLI ───────┘                          │  SQLite ledger (.room/room.db)
+ agents ─ room CLI ───────┘                          │  SQLite ledger (.roundtable/room.db)
                                                      │  registry ◄── session.toml (repo root)
                                                      ├── dispatcher (per-recipient serialized)
                                                      │     ├── Claude adapter → cc-msg named pipe
@@ -78,7 +78,7 @@ not a public surface on its own.
 | `src/adapters/claude/`, `src/adapters/codex/` | Native submission only. Version-sensitive details are isolated here |
 | `src/ipc/` | The named-pipe client and server. The TUI, CLI and MCP server are thin clients |
 | `src/mcp/` | Official MCP SDK server; resolves caller identity per call, forwards to the service |
-| `src/cli/` | The `room` command |
+| `src/cli/` | The `roundtable` command |
 | `src/tui/` | Ink app; presentation only |
 | `src/observer/` | Readers with cursors and freshness labels |
 
@@ -102,11 +102,11 @@ Key design choices:
 6. **Pause is cooperative.** It holds future deliveries and sends one stop-request message, which is exempt from the
    hold. It never claims an agent has stopped.
 7. **Stack.** TypeScript (strict, ESM) on Node 24, built with `tsc` (ADR-0005); `node:sqlite`, Ink and React, the
-   official MCP SDK; `node:test`. Tunables live in `src/core/config.ts`, overridable by `ROOM_*` environment
+   official MCP SDK; `node:test`. Tunables live in `src/core/config.ts`, overridable by `ROUNDTABLE_*` environment
    variables.
 
-Runtime data lives under `<room>/.room/` and the registry in `<room>/session.toml`, both git-ignored. The room root
-is the checkout that owns the repository's common git directory, or `ROOM_ROOT`.
+Runtime data lives under `<room>/.roundtable/` and the registry in `<room>/session.toml`, both git-ignored. The room root
+is the checkout that owns the repository's common git directory, or `ROUNDTABLE_ROOT`.
 
 ## What is built
 

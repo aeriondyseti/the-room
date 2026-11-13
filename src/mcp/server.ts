@@ -31,7 +31,7 @@ const READ_DEFAULT = 20;
 const READ_MAX = 100;
 
 export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
-  const server = new McpServer({ name: 'the-room', version: VERSION });
+  const server = new McpServer({ name: 'agent-roundtable', version: VERSION });
   // One shared connection attempt at a time: concurrent first calls await the same promise (no leaked sockets).
   let link: Promise<RoomLink> | null = null;
 
@@ -66,7 +66,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   };
 
   server.registerTool(
-    'room_send',
+    'roundtable_send',
     {
       title: 'Send a room message',
       description:
@@ -74,7 +74,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
         'the human sees every message. Address recipients explicitly: an agent name, several names, "human" for Kevin, ' +
         'or "all" (every other participant). When answering a message, pass its id (or #number) as reply_to so the sender ' +
         'sees it as answered.\n' +
-        'Crossing guard: pass snapshot, the token from your latest room_inbox result or from the delivery you are ' +
+        'Crossing guard: pass snapshot, the token from your latest roundtable_inbox result or from the delivery you are ' +
         'answering. If anything addressed to you is not covered by it, the message is NOT sent: the result shows what ' +
         'you missed plus a fresh snapshot. Read it, revise if needed, and send again with that snapshot and ' +
         'revises_attempt_id. Keep your latest snapshot for the next send.\n' +
@@ -88,7 +88,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           .describe('Recipient name(s): "astra", "astra, claude", ["astra","claude"], "human", or "all". Omit only when reply_to is supplied; defaults to that message\'s sender.'),
         text: z.string({ error: 'Provide the message body as a string in the text field.' }).min(1, 'Provide a non-empty message in the text field.').describe('Message content (markdown/plain text). Put the message body in this text field.'),
         reply_to: z.string().optional().describe('Message id or #number you are replying to.'),
-        snapshot: z.string().optional().describe('Your latest inbox snapshot token (from room_inbox, a not-sent result, or the delivery you are answering).'),
+        snapshot: z.string().optional().describe('Your latest inbox snapshot token (from roundtable_inbox, a not-sent result, or the delivery you are answering).'),
         urgent: z.boolean().optional().describe('Send without the snapshot check, ahead of ordinary messages still waiting in the room. Requires reason.'),
         reason: z.string().optional().describe('Why this is urgent (required with urgent; shown to the recipient and the human).'),
         revises_attempt_id: z.string().optional().describe('The attempt id from a NOT SENT result that this message replaces.'),
@@ -137,14 +137,14 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   );
 
   server.registerTool(
-    'room_inbox',
+    'roundtable_inbox',
     {
       title: 'Review your inbox',
       description:
         'Messages addressed to you that your snapshot does not cover yet, oldest first, plus a new snapshot token that ' +
         'covers what it returned. Pass your latest snapshot to get only what is new; without one you get everything ' +
         'addressed to you. If the result says Incomplete, call again with the given cursor and snapshot. Use the final ' +
-        'snapshot with room_send. Keep your latest snapshot so you never start over.\n' +
+        'snapshot with roundtable_send. Keep your latest snapshot so you never start over.\n' +
         'baseline (a reason) instead skips everything addressed to you so far WITHOUT reviewing it, e.g. when joining a ' +
         'long history. It is recorded and visible as skipped, never as read; use it only deliberately.',
       inputSchema: {
@@ -160,7 +160,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
       guard(async () => {
         const baseline = args.baseline?.trim();
         if (args.baseline !== undefined && !baseline) throw new RoomError('bad_request', 'A baseline needs a reason.');
-        if (baseline && (args.snapshot !== undefined || args.cursor !== undefined)) throw new RoomError('bad_request', 'baseline cannot be combined with snapshot or cursor.', 'Call room_inbox with baseline alone.');
+        if (baseline && (args.snapshot !== undefined || args.cursor !== undefined)) throw new RoomError('bad_request', 'baseline cannot be combined with snapshot or cursor.', 'Call roundtable_inbox with baseline alone.');
         const { caller, note } = await agentCaller(extra._meta as Record<string, unknown> | undefined);
         const r = await room();
         const page = await r.request('inbox', {
@@ -175,7 +175,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   );
 
   server.registerTool(
-    'room_withdraw',
+    'roundtable_withdraw',
     {
       title: 'Withdraw a message you sent',
       description:
@@ -202,13 +202,13 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
       }),
   );
   server.registerTool(
-    'room_read',
+    'roundtable_read',
     {
       title: 'Read room messages',
       description:
         'Read recent room messages (newest last), messages after a given #number, or one message in full by id/#number. ' +
         'This is history only: to review messages addressed to you before replying (including a long message a delivery ' +
-        'only previewed), use room_inbox, which is what your snapshot covers.',
+        'only previewed), use roundtable_inbox, which is what your snapshot covers.',
       inputSchema: {
         message_id: z.string().optional().describe('A message id or #number to fetch in full.'),
         after: z.number().int().nonnegative().optional().describe('Only messages after this #number.'),
@@ -237,15 +237,15 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
           // Cursor reads page forward (newer); latest reads have OLDER history before the first item.
           more =
             args.after !== undefined
-              ? `\n(newer messages exist: room_read with after=${res.items.at(-1)!.message.seq})`
-              : `\n(older messages exist: room_read with after=${Math.max(0, res.items[0]!.message.seq - 1 - limit)} limit=${limit})`;
+              ? `\n(newer messages exist: roundtable_read with after=${res.items.at(-1)!.message.seq})`
+              : `\n(older messages exist: roundtable_read with after=${Math.max(0, res.items[0]!.message.seq - 1 - limit)} limit=${limit})`;
         }
         return text(formatMessages(res.items, false) + more);
       }),
   );
 
   server.registerTool(
-    'room_who',
+    'roundtable_who',
     {
       title: 'List room participants',
       description: 'List the participants (agents and the human) with their harness, liveness, activity and queued deliveries.',
@@ -261,7 +261,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   );
 
   server.registerTool(
-    'room_join',
+    'roundtable_join',
     {
       title: 'Join the room',
       description:
@@ -300,7 +300,7 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   );
 
   server.registerTool(
-    'room_rename',
+    'roundtable_rename',
     {
       title: 'Rename yourself in the room',
       description:
@@ -323,12 +323,12 @@ export function createRoomMcpServer(options: RoomMcpOptions): McpServer {
   );
 
   server.registerTool(
-    'room_kick',
+    'roundtable_kick',
     {
       title: 'Vote to remove an agent from the room',
       description:
         'Propose, or agree to, removing an agent. Your call is your vote: the first call opens a proposal (reason ' +
-        'required) and posts a room notice; every other agent that was online when it opened must call room_kick for ' +
+        'required) and posts a room notice; every other agent that was online when it opened must call roundtable_kick for ' +
         'the same name before it expires (default 10 minutes). On unanimity the agent is removed at once: its queued ' +
         'messages are cancelled with a visible tombstone (never redirected), everyone is told, and its session is not ' +
         'touched (it can rejoin). To disagree, say so in the room and do not vote; the proposal then expires. You cannot ' +

@@ -77,18 +77,18 @@ export class RoomService {
       // under the departed name; say so rather than claim a full repair (8.2's explicit rename refuses such a case).
       // Rows with an in-flight attempt are not collisions: the dispatcher's recovery settles them as uncertain.
       const stranded=this.ledger.queued(from).filter(q=>q.target.harness===target.harness&&q.target.sessionId===target.sessionId&&q.attempts.at(-1)?.outcome!=='in_flight');
-      if(stranded.length)console.error(`room: ${stranded.length} queued deliver${stranded.length===1?'y':'ies'} to departed name "${from}" could not be relabelled to "${to}" (the message already has a delivery under that name): ${stranded.map(q=>q.messageId).join(', ')}`);
+      if(stranded.length)console.error(`roundtable: ${stranded.length} queued deliver${stranded.length===1?'y':'ies'} to departed name "${from}" could not be relabelled to "${to}" (the message already has a delivery under that name): ${stranded.map(q=>q.messageId).join(', ')}`);
     }
     return moved;
   }
   /** The display refresh after a committed request: awaited, but a failure only logs; it never becomes the caller's error. */
   private async refreshDisplay(fields:{pending:boolean}):Promise<void>{
-    try{await this.syncDisplay(fields);}catch(error){console.error(`room: participant display refresh skipped: ${error instanceof Error?error.message:String(error)}`);}
+    try{await this.syncDisplay(fields);}catch(error){console.error(`roundtable: participant display refresh skipped: ${error instanceof Error?error.message:String(error)}`);}
   }
   async start():Promise<void>{
     // A repair that can't run (registry unreadable right now) must not stop the room: the dispatcher's own registry
     // checks mark such deliveries rebind_needed as before, and the next start retries the repair.
-    try{await this.reconcile();}catch(error){console.error(`room: startup delivery repair skipped: ${error instanceof Error?error.message:String(error)}`);}
+    try{await this.reconcile();}catch(error){console.error(`roundtable: startup delivery repair skipped: ${error instanceof Error?error.message:String(error)}`);}
     await this.recoverKickProposals();this.serviceStarted=true;
     this.dispatcher.start();this.monitor?.start();this.activity?.start();this.accounts?.start();
   }
@@ -235,7 +235,7 @@ export class RoomService {
         const newName=text(p.newName,'newName');
         if(!isValidParticipantName(newName))throw new RoomError('bad_request','Choose a valid, unreserved participant name.');
         const binding=registry[oldName];
-        if(!binding)throw new RoomError('not_registered','The participant is no longer registered; refresh room who.');
+        if(!binding)throw new RoomError('not_registered','The participant is no longer registered; refresh roundtable who.');
         const target={harness:binding.harness,sessionId:binding.session_id};
         if(oldName===newName)return{oldName,registration:{name:newName,...target},relabeled:0,noticeId:null};
         const conflicts=this.ledger.relabelConflicts(oldName,newName,target);
@@ -257,7 +257,7 @@ export class RoomService {
         try{
           const participant=(await this.participants()).find(row=>row.name===newName);
           if(participant){this.ledger.putParticipant(participant);this.publish({type:'participant.updated',participant});}
-        }catch(error){console.error(`room: participant display refresh skipped after rename: ${error instanceof Error?error.message:String(error)}`);}
+        }catch(error){console.error(`roundtable: participant display refresh skipped after rename: ${error instanceof Error?error.message:String(error)}`);}
         for(const delivery of moved)this.publish({type:'delivery.updated',delivery});
         void this.dispatcher.kick();
         const noticeId=this.postSystemNotice(`${oldName} is now ${newName}.`,renamed,caller.sender.kind==='agent'?newName:null);
@@ -285,7 +285,7 @@ export class RoomService {
         if(!proposal){
           if(!reason)throw new RoomError('bad_request','Opening a kick proposal requires a reason; later votes may omit it.');
           proposal=openKickProposal(registry,await this.participants(),name,voter,reason,new Date(),loadConfig().participantRefreshMs,loadConfig().kickProposalTtlMs);
-          const opening=`${caller.sender.name} proposes removing ${name}: ${proposal.reason}. Voters: ${proposal.voters.map(v=>v.name).join(', ')}. ${proposal.excluded.length?`Not qualified as online: ${proposal.excluded.map(v=>`${v.name} (${v.reason})`).join(', ')}. `:''}Other listed voters may call room_kick for ${name}; expires ${proposal.expiresAt}.`;
+          const opening=`${caller.sender.name} proposes removing ${name}: ${proposal.reason}. Voters: ${proposal.voters.map(v=>v.name).join(', ')}. ${proposal.excluded.length?`Not qualified as online: ${proposal.excluded.map(v=>`${v.name} (${v.reason})`).join(', ')}. `:''}Other listed voters may call roundtable_kick for ${name}; expires ${proposal.expiresAt}.`;
           const notice=this.ledger.transaction(()=>{this.ledger.putKickProposal(proposal!);return this.enqueueSystemNotice(opening,registry,caller.sender.name);});
           this.publishSystemNotice(notice);this.scheduleKickExpiry();
           if(proposal.voters.every(v=>v.votedAt!==null))return await this.executeKick(proposal,registration,proposal.reason,null,caller.sender.name);
@@ -442,7 +442,7 @@ export class RoomService {
       const notice=this.enqueueSystemNotice(`${subject} Reason: ${reason.replace(/\s+/g,' ').trim()}. Queued deliveries cancelled: ${rows.length}.`,registry,excludeNotice);
       return {rows,notice};
     });
-    try{await this.participants();}catch(error){console.error(`room: participant display refresh skipped after kick: ${error instanceof Error?error.message:String(error)}`);}
+    try{await this.participants();}catch(error){console.error(`roundtable: participant display refresh skipped after kick: ${error instanceof Error?error.message:String(error)}`);}
     for(const delivery of completed.rows)this.publish({type:'delivery.updated',delivery});
     this.publishSystemNotice(completed.notice);
     this.scheduleKickExpiry();

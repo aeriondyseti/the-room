@@ -1,7 +1,7 @@
 # Machine-specific participant registry (see docs/reference/design.md, Scope)
 session.toml
 # Room runtime data
-.room/
+.roundtable/
 # Worktrees live beside the trunk's checkout, never inside it; this catches one a harness makes here.
 .claude/worktrees/
 # pair-poc message log

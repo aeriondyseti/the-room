@@ -20,10 +20,13 @@ scheme is semver; versions follow semver from the next release.
 
 ### Changed
 
-- The project is renamed from vibe-pairing to the-room: the package name, the MCP server name (was
-  `vibe-pairing-room`), the sender name on Claude pipe frames, the TUI header, the usage endpoint's User-Agent, and
-  the paths in the docs.
-- Versions follow semver from this release; earlier versions counted sprints and milestones.
+- **BREAKING:** the project is renamed from vibe-pairing to agent-roundtable, and every name people and agents type
+  follows it. The CLI is `roundtable` (was `room`); the MCP server is `roundtable` (was `vibe-pairing-room`) and its
+  tools are `roundtable_*` (were `room_*`); settings are `ROUNDTABLE_*` (were `ROOM_*`); the state directory is
+  `.roundtable/` (was `.room/`); the envelope header opens with `[roundtable …]`. The package name, the sender name
+  on Claude pipe frames, the TUI header, the usage endpoint's User-Agent and the paths in the docs follow. No old
+  name is kept as an alias and earlier state is not migrated.
+- Versions follow semver from this release, the first 1.x; earlier versions counted sprints and milestones.
 - The project's docs follow the shared docs process: `AGENTS.md`, `docs/decisions/` (one record per decision),
   `docs/reference/` (design, glossary, operations) and `plan/`. The onboarding guide is now
   `docs/reference/operations.md`.
@@ -512,52 +515,52 @@ Task 0.1.
 
 - The repository skeleton, the shared contract types and `room --version`.
 
-[Unreleased]: https://github.com/aeriondyseti/the-room/compare/v0.9.0...HEAD
-[0.9.0]: https://github.com/aeriondyseti/the-room/compare/v0.8.1...v0.9.0
-[0.8.1]: https://github.com/aeriondyseti/the-room/compare/v0.8.0...v0.8.1
-[0.8.0]: https://github.com/aeriondyseti/the-room/compare/v0.7.6...v0.8.0
-[0.7.6]: https://github.com/aeriondyseti/the-room/compare/v0.7.5...v0.7.6
-[0.7.5]: https://github.com/aeriondyseti/the-room/compare/v0.7.4...v0.7.5
-[0.7.4]: https://github.com/aeriondyseti/the-room/compare/v0.7.3...v0.7.4
-[0.7.3]: https://github.com/aeriondyseti/the-room/compare/v0.7.2...v0.7.3
-[0.7.2]: https://github.com/aeriondyseti/the-room/compare/v0.7.1...v0.7.2
-[0.7.1]: https://github.com/aeriondyseti/the-room/compare/v0.7.0...v0.7.1
-[0.7.0]: https://github.com/aeriondyseti/the-room/compare/v0.6.2...v0.7.0
-[0.6.2]: https://github.com/aeriondyseti/the-room/compare/v0.6.1...v0.6.2
-[0.6.1]: https://github.com/aeriondyseti/the-room/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/aeriondyseti/the-room/compare/v0.5.1...v0.6.0
-[0.5.1]: https://github.com/aeriondyseti/the-room/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/aeriondyseti/the-room/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/aeriondyseti/the-room/compare/v0.3.1...v0.4.0
-[0.3.1]: https://github.com/aeriondyseti/the-room/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/aeriondyseti/the-room/compare/v0.2.2...v0.3.0
-[0.2.2]: https://github.com/aeriondyseti/the-room/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/aeriondyseti/the-room/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/aeriondyseti/the-room/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/aeriondyseti/the-room/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/aeriondyseti/the-room/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/aeriondyseti/the-room/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/aeriondyseti/the-room/compare/v0.0.23...v0.1.0
-[0.0.23]: https://github.com/aeriondyseti/the-room/compare/v0.0.22...v0.0.23
-[0.0.22]: https://github.com/aeriondyseti/the-room/compare/v0.0.21...v0.0.22
-[0.0.21]: https://github.com/aeriondyseti/the-room/compare/v0.0.20...v0.0.21
-[0.0.20]: https://github.com/aeriondyseti/the-room/compare/v0.0.19...v0.0.20
-[0.0.19]: https://github.com/aeriondyseti/the-room/compare/v0.0.18...v0.0.19
-[0.0.18]: https://github.com/aeriondyseti/the-room/compare/v0.0.17...v0.0.18
-[0.0.17]: https://github.com/aeriondyseti/the-room/compare/v0.0.16...v0.0.17
-[0.0.16]: https://github.com/aeriondyseti/the-room/compare/v0.0.15...v0.0.16
-[0.0.15]: https://github.com/aeriondyseti/the-room/compare/v0.0.14...v0.0.15
-[0.0.14]: https://github.com/aeriondyseti/the-room/compare/v0.0.13...v0.0.14
-[0.0.13]: https://github.com/aeriondyseti/the-room/compare/v0.0.12...v0.0.13
-[0.0.12]: https://github.com/aeriondyseti/the-room/compare/v0.0.11...v0.0.12
-[0.0.11]: https://github.com/aeriondyseti/the-room/compare/v0.0.10...v0.0.11
-[0.0.10]: https://github.com/aeriondyseti/the-room/compare/v0.0.9...v0.0.10
-[0.0.9]: https://github.com/aeriondyseti/the-room/compare/v0.0.8...v0.0.9
-[0.0.8]: https://github.com/aeriondyseti/the-room/compare/v0.0.7...v0.0.8
-[0.0.7]: https://github.com/aeriondyseti/the-room/compare/v0.0.6...v0.0.7
-[0.0.6]: https://github.com/aeriondyseti/the-room/compare/v0.0.5...v0.0.6
-[0.0.5]: https://github.com/aeriondyseti/the-room/compare/v0.0.4...v0.0.5
-[0.0.4]: https://github.com/aeriondyseti/the-room/compare/v0.0.3...v0.0.4
-[0.0.3]: https://github.com/aeriondyseti/the-room/compare/v0.0.2...v0.0.3
-[0.0.2]: https://github.com/aeriondyseti/the-room/compare/v0.0.1...v0.0.2
-[0.0.1]: https://github.com/aeriondyseti/the-room/releases/tag/v0.0.1
+[Unreleased]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.8.1...v0.9.0
+[0.8.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.6...v0.8.0
+[0.7.6]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.5...v0.7.6
+[0.7.5]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.4...v0.7.5
+[0.7.4]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.3...v0.7.4
+[0.7.3]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.2...v0.7.3
+[0.7.2]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.6.2...v0.7.0
+[0.6.2]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.23...v0.1.0
+[0.0.23]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.22...v0.0.23
+[0.0.22]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.21...v0.0.22
+[0.0.21]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.20...v0.0.21
+[0.0.20]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.19...v0.0.20
+[0.0.19]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.18...v0.0.19
+[0.0.18]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.17...v0.0.18
+[0.0.17]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.16...v0.0.17
+[0.0.16]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.15...v0.0.16
+[0.0.15]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.14...v0.0.15
+[0.0.14]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.13...v0.0.14
+[0.0.13]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.12...v0.0.13
+[0.0.12]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.11...v0.0.12
+[0.0.11]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.10...v0.0.11
+[0.0.10]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.9...v0.0.10
+[0.0.9]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.8...v0.0.9
+[0.0.8]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.7...v0.0.8
+[0.0.7]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.6...v0.0.7
+[0.0.6]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.5...v0.0.6
+[0.0.5]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.4...v0.0.5
+[0.0.4]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.3...v0.0.4
+[0.0.3]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.2...v0.0.3
+[0.0.2]: https://github.com/aeriondyseti/agent-roundtable/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/aeriondyseti/agent-roundtable/releases/tag/v0.0.1

@@ -21,7 +21,7 @@ valid `vX.Y.Z` cuts over rather than retagging.
 
 - Versions are plain [semver](https://semver.org/), tagged `vMAJOR.MINOR.PATCH`, measured against the public API
   named in `docs/reference/design.md`.
-- Cut over: every existing tag stays as it is. The next release bumps MINOR (`v0.10.0`), and its CHANGELOG entry says
+- Cut over: every existing tag stays as it is. The next release is `v1.0.0` (ADR-0022), and its CHANGELOG entry says
   versions follow semver from there.
 - Merged changes collect under `[Unreleased]` in CHANGELOG. A release, its version and its tag are cut only on
   Kevin's word. Before 1.0.0 the bump is read from `[Unreleased]`: Removed or a Changed line marked **BREAKING** →
@@ -40,4 +40,5 @@ needed; the rule "one merge into `main` at a time, `npm test` on `main` after th
 
 Drafted at the docs migration of 2026-11-03 from Kevin's global versioning rule. Proposed: ADR-0003 stays in force
 until Kevin accepts this record, which then supersedes it. Altered in place on 2026-11-09 (still proposed): a
-release is cut on Kevin's word, where the draft made every merged task a release.
+release is cut on Kevin's word, where the draft made every merged task a release. Altered in place on 2026-11-13
+(still proposed): the next release is `v1.0.0`, where the draft named `v0.10.0`.

@@ -16,29 +16,29 @@ import {guardedSendText, inboxPageText, withdrawText} from '../presentation/cros
 import {kickText, renameNoop, renameText} from '../presentation/lifecycle.js';
 
 export const COMMANDS = ['send','reply','read','inbox','withdraw','rename','kick','who','join','doctor','pause','resume','retry','shutdown','migrate'];
-export const COMMAND_HELP = `room send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
+export const COMMAND_HELP = `roundtable send [--as NAME] [--to NAME,NAME|all|human] [--reply-to ID|#N]
           [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--client-message-id KEY] [--file PATH | --stdin | TEXT...]
-room reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
+roundtable reply ID|#N [--as NAME] [--snapshot TOKEN] [--urgent --reason TEXT] [--revises ATTEMPT]
           [--file PATH | --stdin | TEXT...]
-room read [ID|#N] [--after N] [--limit N]
-room inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
-room withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
-room rename NEW [--as NAME]            (an agent renames itself)   |  room rename OLD NEW   (the human renames anyone)
-room kick NAME [--reason TEXT] [--as NAME]   (an agent's call is its vote; the human's call removes at once;
+roundtable read [ID|#N] [--after N] [--limit N]
+roundtable inbox [--as NAME] [--snapshot TOKEN] [--cursor CURSOR] [--limit N] | --baseline REASON
+roundtable withdraw ID|#N [--as NAME] [--recipients NAME,NAME]
+roundtable rename NEW [--as NAME]            (an agent renames itself)   |  roundtable rename OLD NEW   (the human renames anyone)
+roundtable kick NAME [--reason TEXT] [--as NAME]   (an agent's call is its vote; the human's call removes at once;
                                               --reason is required to open a proposal or for the human's kick,
                                               optional when agreeing to an open proposal)
-room who
-room join --as NAME [--rebind]
-room doctor
-room pause [--resend-stop] | resume | shutdown
-room retry ID|#N RECIPIENT [--confirm-uncertain]
-room migrate
+roundtable who
+roundtable join --as NAME [--rebind]
+roundtable doctor
+roundtable pause [--resend-stop] | resume | shutdown
+roundtable retry ID|#N RECIPIENT [--confirm-uncertain]
+roundtable migrate
 
 All commands accept --json. Exit: 0 success, 2 input/identity error, 3 unavailable/uncertain service,
 4 agent send not sent by the crossing guard (nothing queued; the output shows what to read first),
 or a withdraw that cancelled nothing.
-Agent sends need --snapshot from room inbox or the delivery being answered. --urgent (with --reason)
+Agent sends need --snapshot from roundtable inbox or the delivery being answered. --urgent (with --reason)
 skips that check and goes ahead of ordinary messages still waiting in the room (never ones a session already
 has); it is audited. The human is never guarded.
 withdraw cancels only deliveries not yet handed to a recipient's session; after that it is too late.
@@ -129,10 +129,10 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       try{
         const registry=await readRegistry(root);checks.registry=registry;
         if(Object.values(registry).some(p=>p.harness==='codex')&&!checks.codexExecutable){
-          healthy=false;checks.codexError={code:'service_unavailable',message:'Registered Codex participants cannot receive messages: native executable missing.',hint:'Install Codex on PATH or set ROOM_CODEX_EXECUTABLE to the native codex.exe (not a shell wrapper).'};
+          healthy=false;checks.codexError={code:'service_unavailable',message:'Registered Codex participants cannot receive messages: native executable missing.',hint:'Install Codex on PATH or set ROUNDTABLE_CODEX_EXECUTABLE to the native codex.exe (not a shell wrapper).'};
         }
-      }catch(e){const info=toErrorInfo(e);checks.registry={...info,hint:info.code==='invalid_state'?'From a human terminal, run room migrate for the known legacy schema; preserve and repair unknown schemas manually.':info.hint};healthy=false;}
-      try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run room who or room tui to auto-start the service. If that fails, inspect .room/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
+      }catch(e){const info=toErrorInfo(e);checks.registry={...info,hint:info.code==='invalid_state'?'From a human terminal, run roundtable migrate for the known legacy schema; preserve and repair unknown schemas manually.':info.hint};healthy=false;}
+      try{link=await connect(root,false);checks.service=await link.request('who',{});}catch(e){checks.service={...toErrorInfo(e),hint:'Run roundtable who or roundtable tui to auto-start the service. If that fails, inspect .roundtable/service.lock and the reported configuration error; do not delete a live owner lock.'};healthy=false;}
       print(checks);return healthy?0:3;
     }
     link=await connect(root,true);
@@ -190,17 +190,17 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
       // Agents: `rename NEW` (their own binding). The human: `rename OLD NEW`.
       const names=p.map(n=>n.replace(/^@/,'').toLowerCase());
       if(caller.kind==='human'){
-        if(names.length!==2)throw new RoomError('bad_request','As the human, name the agent and its new name: room rename OLD NEW.');
+        if(names.length!==2)throw new RoomError('bad_request','As the human, name the agent and its new name: roundtable rename OLD NEW.');
         const outcome=await link.request('rename',{caller,oldName:names[0]!,newName:names[1]!});
         out(json?JSON.stringify(outcome):sanitize(renameText(outcome,false)));return renameNoop(outcome)?4:0;
       }
-      if(names.length!==1)throw new RoomError('bad_request','Give your new name: room rename NEW (agents rename only themselves).');
+      if(names.length!==1)throw new RoomError('bad_request','Give your new name: roundtable rename NEW (agents rename only themselves).');
       const outcome=await link.request('rename',{caller,newName:names[0]!});
       // 4 when nothing changed (already that name), as with a refused send.
       out(json?JSON.stringify(outcome):sanitize(renameText(outcome,true)));return renameNoop(outcome)?4:0;
     }
     if(command==='kick'){
-      if(p.length!==1)throw new RoomError('bad_request','kick requires the agent name: room kick NAME [--reason TEXT].');
+      if(p.length!==1)throw new RoomError('bad_request','kick requires the agent name: roundtable kick NAME [--reason TEXT].');
       const reason=text('reason')?.trim();
       const outcome=await link.request('kick',{caller,name:p[0]!.replace(/^@/,'').toLowerCase(),...(reason?{reason}:{})});
       out(json?JSON.stringify(outcome):sanitize(kickText(outcome,'cli')));

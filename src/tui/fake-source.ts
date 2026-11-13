@@ -1,4 +1,4 @@
-// In-memory RoomSource for tests and `room tui --demo`. It mimics the service contract closely enough for the
+// In-memory RoomSource for tests and `roundtable tui --demo`. It mimics the service contract closely enough for the
 // TUI (send/read/who/subscribe/pause/resume/retry + events); it performs no real delivery.
 import { RoomError } from '../contracts/errors.js';
 import type {

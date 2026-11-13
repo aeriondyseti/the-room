@@ -17,7 +17,7 @@ const plain = (s: string | undefined) => (s ?? '').replace(/\u001B\[[0-9;]*m/g, 
 const root = mkdtempSync(join(tmpdir(), 'vp-tui-real-'));
 execFileSync('git', ['init', '-q', root], { env: roomGitEnvironment(process.env), windowsHide: true });
 // This UI/IPC fixture must never reach a real harness transport.
-process.env['ROOM_CODEX_EXECUTABLE'] = join(root, 'fixture-codex-not-installed.exe');
+process.env['ROUNDTABLE_CODEX_EXECUTABLE'] = join(root, 'fixture-codex-not-installed.exe');
 const source = new ClientRoomSource({ roomRoot: root });
 
 after(async () => {
@@ -34,7 +34,7 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('room tui: auto-starts the service, sends from the composer, and shows the message from the event stream', { timeout: 30_000 }, async () => {
+test('roundtable tui: auto-starts the service, sends from the composer, and shows the message from the event stream', { timeout: 30_000 }, async () => {
   // Register one agent so a broadcast has a recipient (join from a CLI connection with synthetic native evidence).
   source.start();
   const ui = render(<App source={source} humanName="Kevin" width={100} height={20} />);

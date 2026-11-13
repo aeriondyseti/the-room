@@ -17,7 +17,7 @@ test('run(--version) prints the package version', () => {
 test('run(unknown) fails with a hint', () => {
   const errs: string[] = [];
   assert.equal(run(['frobnicate'], () => {}, (s) => errs.push(s)), 2);
-  assert.match(errs[0] ?? '', /room --help/);
+  assert.match(errs[0] ?? '', /roundtable --help/);
 });
 
 test('integration: `node dist/cli/main.js --version` prints the version', () => {

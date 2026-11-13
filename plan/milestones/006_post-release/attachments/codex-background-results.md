@@ -23,7 +23,7 @@ These are small feasibility samples, not latency guarantees or reliability accep
 ## Method and retained evidence
 
 - Used the existing daemon at `C:\Users\Kevin\.codex\app-server-control\app-server-control.sock`; did not restart it, change its configuration, or enable remote control.
-- Created only throwaway threads in `X:\Development\vibe-pairing\.room\probes\codex-background-20260928`.
+- Created only throwaway threads in `X:\Development\vibe-pairing\.roundtable\probes\codex-background-20260928`.
 - Runner: `probes/codex-background-check.mjs`. It restricts thread RPCs to IDs in its own manifest.
 - Local evidence retained under that ignored scratch directory: `manifest.json`, `events.jsonl`, and copies of the three materialized probe rollouts. Events include timestamps, exact request/response frames, CLI arguments, exit codes and output. These diagnostic artifacts are local, not committed.
 - Thread starts used the inherited `gpt-6-astra` model with low reasoning effort, read-only sandbox, and bounded prompts. Normal tests used approval policy `never`; approval tests explicitly used `untrusted` with reviewer `user`. No approval was granted, and neither approval-marker file was created.
@@ -34,7 +34,7 @@ PowerShell phase commands (run sequentially; the TUI fixture between standalone 
 ```powershell
 $node = 'C:\Users\Kevin\AppData\Local\mise\installs\node\24.18.0\node.exe'
 $runner = 'probes/codex-background-check.mjs'
-$scratch = '.room/probes/codex-background-20260928'
+$scratch = '.roundtable/probes/codex-background-20260928'
 & $node $runner $scratch idle
 & $node $runner $scratch busy-stop
 & $node $runner $scratch disconnected

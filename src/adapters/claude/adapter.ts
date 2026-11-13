@@ -23,7 +23,7 @@ export function claudeAdapterOptionsFrom(config: RoomConfig, registry: ClaudeReg
     maxEnvelopeChars: config.claudeMaxEnvelopeChars,
     timeoutMs: config.adapterTimeoutMs,
     settleMs: config.claudeSubmitSettleMs,
-    from: 'the-room',
+    from: 'agent-roundtable',
   };
 }
 

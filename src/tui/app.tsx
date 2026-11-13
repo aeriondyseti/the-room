@@ -685,7 +685,7 @@ function Room({
           ) : loadFailed ? (
             <Box flexDirection="column">
               <Text color={t.color('red')} bold>Couldn't load the room.</Text>
-              <Text dimColor>Press r to try again, or run `room doctor` to check the service.</Text>
+              <Text dimColor>Press r to try again, or run `roundtable doctor` to check the service.</Text>
             </Box>
           ) : !view.loaded ? (
             <Text dimColor>Loading room…</Text>
@@ -897,7 +897,7 @@ function Header({ view, width }: { view: RoomView; width: number }) {
           budgeted row down — 6.18 review); only the summary on the right truncates. */}
       <Box flexShrink={0}>
       <Text wrap="truncate">
-        <Text inverse bold> the-room </Text>
+        <Text inverse bold> agent-roundtable </Text>
         {view.room.paused && <Text color={t.color('yellow')} inverse bold> ⏸ PAUSED </Text>}
       </Text>
       </Box>
@@ -934,7 +934,7 @@ function Banner({ view, width }: { view: RoomView; width: number }) {
     const detail = view.connection.detail ? ` (${view.connection.detail})` : '';
     const text =
       view.connection.state === 'disconnected'
-        ? `Not connected to the room service${detail}. Still retrying; run \`room doctor\` if this persists.`
+        ? `Not connected to the room service${detail}. Still retrying; run \`roundtable doctor\` if this persists.`
         : view.connection.state === 'connecting'
           ? 'Connecting to the room service…'
           : `Reconnecting to the room service${detail}… what you see may be out of date.`;
@@ -958,9 +958,9 @@ export function EmptyState({ participants }: { participants: readonly Participan
   const t = useTheme();
   if (participants.length === 0) {
     const steps: Array<[string, string]> = [
-      ['1', 'In each agent\'s session, ask it to join: "join the room as <name>". It uses the room_join tool (or `room join --as <name>` from its shell).'],
+      ['1', 'In each agent\'s session, ask it to join: "join the room as <name>". It uses the roundtable_join tool (or `roundtable join --as <name>` from its shell).'],
       ['2', 'Joined agents appear here with their status. Enter sends to everyone; start with @name to pick one.'],
-      ['3', 'Something off? Run `room doctor`, or see docs/reference/operations.md. Press ? for keys and commands.'],
+      ['3', 'Something off? Run `roundtable doctor`, or see docs/reference/operations.md. Press ? for keys and commands.'],
     ];
     return (
       <Box flexDirection="column" flexShrink={0}>
@@ -1105,7 +1105,7 @@ export function helpLines(): Line[] {
     [{ text: 'Delivery marks', bold: true }],
     legend,
     [{ text: ' ' }],
-    [{ text: 'Monochrome: set NO_COLOR=1 or run `room tui --no-color`. Esc to close.', dim: true }],
+    [{ text: 'Monochrome: set NO_COLOR=1 or run `roundtable tui --no-color`. Esc to close.', dim: true }],
   ];
 }
 function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
@@ -1113,7 +1113,7 @@ function WhoOverlay({ participants }: { participants: ParticipantState[] }) {
   return (
     <Box flexDirection="column" flexShrink={0}>
       <Text bold>Participants ({participants.length})</Text>
-      {participants.length === 0 && <Text dimColor>No agents have joined yet. Agents join with `room join --as &lt;name&gt;`.</Text>}
+      {participants.length === 0 && <Text dimColor>No agents have joined yet. Agents join with `roundtable join --as &lt;name&gt;`.</Text>}
       {participants.map((p) => {
         const dot = livenessDot(p.liveness);
         const status = activityLabel(p);

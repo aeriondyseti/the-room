@@ -16,5 +16,5 @@ Source: `git show v0.9.0:reviews/2.6.md`.
 Ancestors must be start-time verified; codex, agy and gemini stop the walk; the node-based harness risk only applies
 to the CLI environment fallback, which excludes node.
 
-Suggested fix: make the depth a `ROOM_*` tunable (with `mcp-literals-not-tunable.md`); consider an allowlist of
+Suggested fix: make the depth a `ROUNDTABLE_*` tunable (with `mcp-literals-not-tunable.md`); consider an allowlist of
 intermediate executables for the walk too.

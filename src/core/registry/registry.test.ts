@@ -65,8 +65,8 @@ test('strict minimal schema rejects extra fields, duplicate TOML tables and rese
   assert.throws(() => parseRegistry(`[participants.astra]\nharness="codex"\nsession_id="${one.session_id}"\npid=5`), /Invalid/);
 });
 test('lock contention fails boundedly without deleting the owner lock', async t => {
-  const root = await fixture(t); await mkdir(path.join(root, '.room'));
-  const lock = path.join(root, '.room/registry.lock'); await writeFile(lock, 'other owner');
+  const root = await fixture(t); await mkdir(path.join(root, '.roundtable'));
+  const lock = path.join(root, '.roundtable/registry.lock'); await writeFile(lock, 'other owner');
   await assert.rejects(joinParticipant(root, 'astra', one, { lockTimeoutMs: 10, lockPollMs: 2 }), /locked/);
   assert.equal(await readFile(lock, 'utf8'), 'other owner');
 });
@@ -78,9 +78,9 @@ test('legacy migration preserves both native identities and makes an exact backu
   assert.deepEqual(result.astra, one); assert.deepEqual(result.claude, two);
   assert.deepEqual(parseRegistry(await readFile(path.join(root, 'session.toml'), 'utf8')), result);
   assert.equal(Object.keys(result).length, 2);
-  const backups = await readdir(path.join(root, '.room'));
+  const backups = await readdir(path.join(root, '.roundtable'));
   const backup = backups.find(n => n.startsWith('registry-backup-')); assert.ok(backup);
-  assert.equal(await readFile(path.join(root, '.room', backup), 'utf8'), legacy);
+  assert.equal(await readFile(path.join(root, '.roundtable', backup), 'utf8'), legacy);
   assert.deepEqual(await migrateLegacyRegistry(root), result);
 });
 test('main checkout and linked worktree resolve to the same root', async t => {

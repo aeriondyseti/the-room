@@ -1,6 +1,6 @@
-// `room mcp`: stdio MCP server for agents. Launch from the agent's harness config (see docs in 2.6):
-//   claude mcp add room -s local -- node <repo>/dist/cli/main.js mcp
-//   codex mcp add room -- node <repo>/dist/cli/main.js mcp
+// `roundtable mcp`: stdio MCP server for agents. Launch from the agent's harness config (see docs in 2.6):
+//   claude mcp add roundtable -s local -- node <repo>/dist/cli/main.js mcp
+//   codex mcp add roundtable -- node <repo>/dist/cli/main.js mcp
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { defaultRegistryDeps, resolveClaudeConfigDir } from '../adapters/claude/registry.js';
 import { loadConfig } from '../core/config.js';

@@ -34,7 +34,7 @@ model considered or understood. It can know which addressed messages the snapsho
 
 ## 3. Guarded send (compare-and-send)
 
-- `room_send` / `room send` take `snapshot`. At commit, atomically with the persist-before-acknowledge transaction
+- `roundtable_send` / `roundtable send` take `snapshot`. At commit, atomically with the persist-before-acknowledge transaction
   (invariant 4):
   - **Any addressed message is not covered** (including older ones an envelope token omitted): the result is
     `not_sent` (`snapshot_stale`), with nothing enqueued. It returns an inbox review page of the uncovered messages, a
@@ -43,12 +43,12 @@ model considered or understood. It can know which addressed messages the snapsho
   - **Token from another binding or room, or malformed:** `not_sent` (`snapshot_invalid`).
 - **A missing token is also `not_sent`** (`snapshot_required`), with the same shape. A cold first send costs exactly
   one retry **only when the whole uncovered inbox fits the response budget**. Otherwise the page reports `hasMore`,
-  `remaining` and `nextCursor`, and the agent pages on (`room_inbox`) to build cumulative coverage before sending.
+  `remaining` and `nextCursor`, and the agent pages on (`roundtable_inbox`) to build cumulative coverage before sending.
 - **Getting a token:**
-  - `room_inbox` returns a review page (`items`, `snapshot`, `hasMore`, `nextCursor`, `remaining`).
+  - `roundtable_inbox` returns a review page (`items`, `snapshot`, `hasMore`, `nextCursor`, `remaining`).
   - A delivered envelope carries a token covering **that one message only**. A reply made with it is `not_sent` when
     anything else addressed to the sender is uncovered, as intended.
-  - `room_read` stays historical and exposes a token only for content it actually returns in full.
+  - `roundtable_read` stays historical and exposes a token only for content it actually returns in full.
   - No token certifies an omitted body. An oversized message's labelled reference is not coverage until the reference
     has explicit read/coverage semantics; that shape is settled before implementation, not assumed.
 - **Human messages:**
@@ -82,7 +82,7 @@ model considered or understood. It can know which addressed messages the snapsho
 
 ## 5. Withdraw (Kevin's requirement, bounded by his scope decision)
 
-- `room_withdraw(message_id, recipients?)` / `room withdraw <id>`, by the original sender only. Identity is resolved as
+- `roundtable_withdraw(message_id, recipients?)` / `roundtable withdraw <id>`, by the original sender only. Identity is resolved as
   for sends; a later registry rebinding does not confer old ownership.
 - **The cutoff is native acceptance.** Once the harness has accepted a delivery it is too late to recall. Recalling it
   would be message-history editing, which is out of scope. Withdraw cancels only broker-pending deliveries.
@@ -100,7 +100,7 @@ model considered or understood. It can know which addressed messages the snapsho
   - Never infer "not received" from the absence of a reply.
   - The tool description says plainly that withdraw covers only messages the room has not yet handed to the harness.
 - **Delivery hold (chosen by Kevin, 2026-09-28; 7.6):**
-  - Ordinary messages wait a short hold before delivery (`deliveryHoldMs`, default 500 ms, in `.room/settings.json`, <!-- docs-check-ignore -->
+  - Ordinary messages wait a short hold before delivery (`deliveryHoldMs`, default 500 ms, in `.roundtable/settings.json`, <!-- docs-check-ignore -->
     editable from the TUI's `/settings`), so an immediate withdraw usually succeeds.
   - Urgent messages and stop requests skip the hold.
   - During the hold, later messages from the same sender to the same recipient join a batch delivered as one native
@@ -123,10 +123,10 @@ result, and no recall probes. For the record:
 ## 7. Surfaces (Claude)
 
 - **MCP / CLI:**
-  - `room_inbox`;
-  - `snapshot`, `urgent: { reason }`, and `revisesAttemptId` on `room_send`;
-  - `room_withdraw`;
-  - `room send|withdraw|inbox` in the CLI.
+  - `roundtable_inbox`;
+  - `snapshot`, `urgent: { reason }`, and `revisesAttemptId` on `roundtable_send`;
+  - `roundtable_withdraw`;
+  - `roundtable send|withdraw|inbox` in the CLI.
 
   Tool descriptions are written for models:
   - on `not_sent`, read the returned messages, then page on if `hasMore`;

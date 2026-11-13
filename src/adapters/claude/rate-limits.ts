@@ -1,6 +1,6 @@
 // Claude plan usage (6.6). Claude Code exposes plan limits only to the user's statusline command
 // (`rate_limits.<window>.used_percentage / resets_at`, 2.1.80+); no hook, cache or CLI carries them. So this is
-// opt-in: the user wraps their statusline with `room statusline-tap`, which saves just those numbers to a tap file,
+// opt-in: the user wraps their statusline with `roundtable statusline-tap`, which saves just those numbers to a tap file,
 // and this provider reads that file. Read-only; never reads credentials; a profile, not a verified account.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -76,7 +76,7 @@ export function accountUsageFromTap(record: ClaudeTapRecord, profileKey: string,
   };
 }
 
-export const CLAUDE_TAP_HINT = "Claude Code only shows plan usage to your statusline command; wrap it with `room statusline-tap` to show it here (README: Plan usage)";
+export const CLAUDE_TAP_HINT = "Claude Code only shows plan usage to your statusline command; wrap it with `roundtable statusline-tap` to show it here (README: Plan usage)";
 
 export function claudeAccountUsageProvider(opts: { claudeConfigDir: string; tapDir?: string; now?: () => Date }): AccountUsageProvider {
   const key = claudeProfileKey(opts.claudeConfigDir);

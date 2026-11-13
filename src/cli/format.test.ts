@@ -14,7 +14,7 @@ test('every agent-facing error code includes actionable remediation',()=>{
 });
 
 test('readable failed and uncertain deliveries retain causes and remediation',()=>{
- const failure={recipient:'astra',state:'failed',held:false,waiting:null,attempts:[{error:{code:'service_unavailable',message:'Executable missing.',hint:'Set ROOM_CODEX_EXECUTABLE.'}}]};
- const out=formatResult('read',{items:[{...item,deliveries:[failure]}],hasMore:false});assert.match(out,/Executable missing/);assert.match(out,/ROOM_CODEX_EXECUTABLE/);
- const uncertain=formatResult('read',{items:[{...item,deliveries:[{...failure,state:'uncertain',attempts:[]}]}],hasMore:false});assert.match(uncertain,/may already have been delivered/);assert.match(uncertain,/Reconcile/);assert.match(uncertain,/room doctor/);
+ const failure={recipient:'astra',state:'failed',held:false,waiting:null,attempts:[{error:{code:'service_unavailable',message:'Executable missing.',hint:'Set ROUNDTABLE_CODEX_EXECUTABLE.'}}]};
+ const out=formatResult('read',{items:[{...item,deliveries:[failure]}],hasMore:false});assert.match(out,/Executable missing/);assert.match(out,/ROUNDTABLE_CODEX_EXECUTABLE/);
+ const uncertain=formatResult('read',{items:[{...item,deliveries:[{...failure,state:'uncertain',attempts:[]}]}],hasMore:false});assert.match(uncertain,/may already have been delivered/);assert.match(uncertain,/Reconcile/);assert.match(uncertain,/roundtable doctor/);
 });

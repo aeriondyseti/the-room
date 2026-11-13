@@ -7,7 +7,7 @@ confidence: 50
 ---
 # The observer's read size is a literal, not a tunable
 
-`MAX_READ_BYTES` (8 MiB per observer read) is a literal, not a `ROOM_*` tunable. Severity: low.
+`MAX_READ_BYTES` (8 MiB per observer read) is a literal, not a `ROUNDTABLE_*` tunable. Severity: low.
 Source: `git show v0.9.0:reviews/2.5.md`.
 
 ## Why it waits

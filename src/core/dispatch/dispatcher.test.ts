@@ -60,7 +60,7 @@ test('settings IPC applies live, restricts writes to human, and can turn the hol
 test('invalid live settings cannot block human or guarded agent sends',async t=>{
  const {root,room}=await setup(t,null);
  await call(room,'settings_update',{caller:human,patch:{deliveryHoldMs:0}});
- await writeFile(path.join(root,'.room','settings.json'),'broken');
+ await writeFile(path.join(root,'.roundtable','settings.json'),'broken');
  const settings=await call(room,'settings_get',{});assert.equal(settings.problem?.fallback,'last_good');
  assert.equal((await send(room,'human still sends')).message.body,'human still sends');
  const caller={kind:'agent' as const,native:{harness:'codex' as const,sessionId:b,source:'codex-env' as const},declaredName:'other'};
@@ -162,10 +162,10 @@ test('room replies mark only the matching native recipient and do not mean task 
  const delivery=room.ledger.delivery(first.message.id,'astra');assert.equal(delivery.state,'replied');assert.equal(delivery.repliedBy,reply.message.id);
 });
 test('oversize envelope is explicitly referenced; original content remains intact',async t=>{
- const {root,room,adapter}=await setup(t);adapter.maxEnvelopeChars=700;
+ const {root,room,adapter}=await setup(t);adapter.maxEnvelopeChars=760;
  const body='quotes " ✓ '.repeat(200);const saved=await send(room,body);await room.dispatcher.idle();
  assert.equal(room.ledger.read(saved.message.id).message.body,body);assert.equal(room.ledger.delivery(saved.message.id,'astra').referenced,true);
- assert.ok(adapter.sent[0]!.envelope.length<=700);assert.match(adapter.sent[0]!.envelope,/Referenced content/);
+ assert.ok(adapter.sent[0]!.envelope.length<=760);assert.match(adapter.sent[0]!.envelope,/Referenced content/);
  assert.throws(()=>buildEnvelope(root,saved.message,'astra',5),{code:'message_too_large'});
 });
 
@@ -182,7 +182,7 @@ test('definite adapter failure and pre-submission probe exceptions surface witho
  const {room,adapter}=await setup(t);adapter.action=async()=>({status:'failed',error:{code:'internal',message:'before write'}});
  const first=await send(room);await room.dispatcher.idle();assert.equal(room.ledger.delivery(first.message.id,'astra').state,'failed');
  adapter.probe=async()=>{throw Error('query failure');};const second=await send(room);await room.dispatcher.idle();
- const failed=room.ledger.delivery(second.message.id,'astra');assert.equal(failed.state,'failed');assert.match(failed.attempts[0]!.error!.message,/room doctor/);
+ const failed=room.ledger.delivery(second.message.id,'astra');assert.equal(failed.state,'failed');assert.match(failed.attempts[0]!.error!.message,/roundtable doctor/);
  assert.equal(adapter.sent.length,1);
 });
 

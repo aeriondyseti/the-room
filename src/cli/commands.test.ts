@@ -55,7 +55,7 @@ test('CLI commands round trip via IPC: join, all input sources, read, who, pause
   const read=await command('read',['#1']);assert.equal(read.value.items[0].message.id,sent.value.result.message.id);
   assert.equal((await command('read',['--after','0','--limit','1'])).value.items.length,1);
   assert.equal((await command('who')).value.participants.length,2);
-  const doctor=await command('doctor');assert.equal(doctor.code,3);assert.match(doctor.value.codexError.hint,/ROOM_CODEX_EXECUTABLE/);
+  const doctor=await command('doctor');assert.equal(doctor.code,3);assert.match(doctor.value.codexError.hint,/ROUNDTABLE_CODEX_EXECUTABLE/);
   assert.equal((await command('pause')).value.room.paused,true);
   assert.equal((await command('resume')).value.room.paused,false);
   const sentId=sent.value.result.message.id as string;
@@ -86,7 +86,7 @@ test('CLI refuses mismatches and agent controls; declared fallback stays labelle
 test('real CLI child joins from CODEX_THREAD_ID and preserves piped message bytes',async t=>{
   const {root,server}=await setup(t);
   const main=fileURLToPath(new URL('./main.js',import.meta.url));
-  const env={...process.env,CODEX_THREAD_ID:a,CODEX_SESSION_ID:a,ROOM_ROOT:root};
+  const env={...process.env,CODEX_THREAD_ID:a,CODEX_SESSION_ID:a,ROUNDTABLE_ROOT:root};
   const exec=promisify(execFile);
   const joined=await exec(process.execPath,[main,'join','--as','child','--json'],{cwd:root,env,windowsHide:true});
   assert.equal(JSON.parse(joined.stdout).registration.sessionId,a);

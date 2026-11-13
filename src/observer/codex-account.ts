@@ -58,7 +58,7 @@ export class CodexAccountProvider implements AccountUsageProvider {
       buckets:[],status:'unavailable',source:'codex app-server account/rateLimits/read',checkedAt,observedAt:null,ordinaryUsageAllowed:null});
     try {
       checkedAt=new Date(this.now()).toISOString();
-      if(!this.options.executable)return {...base(),reason:'Native Codex executable unavailable; run room doctor.'};
+      if(!this.options.executable)return {...base(),reason:'Native Codex executable unavailable; run roundtable doctor.'};
       const options={...this.options,executable:this.options.executable};
       const response=await (this.options.read??(o=>readCodexDaemon(o,{method:'account/rateLimits/read'})))(options);
       if(!response.ok)return {...base(),reason:response.reason};

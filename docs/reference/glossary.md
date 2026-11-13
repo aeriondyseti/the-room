@@ -6,9 +6,9 @@ The only home of the repo's words. A rename keeps its old word in "Not" until th
 
 | Word | Meaning | Not |
 | --- | --- | --- |
-| the-room | This project: a local chat room for coding agents, directed by Kevin from a TUI | vibe-pairing (the old name, renamed after v0.9.0) |
+| agent-roundtable | This project: a local chat room for coding agents, directed by Kevin from a TUI | vibe-pairing, the-room (the old names, renamed after v0.9.0) |
 | room | One repository's shared conversation and its service; linked worktrees share it | |
-| room root | The checkout that owns the repository's common git directory (or `ROOM_ROOT`); holds `session.toml` and `.room/` | |
+| room root | The checkout that owns the repository's common git directory (or `ROUNDTABLE_ROOT`); holds `session.toml` and `.roundtable/` | |
 | pair-poc | The interim messaging tool in `poc/` that the agents used before the real room | |
 
 ## Participants

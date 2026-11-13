@@ -14,7 +14,7 @@ compaction, or is compacted away with the rest of the context before the agent r
 - **Make it room state, not a chat message.** The hook reports "compacting" to the room as participant activity
   (`compacting`, with a started-at time and an expected end), rather than sending a message that asks peers to hold
   off. Then:
-  - the TUI and `room who` show it;
+  - the TUI and `roundtable who` show it;
   - the dispatcher holds deliveries to that agent until compaction ends (plus a small grace period), instead of every
     sender having to remember to wait (the north star: nobody polls or re-arms);
   - senders' results say "held: recipient is compacting".

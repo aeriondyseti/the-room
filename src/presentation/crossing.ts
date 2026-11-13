@@ -30,14 +30,14 @@ export function inboxItemText(item: InboxReviewItem): string {
 export type Surface = 'mcp' | 'cli';
 const HINT = {
   mcp: {
-    inbox: 'room_inbox',
-    more: (cursor: string, snapshot: string) => `room_inbox cursor=${cursor} snapshot=${snapshot}`,
+    inbox: 'roundtable_inbox',
+    more: (cursor: string, snapshot: string) => `roundtable_inbox cursor=${cursor} snapshot=${snapshot}`,
     resend: (snapshot: string, attempt: string) => `snapshot=${snapshot} revises_attempt_id=${attempt}`,
     revises: (attempt: string) => `revises_attempt_id=${attempt}`,
   },
   cli: {
-    inbox: 'room inbox',
-    more: (cursor: string, snapshot: string) => `room inbox --cursor ${cursor} --snapshot ${snapshot}`,
+    inbox: 'roundtable inbox',
+    more: (cursor: string, snapshot: string) => `roundtable inbox --cursor ${cursor} --snapshot ${snapshot}`,
     resend: (snapshot: string, attempt: string) => `--snapshot ${snapshot} --revises ${attempt}`,
     revises: (attempt: string) => `--revises ${attempt}`,
   },

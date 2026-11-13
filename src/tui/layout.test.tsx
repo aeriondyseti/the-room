@@ -82,12 +82,12 @@ test('left panel yields when the conversation would get too narrow', () => {
   assert.equal(leftPanelFits(90, 60, 90), false, 'a wide panel never squeezes the conversation below its minimum');
 });
 
-test('prefs: saved in .room/tui.json with other keys kept; unreadable or invalid → none; flag > saved > configured > top', async () => {
+test('prefs: saved in .roundtable/tui.json with other keys kept; unreadable or invalid → none; flag > saved > configured > top', async () => {
   const root = join(dir, 'room');
   const path = tuiPrefsPath(root);
-  assert.equal(path, join(root, '.room', 'tui.json'));
+  assert.equal(path, join(root, '.roundtable', 'tui.json'));
   assert.equal(await readSavedLayout(path), null);
-  mkdirSync(join(root, '.room'), { recursive: true });
+  mkdirSync(join(root, '.roundtable'), { recursive: true });
   writeFileSync(path, JSON.stringify({ other: 1, layout: 'sideways' }));
   assert.equal(await readSavedLayout(path), null, 'an unknown value is ignored');
   assert.equal(await saveLayout(path, 'left'), true);
@@ -203,7 +203,7 @@ test('review fixes: a short panel ends usage with "more usage" (never silently);
 });
 
 test('review fixes: quick successive saves persist the latest choice', async () => {
-  const path = join(dir, 'serial', '.room', 'tui.json');
+  const path = join(dir, 'serial', '.roundtable', 'tui.json');
   const results = await Promise.all([saveLayout(path, 'left'), saveLayout(path, 'top'), saveLayout(path, 'left')]);
   assert.deepEqual(results, [true, true, true]);
   assert.equal(await readSavedLayout(path), 'left');

@@ -14,4 +14,4 @@ observation age. Severity: low. Source: `git show v0.9.0:reviews/6.7.md`.
 
 The workspace changes slowly, and `/who` gives the age.
 
-Suggested fix: dim or mark (`?`) the chip's workspace part once `observedAt` is older than a `ROOM_*` threshold.
+Suggested fix: dim or mark (`?`) the chip's workspace part once `observedAt` is older than a `ROUNDTABLE_*` threshold.

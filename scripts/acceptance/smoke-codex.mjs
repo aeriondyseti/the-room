@@ -11,7 +11,7 @@ let fixture,room;
 try{
  fixture=await start({name:'codex_trial',root,dist});
  room=await RoomClient.connect(root,{client:'tui'});
- const sent=await room.request('send',{caller:{kind:'human'},to:['codex_trial'],body:'QUALIFICATION TRIAL: reply ACK through room_send to human with this message id as reply_to.'});
+ const sent=await room.request('send',{caller:{kind:'human'},to:['codex_trial'],body:'QUALIFICATION TRIAL: reply ACK through roundtable_send to human with this message id as reply_to.'});
  const deadline=Date.now()+90000;let reply;
  while(Date.now()<deadline){reply=(await room.request('read',{afterSeq:sent.message.seq})).items.find(x=>x.message.replyTo===sent.message.id);if(reply)break;await new Promise(r=>setTimeout(r,100));}
  const turnStartedAt=await fixture.turnStartedAt(sent.message.id,Date.parse(sent.message.createdAt));

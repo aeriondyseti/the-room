@@ -33,7 +33,7 @@ machine-readable results (pass, fail, unsupported or not tested); keep raw evide
 compare against the last qualified baseline. A preflight smoke suite should finish quickly; an explicit extended
 mode can repeat trials and exercise crash and recovery. A changed assumption should identify the adapter or
 invariant affected and the next diagnostic step, without silently changing config, permissions or delivery paths.
-Run on demand initially; detecting a new harness version can later offer the suite through `room doctor`.
+Run on demand initially; detecting a new harness version can later offer the suite through `roundtable doctor`.
 
 ## Done when, if promoted
 

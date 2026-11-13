@@ -18,7 +18,7 @@ console.log('probe:', JSON.stringify(await adapter.probe(target)));
 const started = Date.now();
 const result = await adapter.submit({
   target,
-  envelope: message ?? `[room smoke test ${tag}] Claude adapter live check — no reply needed.`,
+  envelope: message ?? `[roundtable smoke test ${tag}] Claude adapter live check — no reply needed.`,
   messageId: tag,
   recipient: 'smoke',
   attempt: 1,

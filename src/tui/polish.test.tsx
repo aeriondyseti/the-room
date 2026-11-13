@@ -86,7 +86,7 @@ test('first run: no agents â†’ welcome with join steps; agents but no messages â
   const a = plain(empty.lastFrame());
   assert.match(a, /no agents have joined yet/);
   assert.match(a, /join the room as <name>/);
-  assert.match(a, /room doctor/);
+  assert.match(a, /roundtable doctor/);
   cleanup();
   const quiet = render(<App source={new FakeRoomSource({ participants: [agent('astra'), agent('claude')] })} humanName="Kevin" width={100} height={20} />);
   await tick();
