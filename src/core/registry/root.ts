@@ -70,3 +70,13 @@ export async function adoptLegacyStateDir(root: string): Promise<'adopted' | 'no
   }
   return 'adopted';
 }
+
+/** True while earlier state waits in `.room/`: not yet moved, or left beside a `.roundtable/` with its ledger. Reads only. */
+export async function legacyStatePending(root: string): Promise<boolean> {
+  const present = async (target: string): Promise<boolean> => {
+    try { await stat(target); return true; }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
+  };
+  if (!(await present(path.join(root, '.room')))) return false;
+  return !(await present(path.join(root, '.roundtable'))) || await present(path.join(root, '.room', 'room.db'));
+}

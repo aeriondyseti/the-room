@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { RoomClient } from '../ipc/client.js';
-import { adoptLegacyStateDir, resolveRoomRoot } from '../core/registry/root.js';
+import { adoptLegacyStateDir, legacyStatePending, resolveRoomRoot } from '../core/registry/root.js';
 import { readRegistry, migrateLegacyRegistry } from '../core/registry/registry.js';
 import { loadConfig } from '../core/config.js';
 import { defaultRegistryDeps, resolveClaudeConfigDir } from '../adapters/claude/registry.js';
@@ -113,7 +113,13 @@ export async function runCommand(command: string, argv: string[], deps: CommandD
     if(command!=='send'&&command!=='reply'&&p.length>(command==='retry'||command==='rename'?2:command==='read'||command==='withdraw'||command==='kick'?1:0))throw new RoomError('bad_request','Unexpected positional arguments.');
     const cwd=deps.cwd??process.cwd(), config=loadConfig(deps.env??process.env);
     const root=await resolveRoomRoot(cwd,config.roomRoot??undefined);
-    if(command!=='shutdown')await adoptLegacyStateDir(root); // shutdown must still reach a service that holds the old directory open
+    // doctor is read-only, so it reports earlier state and leaves the move to the next ordinary command.
+    if(command==='doctor'&&await legacyStatePending(root)){
+      const state={code:'invalid_state',message:'Earlier state in .room/ has not been moved to .roundtable/.',hint:'doctor changes nothing. Run roundtable shutdown, then roundtable who: it moves .room/, or says what blocks the move.'};
+      out(json?JSON.stringify({root,state}):`${state.message}\n  ${state.hint}`);
+      return 3;
+    }
+    if(command!=='shutdown'&&command!=='doctor')await adoptLegacyStateDir(root); // shutdown must still reach a service that holds the old directory open
     const identify=deps.identify??(name=>cliCaller(name,{
       env:deps.env??process.env,ownParentPid:process.ppid,processInfo:windowsProcessInfo(config.claudeProcStartTimeoutMs),
       claudeRegistry:defaultRegistryDeps(resolveClaudeConfigDir(config.claudeConfigDir,deps.env??process.env),config.claudeProcStartTimeoutMs),

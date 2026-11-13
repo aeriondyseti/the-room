@@ -253,7 +253,8 @@ on each new delivery. No promise of immediate model processing or automatic inte
   directory) it stops with an error; `roundtable shutdown` skips the move so that service can be stopped.
   The service adopts too before it creates anything, because a client built before the rename can start it.
   `roundtable shutdown` never starts a service. When both directories exist and `.room/` holds a ledger, every command
-  but shutdown stops and says so: which one to keep is the human's choice.
+  but shutdown stops and says so: which one to keep is the human's choice. `roundtable doctor` stays read-only: it
+  reports earlier state and moves nothing.
 - **Left as they were:** "room" stays the word for the shared space, so internal names (`RoomService`, `room.db`, the
   `room_state` table, `room.updated` events, the pipe name) are unchanged, as are the earlier `vibe-pairing` salts and
   the `~/.vibe-pairing` cache. Records written before this one (ADRs, PROGRESS, reviews, probes) keep the old names.

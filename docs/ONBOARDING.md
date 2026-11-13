@@ -4,6 +4,8 @@ This takes about five minutes. You need Node 24.18 or later, and Claude Code and
 
 ## 1. Build
 
+The commands in this file use `X:\Development\agent-roundtable` as the checkout; replace it with your own path.
+
 ```powershell
 cd X:\Development\agent-roundtable
 npm install
@@ -79,28 +81,31 @@ never stalls.
 ## Upgrading from the-room
 
 The project was the-room until ADR-0017. Nothing answers to the old names, so a setup made before the rename needs
-these steps once, after pulling and rebuilding:
+these steps once, after pulling and rebuilding. Your checkout stays where it is: wherever a command in this file shows
+`X:\Development\agent-roundtable`, use your own checkout path (an existing one is probably still named `the-room`).
 
-1. **Stop the earlier service and close its clients.** Close any open TUI and end agent sessions that loaded the old
+1. **Get the new command.** If you used `npm link`, run `npm unlink --global the-room`, then `npm link` in the
+   checkout: the old link only provides `room`. Without a link, use `node <checkout>\dist\cli\main.js` wherever
+   these steps say `roundtable`.
+2. **Stop the earlier service and close its clients.** Close any open TUI and end agent sessions that loaded the old
    server, then run `roundtable shutdown` in the room. It only stops a running service; it never starts one.
-2. **Let the state move.** The next command (`roundtable who`) moves `.room/` to `.roundtable/`. If it reports that
+3. **Let the state move.** The next command (`roundtable who`) moves `.room/` to `.roundtable/`. If it reports that
    the move failed, something still holds `.room/` open; if it reports that both directories exist, keep one as the
-   message says.
-3. **Re-register the MCP server** under its new name, in each repo and harness that had it:
+   message says. `roundtable doctor` reports earlier state but never moves it.
+4. **Re-register the MCP server** under its new name, in each repo and harness that had it:
 
    ```powershell
    claude mcp remove room -s local
    codex mcp remove room
    ```
 
-   then add `roundtable` as in section 3 above. An old `room` registration left in place still
-   starts the server, but its tools appear as `mcp__room__roundtable_*`, which no permission rule matches.
-4. **Replace saved permissions:** `mcp__room__room_*` entries become `mcp__roundtable__roundtable_*`.
-5. **Rename settings:** every `ROOM_*` environment variable becomes `ROUNDTABLE_*` (`ROOM_ROOT` → `ROUNDTABLE_ROOT`).
+   then add `roundtable` with the commands in section 3 above, keeping your own checkout path. An old `room`
+   registration left in place still starts the server, but its tools appear as `mcp__room__roundtable_*`, which no
+   permission rule matches.
+5. **Replace saved permissions:** `mcp__room__room_*` entries become `mcp__roundtable__roundtable_*`.
+6. **Rename settings:** every `ROOM_*` environment variable becomes `ROUNDTABLE_*` (`ROOM_ROOT` → `ROUNDTABLE_ROOT`).
    The old names are ignored.
-6. **Skill:** replace a copied `~/.claude/skills/room/` with `.claude/skills/roundtable/`; it is invoked as `/roundtable`.
-7. **Global command:** if you used `npm link`, run `npm unlink --global the-room`, then `npm link` again for the
-   `roundtable` command.
+7. **Skill:** replace a copied `~/.claude/skills/room/` with `.claude/skills/roundtable/`; it is invoked as `/roundtable`.
 
 ## Moving from pair-poc
 
