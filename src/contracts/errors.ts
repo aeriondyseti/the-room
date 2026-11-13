@@ -1,5 +1,5 @@
 // Error contract: stable codes shared by service, IPC, CLI, MCP and TUI. Every code has a default hint
-// so agents and humans always learn what to do next (ROADMAP 5.2).
+// so agents and humans always learn what to do next (task 5.2).
 import type { ErrorInfo } from './domain.js';
 
 export const ERROR_HINTS = {

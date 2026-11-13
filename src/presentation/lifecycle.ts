@@ -1,4 +1,4 @@
-// Model- and human-facing text for the participant lifecycle (M8, docs/PARTICIPANT-LIFECYCLE-SPEC.md §3–4):
+// Model- and human-facing text for the participant lifecycle (M8, git show v0.9.0:docs/PARTICIPANT-LIFECYCLE-SPEC.md §3–4):
 // rename and kick outcomes. Pure formatting over the contract shapes; MCP and CLI share it.
 import type { KickOutcome, KickProposal, RenameOutcome } from '../contracts/lifecycle.js';
 

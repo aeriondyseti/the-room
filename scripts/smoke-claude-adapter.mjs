@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live smoke test for the Claude adapter (ROADMAP 2.2). Sends ONE message to a real Claude Code session.
+// Live smoke test for the Claude adapter (task 2.2). Sends ONE message to a real Claude Code session.
 // Usage: npm run build && node scripts/smoke-claude-adapter.mjs <claude-session-id> [message]
 // Only target a session you own and expect to receive a message (e.g. your own). Nothing else is touched.
 import { ClaudeAdapter, claudeAdapterOptionsFrom, defaultRegistryDeps, resolveClaudeConfigDir } from '../dist/adapters/claude/index.js';

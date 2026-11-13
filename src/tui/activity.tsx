@@ -1,4 +1,4 @@
-// Activity pane (ROADMAP 6.1): one agent's observed tool calls, results and messages, read-only and presentation
+// Activity pane (task 6.1): one agent's observed tool calls, results and messages, read-only and presentation
 // only. Opened with `/activity @name`; Esc returns to the room. Honest about coverage: an unreadable or unsupported
 // transcript is labelled, evicted history says so, and a catching-up reader is never shown as complete.
 import React, { useEffect, useMemo, useRef, useState } from 'react';

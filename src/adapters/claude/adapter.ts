@@ -1,4 +1,4 @@
-// Claude Code delivery adapter (ROADMAP 2.2): the only path the dispatcher uses to reach a Claude session.
+// Claude Code delivery adapter (task 2.2): the only path the dispatcher uses to reach a Claude session.
 import { createHash } from 'node:crypto';
 import type { DeliveryAdapter, LivenessProbe, SubmitRequest, SubmitResult } from '../../contracts/adapter.js';
 import type { Activity, TargetSnapshot } from '../../contracts/domain.js';

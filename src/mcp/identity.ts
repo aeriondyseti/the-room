@@ -1,5 +1,5 @@
-// Per-call caller identity for the MCP front-end (proposal "MCP front-end and caller identity"; findings in
-// probes/claude-identity-results.md and Astra's Codex probe). Resolved fresh on EVERY call; never from the MCP
+// Per-call caller identity for the MCP front-end (pre-build proposal "MCP front-end and caller identity"; findings in
+// git show v0.9.0:probes/claude-identity-results.md and Astra's Codex probe). Resolved fresh on EVERY call; never from the MCP
 // server's own pid alone, cwd, clientInfo, JSON-RPC ids, or model-supplied text (invariant 5).
 import { execFile } from 'node:child_process';
 import type { NativeEvidence } from '../contracts/ipc.js';
@@ -135,7 +135,7 @@ async function resolveClaude(deps: IdentityDeps): Promise<IdentityResult> {
     code: 'identity_unresolved',
     message:
       'Could not identify the calling session (no Codex thread metadata and no owning Claude session found). ' +
-      'Ask the human to add the room MCP server to this session and resume it (docs/ONBOARDING.md).',
+      'Ask the human to add the room MCP server to this session and resume it (docs/reference/operations.md).',
   };
 }
 

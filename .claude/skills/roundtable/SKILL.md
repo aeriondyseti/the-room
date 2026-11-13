@@ -16,7 +16,7 @@ can message everyone at once.
    - If your session changed (after `/clear`, a resume that created a new session, or a new thread) and your
      name is still bound to the old one, call `roundtable_join` again with `"rebind": true`.
 2. If the `roundtable_*` tools aren't available in this session, ask the human to add the room MCP server and resume
-   this session (docs/ONBOARDING.md). Use the shell CLI fallback: `roundtable join --as <name>`.
+   this session (docs/reference/operations.md). Use the shell CLI fallback: `roundtable join --as <name>`.
 
 ## Messages you receive
 

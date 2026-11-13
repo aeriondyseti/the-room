@@ -1,5 +1,5 @@
 // Claude Code messaging-pipe client: auth frame, then one user-message frame (captured protocol, 2.1.283).
-// Honest outcome mapping (ROADMAP 2.2):
+// Honest outcome mapping (task 2.2):
 //   error before the message frame is handed to the OS  -> 'failed'    (definitely not delivered)
 //   error/close after the message frame was written     -> 'uncertain' (it may have been read)
 //   message written and the receiver stayed open for the settle window -> 'written'
@@ -66,7 +66,7 @@ export function sendToPipe(opts: PipeSendOptions): Promise<PipeSendOutcome> {
     socket.on('error', (err) => onFailure(`pipe error (${describe(err)})`));
     socket.on('close', () => onFailure('receiver closed the connection'));
     socket.on('data', () => {
-      // Qualified (probes/claude-pipe-frames.md, TD-0008): the receiver sends no receipt/status frames for user
+      // Qualified in task 6.3b (git show v0.9.0:probes/claude-pipe-frames.md): the receiver sends no receipt/status frames for user
       // frames, so there is nothing to interpret here; evidence is the write plus an open connection through settle.
     });
     socket.on('connect', () => {

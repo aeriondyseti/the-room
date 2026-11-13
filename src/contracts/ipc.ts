@@ -43,7 +43,7 @@ export interface NativeEvidence {
  *   detects agent context (CODEX_THREAD_ID, or a Claude session among its ancestor processes), and MUST
  *   refuse human-only commands (pause, resume, retry, shutdown) in that context. It sends `human` only when no
  *   agent context is detected. This is local routing hygiene in a trusted room, not isolation from
- *   same-user processes (proposal "Messaging").
+ *   same-user processes (pre-build proposal "Messaging", git show v0.9.0:proposal.md).
  */
 export type Caller =
   | { kind: 'human' }

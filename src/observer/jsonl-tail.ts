@@ -1,4 +1,4 @@
-// Incremental, read-only JSONL reader with a restartable byte-offset cursor (proposal "Minimal observation").
+// Incremental, read-only JSONL reader with a restartable byte-offset cursor (pre-build proposal "Minimal observation").
 // Handles: partial trailing lines (kept until complete), truncation/replacement (size shrinks → restart),
 // and unparsable lines (counted, skipped — transcripts are not ours to validate).
 import { open, stat } from 'node:fs/promises';

@@ -1,4 +1,4 @@
-// Read-only usage observer (ROADMAP 2.5). Never writes harness files (invariant 8); never reports usage it
+// Read-only usage observer (task 2.5). Never writes harness files (invariant 8); never reports usage it
 // didn't observe (invariant 3): missing sources are `unavailable`, old readings are `stale`.
 import { claudeTranscriptPaths, codexRolloutPath } from './locate.js';
 import type { Harness, TargetSnapshot, UsageSnapshot } from '../contracts/domain.js';

@@ -1,4 +1,4 @@
-// Activity observation contract (ROADMAP 6.1): each agent's tool calls, results and messages, read-only from its
+// Activity observation contract (task 6.1): each agent's tool calls, results and messages, read-only from its
 // transcript. Presentation data only: nothing here may feed delivery, identity, liveness or bindings.
 // Shape agreed with Astra (room, 2026-09-28): binding-scoped streams, bounded retained window, honest coverage.
 import type { Harness } from './domain.js';
